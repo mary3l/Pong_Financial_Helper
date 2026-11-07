@@ -2,7 +2,8 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { ChevronIcon } from "@/components/icons";
-import { getPlanInputs } from "@/lib/data";
+import { creditRoom } from "@/lib/bnpl";
+import { getBnplCap, getPlanInputs } from "@/lib/data";
 import { today as getToday } from "@/lib/dates";
 import { nextOccurrence } from "@/lib/schedule";
 import { AffordForm } from "./afford-form";
@@ -35,7 +36,10 @@ async function Afford() {
   // Read the clock only at request time (Cache Components).
   await connection();
   const today = getToday();
-  const { inWallets, payday, items } = await getPlanInputs(today, HORIZON_DAYS);
+  const plan = await getPlanInputs(today, HORIZON_DAYS);
+  const { accounts, inWallets, payday, items } = plan;
+  const credit = creditRoom(accounts);
+  const cap = credit.length ? await getBnplCap(today, plan) : null;
   return (
     <AffordForm
       start={inWallets}
@@ -43,6 +47,9 @@ async function Afford() {
       today={today}
       nextPayday={payday ? nextOccurrence(payday, today) : null}
       payKnown={Boolean(payday?.amount)}
+      payday={payday ? { frequency: payday.frequency, day1: payday.day1, day2: payday.day2 } : null}
+      credit={credit}
+      cap={cap}
     />
   );
 }

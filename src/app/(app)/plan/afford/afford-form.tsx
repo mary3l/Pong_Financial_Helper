@@ -8,10 +8,12 @@ import { AmountInput } from "@/components/amount-input";
 import { FIELD_CLASS } from "@/components/choice-chip";
 import { ForecastChart } from "@/components/forecast-chart";
 import { Pong, type PongMood } from "@/components/pong";
+import { affordWithCredit, type BnplCap, type CreditOption, type CreditRoom } from "@/lib/bnpl";
 import { EXPENSE_CATEGORIES } from "@/lib/categories";
 import { formatShortDay, isValidDate } from "@/lib/dates";
 import { affordVerdict, splitAmount, type ForecastItem, type Verdict } from "@/lib/forecast";
 import { MAX_AMOUNT, formatPeso, parseAmount } from "@/lib/money";
+import type { Schedule } from "@/lib/schedule";
 
 const MONTH_OPTIONS = [3, 6, 12];
 
@@ -28,6 +30,9 @@ export function AffordForm({
   today,
   nextPayday,
   payKnown,
+  payday,
+  credit,
+  cap,
 }: {
   /** Money in cash, bank and e-wallets now. */
   start: number;
@@ -36,6 +41,11 @@ export function AffordForm({
   nextPayday: string | null;
   /** False when paydays add nothing because net pay isn't saved. */
   payKnown: boolean;
+  payday: Schedule | null;
+  /** BNPL lines, to show what using one would do when your own money falls short. */
+  credit: CreditRoom[];
+  /** Pong's monthly BNPL cap; null without credit lines. */
+  cap: BnplCap | null;
 }) {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -48,15 +58,14 @@ export function AffordForm({
 
   const amount = parseAmount(amountText);
   const valid = amount > 0 && amount <= MAX_AMOUNT && isValidDate(when) && when >= today;
-  const verdict = valid
-    ? affordVerdict({
-        start,
-        items,
-        purchase: { name: name.trim() || "This", amount, first: when, months },
-        today,
-        nextPayday,
-      })
-    : null;
+  const purchase = { name: name.trim() || "This", amount, first: when, months };
+  const verdict = valid ? affordVerdict({ start, items, purchase, today, nextPayday }) : null;
+  // Only when your own money falls short or it's tight.
+  const creditOptions =
+    cap && verdict && verdict.tone !== "comfortable"
+      ? affordWithCredit({ start, items, purchase, today, payday, lines: credit, cap })
+      : [];
+  const laterMonth = when.slice(0, 7) !== today.slice(0, 7);
 
   function save() {
     if (!valid) {
@@ -173,6 +182,10 @@ export function AffordForm({
           )}
         </section>
 
+        {cap && creditOptions.length > 0 && (
+          <WithCredit options={creditOptions} cap={cap} laterMonth={laterMonth} today={today} />
+        )}
+
         <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
         <div className="flex flex-col gap-2">
           <button type="submit" disabled={pending} className="h-[52px] rounded-[18px] bg-sun font-extrabold text-ink disabled:opacity-60">
@@ -240,5 +253,81 @@ function Result({
         <p className="text-[13px] text-muted">Your forecast already dips below ₱0 without this.</p>
       )}
     </>
+  );
+}
+
+/** The same purchase on each BNPL line, paid back on its due days from your own money. */
+function WithCredit({
+  options,
+  cap,
+  laterMonth,
+  today,
+}: {
+  options: CreditOption[];
+  cap: BnplCap;
+  /** Buying in a later month: that month's cap starts over. */
+  laterMonth: boolean;
+  today: string;
+}) {
+  return (
+    <section aria-live="polite" className="flex flex-col gap-3 rounded-[20px] bg-card p-4">
+      <div className="flex flex-col gap-0.5">
+        <h2 className="text-[13px] font-extrabold text-muted">WITH BNPL · BORROWED</h2>
+        <p className="text-[13px] text-muted">
+          You pay it back from your own money on each due day.
+          {cap.status === "set" &&
+            (laterMonth
+              ? ` My cap that month: about ${formatPeso(cap.cap!)}, worked out again from your records.`
+              : ` My cap this month: ${formatPeso(cap.cap!)}, ${formatPeso(cap.left!)} left.`)}
+        </p>
+      </div>
+      {cap.status === "paused" ? (
+        <div className="flex items-center gap-2">
+          <Pong mood="worried" size={48} decorative />
+          <p className="text-[15px]">
+            <span className="font-extrabold">BNPL is paused.</span> {cap.reason}
+          </p>
+        </div>
+      ) : (
+      <ul className="flex flex-col divide-y divide-line">
+        {options.map((o) => (
+          <li key={o.line.id} className="flex flex-col gap-0.5 py-2.5 first:pt-0 last:pb-0">
+            {o.verdict ? (
+              <>
+                <p className={`font-extrabold ${o.verdict.tone === "no" ? "text-coral-text" : ""}`}>
+                  {o.line.name}: {o.verdict.title}
+                </p>
+                <p className="text-[15px]">
+                  {o.months > 1
+                    ? `${formatPeso(o.payment)} × ${o.months} months, first due ${formatShortDay(o.firstDue, today)}`
+                    : `${formatPeso(o.payment)} due ${formatShortDay(o.firstDue, today)}`}
+                </p>
+                {o.perDay !== null && o.cycle && (
+                  <p className="text-[13px] text-muted">
+                    {o.months > 1 ? "Each payment leaves" : "Leaves"} about {formatPeso(o.perDay)} less a day
+                    from payday on {formatShortDay(o.cycle.from, today)} until {formatShortDay(o.cycle.until, today)}.
+                  </p>
+                )}
+                {o.verdict.tone === "no" && (
+                  <p className="text-[13px] text-muted">
+                    Lowest point after: {formatPeso(o.verdict.after.lowest.balance)} on{" "}
+                    {formatShortDay(o.verdict.after.lowest.date, today)}.
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-[15px] text-muted">
+                <span className="font-extrabold">{o.line.name}:</span>{" "}
+                {o.capped
+                  ? `over my cap. Only ${formatPeso(o.room)} more ${laterMonth ? "that" : "this"} month`
+                  : `only ${formatPeso(o.room)} left on it`}
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+      )}
+      <p className="text-[13px] text-muted">Any fee or interest the app charges isn&apos;t included.</p>
+    </section>
   );
 }

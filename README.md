@@ -91,6 +91,16 @@ share is an expense from their account (utang). Forgiving turns what's left into
 Safe to spend and the forecast never count pautang unless you switch on "Count it in my
 forecast", and never once it's late.
 
+BNPL you can still use (Home, under Safe to spend): never part of Safe to spend, You have, Net
+worth or the forecast, because it's borrowed. It's what's left of your credit limits, but never
+more than Pong's monthly cap, which Pong works out each day from your records: every BNPL and loan
+payment together stays under the smaller of 15% of what you take home and half of what's left
+after spending (monthly averages over the last 3 full months), minus the installments and loans
+due in the next 30 days, rounded down to ₱100. Everything charged to a credit line this month
+counts against it. It's ₱0 (paused) while a bill or installment is late, when the forecast dips
+below ₱0 within 30 days, or when you spend all you take home. "Can I afford this?" shows the same
+purchase on each line within the cap. `src/lib/bnpl.ts` has the math.
+
 Safe to spend = spending money in cash, bank and e-wallets, minus unpaid bills and expenses due
 before the next payday, divided by the days until payday. Income you haven't received yet
 never counts. Coming up on Home lists the next 7 days: **Mark paid** logs the real expense

@@ -31,6 +31,10 @@ export type ForecastItem = {
   estimate: boolean;
   /** Set once it was logged as a real transaction. */
   transactionId: string | null;
+  /** Installments: the credit line or loan it pays. */
+  lenderId?: string | null;
+  /** Installments: the plan's last payment. */
+  lastPayment?: boolean;
 };
 
 export type ScheduleInputs = {
@@ -69,6 +73,11 @@ export type ScheduleInputs = {
     payFromAccountId: string | null;
     /** The transfer or fee transaction, once paid. */
     transactionId: string | null;
+    /** The credit line or loan it pays. */
+    lenderAccountId?: string;
+    /** Which payment of how many. */
+    seq?: number;
+    months?: number;
   }[];
 };
 
@@ -145,6 +154,9 @@ export function scheduledItems(
       category: null,
       estimate: false,
       transactionId: p.transactionId,
+      lenderId: p.lenderAccountId ?? null,
+      // Not a one-payment bill ("October Billing"): only a plan's final payment.
+      lastPayment: p.months !== undefined && p.months > 1 && p.seq === p.months,
     });
   }
 

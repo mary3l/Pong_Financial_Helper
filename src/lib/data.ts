@@ -1,8 +1,9 @@
 import "server-only";
 import { connection } from "next/server";
 import { cache } from "react";
+import { HISTORY_MONTHS, bnplCap, estimateMonth, type BnplCap, type MoneyHistory } from "@/lib/bnpl";
 import { subcategoryOptions } from "@/lib/categories";
-import { addDays } from "@/lib/dates";
+import { addDays, dateInMonth, daysBetween, monthContaining } from "@/lib/dates";
 import { scheduledItems, sortItems, type ForecastItem, type ScheduleInputs } from "@/lib/forecast";
 import { getUsdRate, type UsdRate } from "@/lib/fx";
 import type { PriceMemory } from "@/lib/grocery";
@@ -593,6 +594,9 @@ export function installmentInputs(plans: InstallmentPlan[]): NonNullable<Schedul
       amount: p.amount,
       payFromAccountId: plan.payFromAccountId,
       transactionId: p.transactionId,
+      lenderAccountId: plan.accountId,
+      seq: p.seq,
+      months: plan.months,
     })),
   );
 }
@@ -693,6 +697,68 @@ export type PlanInputs = {
   /** Paydays, recurring and planned items, installments and utang from today for `days` days. */
   items: ForecastItem[];
 };
+
+/**
+ * Pong's BNPL cap for this month, from your last few full months of income
+ * and spending, and everything charged to your credit lines this month:
+ * purchases on them and money moved out of them. Paying a line back doesn't
+ * free up the month's cap.
+ */
+export async function getBnplCap(
+  today: string,
+  { accounts, inWallets, items }: Pick<PlanInputs, "accounts" | "inWallets" | "items">,
+): Promise<BnplCap> {
+  const [year, month] = today.split("-").map(Number);
+  const from = dateInMonth(month > HISTORY_MONTHS ? year : year - 1, ((month - HISTORY_MONTHS + 11) % 12) + 1, 1);
+  const thisMonth = monthContaining(today).start;
+  const supabase = await db();
+  const rows: { id: string; account_id: string; type: string; amount: number | string; occurred_on: string }[] = [];
+  // A few months of transactions can be more than one page.
+  for (let page = 0; ; page += 1) {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("id, account_id, type, amount, occurred_on")
+      .gte("occurred_on", from)
+      .lte("occurred_on", today)
+      .order("id")
+      .range(page * 1000, page * 1000 + 999);
+    if (error) throw dbError(error);
+    rows.push(...data);
+    if (data.length < 1000) break;
+  }
+
+  const byId = new Map(accounts.map((a) => [a.id, a]));
+  const credit = new Set(accounts.filter((a) => a.type === "credit_line").map((a) => a.id));
+  // Dollar wallets' interest counts in pesos.
+  const pesos = (t: (typeof rows)[number]) => {
+    const account = byId.get(t.account_id);
+    return account?.currency === "USD" ? Number(t.amount) * (account.fxRate ?? 0) : Number(t.amount);
+  };
+  const past = rows.filter((t) => t.occurred_on < thisMonth);
+  const current = rows.filter((t) => t.occurred_on >= thisMonth);
+  let history: MoneyHistory = {
+    income: roundCents(past.filter((t) => t.type === "income").reduce((sum, t) => sum + pesos(t), 0)),
+    spending: roundCents(past.filter((t) => t.type === "expense").reduce((sum, t) => sum + pesos(t), 0)),
+    months: new Set(past.map((t) => t.occurred_on.slice(0, 7))).size,
+  };
+  if (!history.months && current.length) {
+    // No full month yet: estimate one from this month and your schedule.
+    const expenses = current.filter((t) => t.type === "expense");
+    const scheduled = await getScheduledTransactionIds(expenses.map((t) => t.id));
+    const first = current.reduce((min, t) => (t.occurred_on < min ? t.occurred_on : min), today);
+    history =
+      estimateMonth({
+        items,
+        today,
+        dayToDay: expenses.filter((t) => !scheduled.has(t.id)).reduce((sum, t) => sum + pesos(t), 0),
+        daysLogged: daysBetween(first, today) + 1,
+      }) ?? history;
+  }
+  const used = current
+    .filter((t) => credit.has(t.account_id) && (t.type === "expense" || t.type === "transfer"))
+    .reduce((sum, t) => sum + Number(t.amount), 0);
+  return bnplCap({ history, items, start: inWallets, today, used });
+}
 
 /** Everything the forecast, Safe to spend and Due soon work from. */
 export async function getPlanInputs(today: string, days: number): Promise<PlanInputs> {
