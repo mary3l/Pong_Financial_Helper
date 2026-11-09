@@ -163,169 +163,178 @@ export function PaydayForm({
   );
 
   return (
-    <div className="flex flex-1 flex-col gap-6">
-      <section className="flex flex-col gap-4 rounded-3xl bg-card p-5">
-        <h2 id="pay-kind" className="font-display text-xl font-semibold">How do you get paid?</h2>
-        <div role="group" aria-labelledby="pay-kind" className="flex flex-wrap gap-2">
-          {PAY_KINDS.map((k) => (
-            <ChoiceChip
-              key={k.value}
-              selected={kind === k.value}
-              onClick={() => setKind(k.value)}
-              className={kind === k.value ? "" : "bg-mint"}
-            >
-              {k.label}
-            </ChoiceChip>
-          ))}
-        </div>
-
-        {kind === "twice_monthly" && (
-          <div className="flex gap-3">
-            {daySelect("payday-1", twice[0], (v) => setTwice([v, twice[1]]), "First payday")}
-            {daySelect("payday-2", twice[1], (v) => setTwice([twice[0], v]), "Second payday")}
-          </div>
-        )}
-        {kind === "monthly" && daySelect("payday-month", monthDay, setMonthDay, "Payday")}
-        {kind === "weekly" && (
-          <div className="flex flex-col gap-1">
-            <label htmlFor="payday-week" className="text-sm font-bold">Payday</label>
-            <select id="payday-week" value={weekday} onChange={(e) => setWeekday(Number(e.target.value))} className={FIELD_CLASS}>
-              {WEEKDAYS.map((name, i) => (
-                <option key={name} value={i}>Every {name}</option>
+    // Two columns only where there's room (Settings on a computer): your
+    // payday and the buttons on the left, staying in view, bills on the right.
+    // The first-run setup column and phones stay one column, buttons last.
+    <div className="@container flex flex-1 flex-col">
+      <div className="flex flex-1 flex-col gap-6 @3xl:grid @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] @3xl:items-start">
+        <div className="contents @3xl:sticky @3xl:top-6 @3xl:flex @3xl:flex-col @3xl:gap-4">
+          <section className="flex flex-col gap-4 rounded-3xl bg-card p-5">
+            <h2 id="pay-kind" className="font-display text-xl font-semibold">How do you get paid?</h2>
+            <div role="group" aria-labelledby="pay-kind" className="flex flex-wrap gap-2">
+              {PAY_KINDS.map((k) => (
+                <ChoiceChip
+                  key={k.value}
+                  selected={kind === k.value}
+                  onClick={() => setKind(k.value)}
+                  className={kind === k.value ? "" : "bg-mint"}
+                >
+                  {k.label}
+                </ChoiceChip>
               ))}
-            </select>
-          </div>
-        )}
-        {kind === "irregular" ? (
-          <p className="text-sm leading-relaxed text-muted">
-            No problem. Log income when it comes in. Safe to spend needs a payday, so it
-            will show your wallet total instead.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-3 sm:flex-row">
-            {payroll && kind === "twice_monthly" ? (
-              <div className="flex flex-1 flex-col gap-1">
-                <span className="text-sm font-bold">Pay per payday</span>
-                <p className="text-sm leading-relaxed text-muted">
-                  Worked out from the days you work.{" "}
-                  <Link href="/payroll" className="font-extrabold text-sea-dark underline">Payroll calculator</Link>
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-1 flex-col gap-1">
-                <label htmlFor="net-pay" className="text-sm font-bold">Net pay per payday <span className="font-semibold text-muted">(optional)</span></label>
-                <div className="relative">
-                  <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-                  <AmountInput id="net-pay" value={netPay} onChange={setNetPay} placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8`} />
-                </div>
-                {editing && kind === "twice_monthly" && (
-                  <Link href="/payroll" className="text-sm font-extrabold text-sea-dark hover:underline">
-                    Paid a daily rate? Use the payroll calculator
-                  </Link>
-                )}
+            </div>
+
+            {kind === "twice_monthly" && (
+              <div className="flex gap-3">
+                {daySelect("payday-1", twice[0], (v) => setTwice([v, twice[1]]), "First payday")}
+                {daySelect("payday-2", twice[1], (v) => setTwice([twice[0], v]), "Second payday")}
               </div>
             )}
-            {accounts.length > 0 && (
-              <div className="flex flex-1 flex-col gap-1">
-                <label htmlFor="pay-account" className="text-sm font-bold">Goes to</label>
-                <select id="pay-account" value={payAccount} onChange={(e) => setPayAccount(e.target.value)} className={FIELD_CLASS}>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
+            {kind === "monthly" && daySelect("payday-month", monthDay, setMonthDay, "Payday")}
+            {kind === "weekly" && (
+              <div className="flex flex-col gap-1">
+                <label htmlFor="payday-week" className="text-sm font-bold">Payday</label>
+                <select id="payday-week" value={weekday} onChange={(e) => setWeekday(Number(e.target.value))} className={FIELD_CLASS}>
+                  {WEEKDAYS.map((name, i) => (
+                    <option key={name} value={i}>Every {name}</option>
                   ))}
                 </select>
               </div>
             )}
-          </div>
-        )}
-      </section>
+            {kind === "irregular" ? (
+              <p className="text-sm leading-relaxed text-muted">
+                No problem. Log income when it comes in. Safe to spend needs a payday, so it
+                will show your wallet total instead.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-3 sm:flex-row">
+                {payroll && kind === "twice_monthly" ? (
+                  <div className="flex flex-1 flex-col gap-1">
+                    <span className="text-sm font-bold">Pay per payday</span>
+                    <p className="text-sm leading-relaxed text-muted">
+                      Worked out from the days you work.{" "}
+                      <Link href="/payroll" className="font-extrabold text-sea-dark underline">Payroll calculator</Link>
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-1 flex-col gap-1">
+                    <label htmlFor="net-pay" className="text-sm font-bold">Net pay per payday <span className="font-semibold text-muted">(optional)</span></label>
+                    <div className="relative">
+                      <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
+                      <AmountInput id="net-pay" value={netPay} onChange={setNetPay} placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8`} />
+                    </div>
+                    {editing && kind === "twice_monthly" && (
+                      <Link href="/payroll" className="text-sm font-extrabold text-sea-dark hover:underline">
+                        Paid a daily rate? Use the payroll calculator
+                      </Link>
+                    )}
+                  </div>
+                )}
+                {accounts.length > 0 && (
+                  <div className="flex flex-1 flex-col gap-1">
+                    <label htmlFor="pay-account" className="text-sm font-bold">Goes to</label>
+                    <select id="pay-account" value={payAccount} onChange={(e) => setPayAccount(e.target.value)} className={FIELD_CLASS}>
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
 
-      <section className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1">
-          <h2 className="font-display text-xl font-semibold">Regular bills</h2>
-          <p className="text-sm text-muted">Monthly bills due before payday come out of Safe to spend.</p>
+          <div className="order-1 mt-auto flex flex-col gap-2 pt-2 @3xl:order-none @3xl:mt-0 @3xl:pt-0">
+            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden @3xl:order-last">{error}</p>
+            <div className="flex flex-col gap-2 @3xl:flex-row-reverse @3xl:items-center @3xl:gap-3">
+              <button
+                type="button"
+                onClick={save}
+                disabled={pending}
+                className="h-14 rounded-[20px] bg-sun text-lg font-extrabold text-ink disabled:opacity-60 @3xl:flex-1"
+              >
+                {pending ? "Saving…" : editing ? "Update payday" : "Finish setup"}
+              </button>
+              <button
+                type="button"
+                onClick={editing ? () => router.push("/settings") : skip}
+                disabled={pending}
+                className="flex h-11 items-center justify-center font-extrabold text-sea-dark @3xl:h-14 @3xl:rounded-[20px] @3xl:px-6 @3xl:hover:bg-card"
+              >
+                {editing ? "Cancel" : "Skip for now"}
+              </button>
+            </div>
+          </div>
         </div>
 
-        {rows.map((row) => (
-          <div key={row.key} className="flex flex-col gap-3 rounded-[20px] bg-card p-4">
-            <div className="flex gap-3">
-              <div className="flex flex-1 flex-col gap-1">
-                <label htmlFor={`bill-name-${row.key}`} className="text-sm font-bold">Bill</label>
-                <input id={`bill-name-${row.key}`} value={row.name} onChange={(e) => update(row.key, { name: e.target.value })} maxLength={60} placeholder="e.g. Rent" className={FIELD_CLASS} />
-              </div>
-              <div className="flex w-36 flex-col gap-1">
-                <label htmlFor={`bill-amount-${row.key}`} className="text-sm font-bold">Amount</label>
-                <div className="relative">
-                  <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-                  <AmountInput id={`bill-amount-${row.key}`} value={row.amount} onChange={(v) => update(row.key, { amount: v })} placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8 text-right`} />
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-end gap-3">
-              {daySelect(`bill-day-${row.key}`, row.day, (v) => update(row.key, { day: v }), "Due every")}
-              {accounts.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <h2 className="font-display text-xl font-semibold">Regular bills</h2>
+            <p className="text-sm text-muted">Monthly bills due before payday come out of Safe to spend.</p>
+          </div>
+
+          {rows.map((row) => (
+            <div key={row.key} className="flex flex-col gap-3 rounded-[20px] bg-card p-4">
+              <div className="flex gap-3">
                 <div className="flex flex-1 flex-col gap-1">
-                  <label htmlFor={`bill-account-${row.key}`} className="text-sm font-bold">Paid from</label>
-                  <select id={`bill-account-${row.key}`} value={row.accountId} onChange={(e) => update(row.key, { accountId: e.target.value })} className={FIELD_CLASS}>
-                    <option value="">Any wallet</option>
-                    {accounts.map((a) => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
-                    ))}
-                  </select>
+                  <label htmlFor={`bill-name-${row.key}`} className="text-sm font-bold">Bill</label>
+                  <input id={`bill-name-${row.key}`} value={row.name} onChange={(e) => update(row.key, { name: e.target.value })} maxLength={60} placeholder="e.g. Rent" className={FIELD_CLASS} />
                 </div>
-              )}
-              <button
-                type="button"
-                onClick={() => setRows((rs) => rs.filter((r) => r.key !== row.key))}
-                aria-label={`Remove ${row.name.trim() || "this bill"}`}
-                className="h-12 px-2 text-sm font-extrabold text-coral-text"
-              >
-                Remove
-              </button>
+                <div className="flex w-36 flex-col gap-1">
+                  <label htmlFor={`bill-amount-${row.key}`} className="text-sm font-bold">Amount</label>
+                  <div className="relative">
+                    <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
+                    <AmountInput id={`bill-amount-${row.key}`} value={row.amount} onChange={(v) => update(row.key, { amount: v })} placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8 text-right`} />
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                {daySelect(`bill-day-${row.key}`, row.day, (v) => update(row.key, { day: v }), "Due every")}
+                {accounts.length > 0 && (
+                  <div className="flex flex-1 flex-col gap-1">
+                    <label htmlFor={`bill-account-${row.key}`} className="text-sm font-bold">Paid from</label>
+                    <select id={`bill-account-${row.key}`} value={row.accountId} onChange={(e) => update(row.key, { accountId: e.target.value })} className={FIELD_CLASS}>
+                      <option value="">Any wallet</option>
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setRows((rs) => rs.filter((r) => r.key !== row.key))}
+                  aria-label={`Remove ${row.name.trim() || "this bill"}`}
+                  className="h-12 px-2 text-sm font-extrabold text-coral-text"
+                >
+                  Remove
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
 
-        {unusedIdeas.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {unusedIdeas.map((idea) => (
-              <button
-                key={idea}
-                type="button"
-                onClick={() => addBill(idea)}
-                className="h-10 rounded-full bg-card px-4 text-sm font-extrabold text-ink hover:bg-sea-tint"
-              >
-                + {idea}
-              </button>
-            ))}
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={() => addBill()}
-          className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
-        >
-          + Add a bill
-        </button>
-      </section>
-
-      <div className="mt-auto flex flex-col gap-2 pt-2">
-        <p role="alert" className="min-h-5 text-sm font-bold text-coral-text">{error}</p>
-        <button
-          type="button"
-          onClick={save}
-          disabled={pending}
-          className="h-14 rounded-[20px] bg-sun text-lg font-extrabold text-ink disabled:opacity-60"
-        >
-          {pending ? "Saving…" : editing ? "Update payday" : "Finish setup"}
-        </button>
-        <button
-          type="button"
-          onClick={editing ? () => router.push("/settings") : skip}
-          disabled={pending}
-          className="flex h-11 items-center justify-center font-extrabold text-sea-dark"
-        >
-          {editing ? "Cancel" : "Skip for now"}
-        </button>
+          {unusedIdeas.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {unusedIdeas.map((idea) => (
+                <button
+                  key={idea}
+                  type="button"
+                  onClick={() => addBill(idea)}
+                  className="h-10 rounded-full bg-card px-4 text-sm font-extrabold text-ink hover:bg-sea-tint"
+                >
+                  + {idea}
+                </button>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => addBill()}
+            className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
+          >
+            + Add a bill
+          </button>
+        </section>
       </div>
     </div>
   );

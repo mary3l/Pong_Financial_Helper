@@ -37,10 +37,20 @@ const PICK_WALLET = { error: "Pick a cash, bank or e-wallet." };
  * "Mark paid" for a bill, or "Add income" for a payday or recurring income:
  * logs the transaction today and links it to the scheduled date. Undo
  * deletes that transaction, which un-marks the occurrence. `walletId` is the
- * wallet picked for it; without one, the item's own wallet.
+ * wallet picked for it; without one, the item's own wallet. `amount` is what
+ * actually came in or went out (a payday's real pay, a bill that varies);
+ * without one, the item's saved amount.
  */
-export async function logRecurring(recurringItemId: string, dueOn: string, walletId?: string): Promise<PlanResult> {
+export async function logRecurring(
+  recurringItemId: string,
+  dueOn: string,
+  walletId?: string,
+  amount?: number,
+): Promise<PlanResult> {
   if (!isValidDate(dueOn)) return FAILED;
+  if (amount !== undefined && !(Number.isFinite(amount) && amount > 0 && amount <= MAX_AMOUNT)) {
+    return { error: "Enter an amount." };
+  }
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
@@ -50,14 +60,14 @@ export async function logRecurring(recurringItemId: string, dueOn: string, walle
     .eq("id", recurringItemId)
     .maybeSingle();
   if (!item) return { error: "Couldn't find that item." };
-  if (!item.amount) return { error: "Set an amount for it first." };
+  if (!item.amount && amount === undefined) return { error: "Set an amount for it first." };
 
   const accountId = await pickWallet(supabase, item.account_id, walletId);
   if (!accountId) return walletId ? PICK_WALLET : NO_WALLET;
 
   const txnId = await logTransaction(supabase, {
     type: item.kind === "bill" ? "expense" : "income",
-    amount: Number(item.amount),
+    amount: amount !== undefined ? roundCents(amount) : Number(item.amount),
     accountId,
     category: recurringCategory(item),
     note: item.kind === "payday" ? "Payday" : item.name,

@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   contributions,
+  cutoffFor,
   cutoffPay,
   daysFor,
   minutesLate,
   overtimeMinutes,
   pagibigContribution,
   paydayAmounts,
+  paydayFor,
   payForCutoff,
   philhealthContribution,
   sssContribution,
@@ -97,13 +99,23 @@ describe("cutoff pay", () => {
     expect(payForCutoff(saved, NOV_1, "2026-11-20").estimate).toBe(false);
   });
 
-  it("gives each payday its own cutoff's pay", () => {
+  it("pays each cutoff on the payday after it", () => {
+    const schedule = { frequency: "twice_monthly" as const, day1: 15, day2: 30 };
+    expect(cutoffFor("2026-11-15")).toEqual({ start: "2026-10-16", end: "2026-10-31" });
+    expect(cutoffFor("2026-11-30")).toEqual(NOV_1);
+    expect(cutoffFor("2026-01-15")).toEqual({ start: "2025-12-16", end: "2025-12-31" });
+    expect(paydayFor(NOV_1, schedule)).toBe("2026-11-30");
+    expect(paydayFor({ start: "2026-11-16", end: "2026-11-30" }, schedule)).toBe("2026-12-15");
+    expect(paydayFor({ start: "2027-02-01", end: "2027-02-15" }, schedule)).toBe("2027-02-28");
+  });
+
+  it("gives each payday the cutoff before it", () => {
     const records: PayrollRecords = { settings, days: [], overtime: [] };
     const amounts = paydayAmounts(records, { frequency: "twice_monthly", day1: 15, day2: 30 }, "2026-11-01", "2026-12-01", "2026-11-04");
-    // Nov 1–15: 10 weekdays; Nov 16–30: 11 weekdays.
+    // Nov 15 pays Oct 16–31: 11 weekdays. Nov 30 pays Nov 1–15: 10 weekdays.
     expect(amounts).toEqual({
-      "2026-11-15": { amount: 8000, estimate: true },
-      "2026-11-30": { amount: 8800, estimate: true },
+      "2026-11-15": { amount: 8800, estimate: true },
+      "2026-11-30": { amount: 8000, estimate: true },
     });
   });
 });

@@ -6,10 +6,12 @@ import { payInstallments, undoInstallment } from "@/app/credit-actions";
 import { settlePerson } from "@/app/people-actions";
 import { logPlanned, logRecurring } from "@/app/plan-actions";
 import { deleteTransaction } from "@/app/transaction-actions";
+import { AmountInput } from "@/components/amount-input";
+import { FIELD_CLASS } from "@/components/choice-chip";
 import { CloseIcon } from "@/components/icons";
 import type { Account } from "@/lib/data";
 import type { ForecastItem } from "@/lib/forecast";
-import { accountTypeLabel, formatPeso, paysInPesos, purposeLabel, roundCents } from "@/lib/money";
+import { accountTypeLabel, formatPeso, parseAmount, paysInPesos, purposeLabel, roundCents } from "@/lib/money";
 
 /** Opens Add prefilled for an item, linked so saving logs that occurrence. */
 export function prefillHref(item: ForecastItem): string {
@@ -41,7 +43,7 @@ export function LogButton({ item, accounts }: { item: ForecastItem; accounts: Ac
   // Scheduled items are in pesos, so dollar wallets aren't offered.
   const wallets = accounts.filter((a) => paysInPesos(a) && !a.archived);
 
-  function run(walletId?: string) {
+  function run(walletId?: string, amount?: number) {
     setError(null);
     startTransition(async () => {
       const result = await (item.kind === "utang" || item.kind === "pautang"
@@ -54,7 +56,7 @@ export function LogButton({ item, accounts }: { item: ForecastItem; accounts: Ac
           ? deleteTransaction(item.transactionId!)
           : item.kind === "planned"
             ? logPlanned(item.id, walletId)
-            : logRecurring(item.id, item.dueOn, walletId));
+            : logRecurring(item.id, item.dueOn, walletId, amount ?? item.amount ?? undefined));
       if (result.error) setError(result.error);
       else setPicking(false);
     });
@@ -120,7 +122,7 @@ export function LogButton({ item, accounts }: { item: ForecastItem; accounts: Ac
 /** Which wallet it's paid from (or lands in), with each one's balance now and after. */
 function WalletPicker({
   item,
-  amount,
+  amount: estimate,
   wallets,
   label,
   pending,
@@ -134,11 +136,20 @@ function WalletPicker({
   label: string;
   pending: boolean;
   error: string | null;
-  onConfirm: (walletId: string) => void;
+  onConfirm: (walletId: string, amount: number) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const incoming = item.flow === "in";
+  // An estimate (a payday from the payroll calculator, a bill that varies):
+  // type what actually came in or went out. Installments, utang and planned
+  // items log their own amounts.
+  const editable = item.estimate && (item.kind === "payday" || item.kind === "income" || item.kind === "bill");
+  const [typed, setTyped] = useState(() => String(estimate));
+  const parsed = editable ? parseAmount(typed) : estimate;
+  const valid = Number.isFinite(parsed) && parsed > 0;
+  const amount = valid ? parsed : estimate;
+  const [problem, setProblem] = useState<string | null>(null);
   const [chosen, setChosen] = useState(
     () => wallets.find((w) => w.id === item.accountId)?.id ?? wallets[0].id,
   );
@@ -173,7 +184,9 @@ function WalletPicker({
         className="flex max-h-[85dvh] flex-col gap-3 px-5 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
         onSubmit={(e) => {
           e.preventDefault();
-          onConfirm(chosen);
+          if (!valid) return setProblem("Enter how much came in.");
+          setProblem(null);
+          onConfirm(chosen, amount);
         }}
       >
         <div className="flex items-start justify-between gap-3">
@@ -197,6 +210,28 @@ function WalletPicker({
             <CloseIcon size={16} />
           </button>
         </div>
+
+        {editable && (
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={`log-amount-${item.key}`} className="text-sm font-bold">
+              {incoming ? "How much came in" : "How much you paid"}
+            </label>
+            <div className="relative">
+              <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
+              <AmountInput
+                id={`log-amount-${item.key}`}
+                value={typed}
+                onChange={(v) => {
+                  setProblem(null);
+                  setTyped(v);
+                }}
+                placeholder="0.00"
+                className={`${FIELD_CLASS} w-full pl-8 text-right`}
+              />
+            </div>
+            <p className="text-xs text-muted">Estimated {formatPeso(estimate)}. Change it to {incoming ? "what actually landed" : "what you actually paid"}.</p>
+          </div>
+        )}
 
         <fieldset className="flex min-h-0 flex-col overflow-y-auto rounded-[20px] bg-card px-1.5 py-1.5">
           <legend className="sr-only">{heading}</legend>
@@ -240,7 +275,7 @@ function WalletPicker({
           })}
         </fieldset>
 
-        <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+        <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{problem ?? error}</p>
 
         <button
           type="submit"

@@ -21,7 +21,7 @@ export default function SettingsPage() {
       <h1 className="font-display text-3xl font-semibold">Settings &amp; tools</h1>
 
       <Group title="PLANNING">
-        <Suspense fallback={<Row title="Payday & bills" href="/setup/payday?from=settings" />}>
+        <Suspense fallback={<Row title="Payday & bills" href="/settings/payday" />}>
           <PaydayRow />
         </Suspense>
         <Row
@@ -143,7 +143,7 @@ async function PaydayRow() {
     <Row
       title="Payday & bills"
       detail={`${pay} · ${bills.length} ${bills.length === 1 ? "bill" : "bills"}`}
-      href="/setup/payday?from=settings"
+      href="/settings/payday"
     />
   );
 }

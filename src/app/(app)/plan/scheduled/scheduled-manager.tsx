@@ -287,7 +287,7 @@ function ItemRow({
       <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
         {next && soon && <LogButton item={next} accounts={accounts} />}
         {row.payday ? (
-          <Link href="/setup/payday?from=settings" className={linkClass}>
+          <Link href="/settings/payday" className={linkClass}>
             Edit
           </Link>
         ) : row.fromPayroll ? (

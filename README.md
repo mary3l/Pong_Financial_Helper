@@ -120,7 +120,8 @@ purchase on each line within the cap. `src/lib/bnpl.ts` has the math.
 Bills by payday (Plan): each bill goes with the pay that covers it, from one payday to the day
 before the next; what's due before the next payday comes out of your wallets now. With the
 Payroll calculator, each pay also says how many days to go in during its cutoff to cover those
-bills, counting what you've already earned and leaving out days off and leave you saved. What a
+bills (pay is one cutoff late: the 15th pays the 16th–end of last month, the 30th pays the
+1st–15th), counting what you've already earned and leaving out days off and leave you saved. What a
 pay can't cover even going in every day carries into the next one. `src/lib/office-days.ts`.
 
 Breakdowns: a person's page and a split bill's page have **Send breakdown**: a receipt card with
@@ -133,7 +134,9 @@ before the next payday, divided by the days until payday. Income you haven't rec
 never counts. Coming up on Home lists the next 7 days: **Mark paid** logs the real expense
 and **Add income** logs the real income, so the item stops counting and the wallet balance
 changes instead. Deleting that transaction in Activity un-marks it. Log pay with Add income
-(not with +) so it isn't counted twice on payday.
+(not with +) so it isn't counted twice on payday. When the amount is an estimate (a payday from
+the Payroll calculator, a bill that varies), the sheet starts at the estimate and you can change
+it to what actually came in or went out.
 
 The forecast starts from the same wallet money, adds each payday (if net pay is saved) and
 each expected income, and subtracts each unpaid bill and expense on its date.

@@ -116,13 +116,13 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
             {payday && payday.amount === null && (
               <p className="text-[13px] text-muted">
                 Your net pay isn&apos;t saved, so paydays add nothing here.{" "}
-                <Link href="/setup/payday?from=settings" className="font-extrabold text-sea-dark underline">Add it</Link>
+                <Link href="/settings/payday" className="font-extrabold text-sea-dark underline">Add it</Link>
               </p>
             )}
             {!payday && (
               <p className="text-[13px] text-muted">
                 No payday set.{" "}
-                <Link href="/setup/payday?from=settings" className="font-extrabold text-sea-dark underline">Set payday</Link>
+                <Link href="/settings/payday" className="font-extrabold text-sea-dark underline">Set payday</Link>
               </p>
             )}
           </div>

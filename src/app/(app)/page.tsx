@@ -638,7 +638,7 @@ function pongSays(
     return {
       mood: "listen",
       message: "When's payday? Tell me and I'll spread your money across the days until then.",
-      link: { href: "/setup/payday?from=settings", label: "Set payday" },
+      link: { href: "/settings/payday", label: "Set payday" },
     };
   }
   if (sts.perDay === 0) {

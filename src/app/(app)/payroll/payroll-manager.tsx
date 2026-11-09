@@ -6,7 +6,7 @@ import { saveContributionAmounts, saveCutoff, savePayrollSettings, setContributi
 import { AmountInput } from "@/components/amount-input";
 import { FIELD_CLASS } from "@/components/choice-chip";
 import { ChevronIcon } from "@/components/icons";
-import { addDays, formatLongDay, formatPeriod, formatShortDay, nextPeriod, previousPeriod, type Period } from "@/lib/dates";
+import { formatLongDay, formatPeriod, formatShortDay, nextPeriod, previousPeriod, type Period } from "@/lib/dates";
 import { formatPeso, parseAmount } from "@/lib/money";
 import {
   LEAVE_TYPES,
@@ -21,6 +21,7 @@ import {
   minutesLate,
   monthlyBase,
   overtimeMinutes,
+  paydayFor,
   upcomingTaxPayments,
   type ContributionKey,
   type DayStatus,
@@ -29,7 +30,7 @@ import {
   type PayrollRecords,
   type PayrollSettings,
 } from "@/lib/payroll";
-import { occurrences, type Schedule } from "@/lib/schedule";
+import type { Schedule } from "@/lib/schedule";
 
 const STATUSES: { value: DayStatus; label: string }[] = [
   { value: "worked", label: "Worked" },
@@ -85,7 +86,7 @@ export function PayrollManager({
       <Notice>
         The calculator pays each cutoff on its own payday, so your payday needs to be{" "}
         <strong>twice a month</strong> (like the 15th &amp; 30th).{" "}
-        <Link href="/setup/payday?from=settings" className="font-extrabold text-sea-dark underline">
+        <Link href="/settings/payday" className="font-extrabold text-sea-dark underline">
           Change your payday
         </Link>
       </Notice>
@@ -314,7 +315,7 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
   const [pending, startTransition] = useTransition();
 
   const pay = cutoffPay(settings, days, overtime);
-  const paidOn = occurrences(payday, period.start, addDays(period.end, 1))[0] ?? period.end;
+  const paidOn = paydayFor(period, payday);
   const perMinute = hourlyRate(settings) / 60;
 
   function update(date: string, patch: Partial<PayrollDay>) {

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { DEBT_SHARE } from "@/lib/bnpl";
 import type { Account } from "@/lib/data";
-import { formatShortDay } from "@/lib/dates";
+import { formatPeriod, formatShortDay } from "@/lib/dates";
 import type { ForecastItem } from "@/lib/forecast";
 import { formatPeso } from "@/lib/money";
 import type { PaydayBills } from "@/lib/office-days";
@@ -206,7 +206,7 @@ function PaydayCard({
               {office.daysLeft} {office.daysLeft === 1 ? "day" : "days"} left
             </>
           ) : office.needed === 0 ? (
-            <><strong>Covered</strong> by what you&apos;ve earned this cutoff</>
+            <><strong>Covered</strong> by what you&apos;ve earned in its cutoff{p.cutoff && <span className="text-muted"> · {formatPeriod(p.cutoff, today)}</span>}</>
           ) : (
             <>
               Go in <strong>{office.needed} of {office.daysLeft}</strong> {office.daysLeft === 1 ? "day" : "days"} left
@@ -249,7 +249,7 @@ function PaydayCard({
           <>
             {office.earned > 0 && (
               <div className="flex justify-between gap-3">
-                <dt className="text-muted">Earned this cutoff so far</dt>
+                <dt className="text-muted">Earned in its cutoff{p.cutoff ? ` (${formatPeriod(p.cutoff, today)})` : ""}{office.daysLeft ? " so far" : ""}</dt>
                 <dd>{formatPeso(office.earned)}</dd>
               </div>
             )}

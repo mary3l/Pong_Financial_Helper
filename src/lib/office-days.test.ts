@@ -92,25 +92,31 @@ describe("bills by payday", () => {
     ]);
     expect(periods[0].total).toBe(1000);
     expect(periods[0].left).toBe(4000);
-    // Nov 15 pay covers ₱7,500 of bills less ₱500 allowance: ₱7,000, and ₱5,000 is earned by Nov 6.
+    // Nov 15 pays for Oct 16–31 (11 weekdays, all done): ₱11,000 covers ₱7,500 of bills less ₱500 allowance.
+    expect(periods[1].cutoff).toEqual({ start: "2026-10-16", end: "2026-10-31" });
     expect(periods[1].need).toBe(7000);
-    expect(periods[1].office?.needed).toBe(2);
+    expect(periods[1].office?.earned).toBe(11000);
+    expect(periods[1].office?.daysLeft).toBe(0);
+    expect(periods[1].office?.needed).toBe(0);
     expect(periods[1].money).toBe(10000);
-    // Nov 30 pay: its whole cutoff (Nov 16–30, 11 weekdays) is ahead.
+    // Nov 30 pays for Nov 1–15: ₱5,000 earned by Nov 6, 5 days left.
     // Pautang you count on (₱900 on Dec 6) lowers what the pay has to cover.
+    expect(periods[2].cutoff).toEqual({ start: "2026-11-01", end: "2026-11-15" });
     expect(periods[2].need).toBe(1100);
-    expect(periods[2].office?.daysLeft).toBe(11);
-    expect(periods[2].office?.needed).toBe(2);
+    expect(periods[2].office?.daysLeft).toBe(5);
+    expect(periods[2].office?.needed).toBe(0);
   });
 
   it("carries what a pay can't cover into the next one", () => {
     const big = [...items, item("installment", "2026-11-20", 20000)];
     const periods = billsByPayday({ items: big, today: "2026-11-09", payday: PAYDAY, inWallets: 5000, payroll: records, count: 2 });
-    // ₱27,000 needed, ₱5,000 earned, ₱5,000 more at most this cutoff: ₱17,000 short.
+    // ₱27,000 needed, and Oct 16–31 already earned ₱11,000 with no days left: ₱16,000 short.
     expect(periods[1].office?.needed).toBeNull();
-    expect(periods[1].office?.short).toBe(17000);
-    expect(periods[2].carriedIn).toBe(17000);
-    expect(periods[2].need).toBe(18100);
+    expect(periods[1].office?.short).toBe(16000);
+    expect(periods[2].carriedIn).toBe(16000);
+    expect(periods[2].need).toBe(17100);
+    // Nov 1–15: ₱5,000 earned, ₱5,000 more at most: ₱7,100 short.
+    expect(periods[2].office?.short).toBe(7100);
   });
 
   it("works without the payroll calculator, from the payday amount", () => {

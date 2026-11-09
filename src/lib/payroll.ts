@@ -1,4 +1,4 @@
-import { addDays, dateInMonth, periodContaining, weekdayOf, type Period } from "@/lib/dates";
+import { addDays, dateInMonth, nextPeriod, periodContaining, previousPeriod, weekdayOf, type Period } from "@/lib/dates";
 import { roundCents } from "@/lib/money";
 import { occurrences, type Schedule } from "@/lib/schedule";
 
@@ -7,8 +7,8 @@ import { occurrences, type Schedule } from "@/lib/schedule";
 // deducts anything from it: SSS, PhilHealth, Pag-IBIG and the 8% income tax
 // are bills you pay yourself, so they live in Money going out.
 //
-// A cutoff is a kinsena: the 1st–15th is paid on the 15th, the 16th–end of
-// month on the 30th (or the month's last day).
+// A cutoff is a kinsena, paid one cutoff late: the 16th–end of month is paid
+// on the next month's 15th, the 1st–15th on the 30th (or the month's last day).
 //
 // Pure, so the server and the browser share it.
 
@@ -213,9 +213,15 @@ function indexRecords(records: PayrollRecords): RecordIndex {
   };
 }
 
-/** The cutoff a payday pays for: the kinsena it falls in. */
+/** The cutoff a payday pays for: the kinsena before the one it falls in. */
 export function cutoffFor(payday: string): Period {
-  return periodContaining(payday);
+  return previousPeriod(periodContaining(payday));
+}
+
+/** The payday that pays for `cutoff`: the first one in the kinsena after it. */
+export function paydayFor(cutoff: Period, schedule: Schedule): string {
+  const next = nextPeriod(cutoff);
+  return occurrences(schedule, next.start, addDays(next.end, 1))[0] ?? next.end;
 }
 
 /** Payday amounts by date, for the forecast, from `from` up to but not including `until`. */
