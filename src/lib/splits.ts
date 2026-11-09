@@ -1,5 +1,5 @@
 import type { Transaction } from "@/lib/data";
-import { roundCents } from "@/lib/money";
+import { formatPeso, roundCents } from "@/lib/money";
 
 // A split bill you paid is several records: the expense for your share and a
 // transfer (pautang) to each person. They share a split_id (migration 0012),
@@ -99,4 +99,41 @@ export function groupSplits(transactions: Transaction[]): ListItem[] {
     }
   }
   return items;
+}
+
+/**
+ * A split bill to send to the group: the total, each share and whether it's
+ * paid back. `unpaid` is what each share still has unpaid (unpaidByRecord).
+ */
+export function billBreakdownText({
+  split,
+  names,
+  unpaid,
+  dateLabel,
+  myName,
+}: {
+  split: SplitBill;
+  /** Person id → name. */
+  names: Map<string, string>;
+  unpaid: Map<string, number>;
+  /** "Oct 23". */
+  dateLabel: string;
+  myName: string | null;
+}): string {
+  const shares = split.others.map((t) => {
+    const left = unpaid.get(t.id) ?? 0;
+    const name = names.get(t.toAccountId ?? "") ?? "Someone";
+    const status = left === 0 ? "paid ✓" : left < t.amount ? `${formatPeso(left)} left` : "unpaid";
+    return `• ${name}: ${formatPeso(t.amount)} · ${status}`;
+  });
+  const stillOwed = roundCents(split.others.reduce((s, t) => s + (unpaid.get(t.id) ?? 0), 0));
+  return [
+    `${split.title} · ${dateLabel}`,
+    `Total bill: ${formatPeso(split.total)}`,
+    "",
+    ...(split.mine ? [`• ${myName ?? "Me"}: ${formatPeso(split.mine.amount)}`] : []),
+    ...shares,
+    "",
+    stillOwed > 0 ? `Still to pay: ${formatPeso(stillOwed)}. Salamat!` : "All paid. Salamat, everyone!",
+  ].join("\n");
 }

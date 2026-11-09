@@ -3,14 +3,14 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LogButton } from "@/components/log-button";
-import { getAccounts, getInstallmentPlans, getSplitsPaidWith, installmentInputs } from "@/lib/data";
+import { getAccounts, getInstallmentPlans, getPeople, getSplitsPaidWith, installmentInputs } from "@/lib/data";
 import { addDays, formatShortDay, isValidDate, today as getToday } from "@/lib/dates";
 import { scheduledItems } from "@/lib/forecast";
-import { catchUpDue, dueText } from "@/lib/installments";
+import { bnplFirstDue, catchUpDue, dueText, statementFor } from "@/lib/installments";
 import { formatPeso, isDebt, isSpendable, paysInPesos, roundCents } from "@/lib/money";
 import { nextOccurrence } from "@/lib/schedule";
 import { toSplitBill, type SplitBill } from "@/lib/splits";
-import { AccountActions, PayBillButton, RemovePlanButton, UpcomingPayments } from "./account-actions";
+import { AccountActions, AssignPlanButton, PayBillButton, RemovePlanButton, TheyPaidButton, UpcomingPayments } from "./account-actions";
 import { AddSplitsButton } from "./add-splits";
 import { WalletActivity } from "./wallet-activity";
 
@@ -36,10 +36,11 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
   // Read the clock only at request time (Cache Components).
   await connection();
   const today = getToday();
-  const [accounts, plans, splits] = await Promise.all([
+  const [accounts, plans, splits, people] = await Promise.all([
     getAccounts({ includeArchived: true }),
     getInstallmentPlans(id),
     getSplitsPaidWith(id),
+    getPeople({ includeArchived: true }),
   ]);
   const account = accounts.find((a) => a.id === id);
   if (account && isSpendable(account.type)) {
@@ -56,12 +57,18 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
   for (const [splitId, records] of splits) {
     const plan = plans.find((p) => p.sourceTxnId && records.some((r) => r.id === p.sourceTxnId));
     if (plan) splitOfPlan.set(plan.id, toSplitBill(splitId, records));
-    else notOnBill.push({ ...toSplitBill(splitId, records), dueOn: catchUpDue(records[0].occurredOn, account.dueDay, today) });
+    else notOnBill.push({ ...toSplitBill(splitId, records), dueOn: catchUpDue(records[0].occurredOn, account.dueDay, today, account.cutoffDay) });
   }
   notOnBill.sort((a, b) => b.occurredOn.localeCompare(a.occurredOn));
   const notOnBillTotal = roundCents(notOnBill.reduce((s, b) => s + b.total, 0));
   const notOnBillDue = [...new Set(notOnBill.map((b) => b.dueOn))];
   const planOfPayment = new Map(plans.flatMap((p) => p.payments.map((x) => [x.id, p.id] as const)));
+  // Someone else's plans on this line (Tita Flora used your Atome): who pays each payment.
+  const personName = new Map(people.map((p) => [p.id, p.name]));
+  const payerOf = (paymentId: string) => {
+    const personId = plans.find((p) => p.id === planOfPayment.get(paymentId))?.personId;
+    return personId ? { id: personId, name: personName.get(personId) ?? "Someone" } : null;
+  };
   // Unpaid installments, late ones first, as forecast items for Mark paid.
   const upcoming = scheduledItems(
     { recurring: [], billPayments: [], planned: [], installments: installmentInputs(plans).filter((p) => !p.transactionId) },
@@ -76,6 +83,16 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
   const next = upcoming[0];
   const nextBill = bills[0]?.items ?? [];
   const nextTotal = bills[0]?.total ?? 0;
+  // Pay bill is your part; each person pays theirs.
+  const nextMine = nextBill.filter((p) => !payerOf(p.id));
+  const nextMineTotal = roundCents(nextMine.reduce((sum, p) => sum + (p.amount ?? 0), 0));
+  const nextTheirs = [...new Map(nextBill.flatMap((p) => {
+    const payer = payerOf(p.id);
+    return payer ? [[payer.id, payer] as const] : [];
+  })).values()].map((payer) => {
+    const items = nextBill.filter((p) => payerOf(p.id)?.id === payer.id);
+    return { ...payer, ids: items.map((p) => p.id), total: roundCents(items.reduce((sum, p) => sum + (p.amount ?? 0), 0)) };
+  });
   const credit = account.type === "credit_line";
   // What you owe that no upcoming payment covers yet.
   const unscheduled = Math.max(
@@ -89,6 +106,11 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
   const defaultDue = account.dueDay
     ? nextOccurrence({ frequency: "monthly", day1: account.dueDay, day2: null }, today)
     : addDays(today, 30);
+  // With a cutoff day: when this statement closes, and which bill a purchase today lands on.
+  const cutoff =
+    credit && account.cutoffDay && account.dueDay
+      ? { closes: statementFor(today, account.cutoffDay), due: bnplFirstDue(today, account.dueDay, account.cutoffDay) }
+      : null;
 
   return (
     <>
@@ -96,11 +118,19 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
         <h1 className="font-display text-3xl font-semibold">{account.name}</h1>
         <span className="text-[15px] text-muted">
           {credit
-            ? `Buy now, pay later${account.dueDay ? ` · bill due every ${account.dueDay}${account.dueDay === 1 ? "st" : "th"}` : ""}`
+            ? `Buy now, pay later${account.dueDay ? ` · bill due every ${ordinal(account.dueDay)}` : ""}${account.cutoffDay ? ` · cuts off every ${ordinal(account.cutoffDay)}` : ""}`
             : "Loan"}
           {account.archived && " · archived"}
         </span>
       </div>
+
+      {cutoff && (
+        <p className="-mt-1 rounded-[16px] bg-sea-tint px-4 py-2.5 text-[15px] leading-snug">
+          {cutoff.closes === today ? "Statement closes today. " : `Statement closes ${formatShortDay(cutoff.closes, today)} (${dueText(cutoff.closes, today).replace("Due ", "").toLowerCase()}). `}
+          Buy now and you pay on <strong>{formatShortDay(cutoff.due, today)}</strong>; after the cutoff, it waits for
+          the {formatShortDay(bnplFirstDue(addDays(cutoff.closes, 1), account.dueDay!, account.cutoffDay!), today)} bill.
+        </p>
+      )}
 
       <section className="flex flex-col gap-2 rounded-[28px] bg-sea p-6 text-white">
         {credit && account.creditLimit ? (
@@ -153,7 +183,15 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
             </span>
             <span className="font-display text-2xl font-semibold">{formatPeso(nextTotal)}</span>
           </div>
-          <PayBillButton ids={nextBill.map((p) => p.id)} total={nextTotal} />
+          {nextMine.length > 0 && <PayBillButton ids={nextMine.map((p) => p.id)} total={nextMineTotal} />}
+          {nextTheirs.map((t) => (
+            <div key={t.id} className="flex w-full items-center justify-between gap-3 border-t border-line-soft pt-2.5">
+              <span className="text-[15px]">
+                <strong>{t.name}</strong> pays {formatPeso(t.total)} of this bill
+              </span>
+              <TheyPaidButton ids={t.ids} label={`${t.name} paid`} />
+            </div>
+          ))}
         </section>
       )}
       <p className="-mt-2 text-xs leading-relaxed text-muted">
@@ -176,22 +214,42 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
         <h2 id="plans-heading" className="font-display text-xl font-semibold">{credit ? "Active plans" : "Payment plan"}</h2>
         <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
           {plans.map((plan) => {
-            const paidCount = plan.months - plan.payments.filter((p) => !p.transactionId).length;
+            const unpaid = plan.payments.filter((p) => !p.transactionId);
+            const paidCount = plan.months - unpaid.length;
             const each = plan.payments[0]?.amount ?? 0;
+            const payer = plan.personId ? (personName.get(plan.personId) ?? "Someone") : null;
+            const left = roundCents(unpaid.reduce((sum, p) => sum + p.principalPart, 0));
             return (
-              <li key={plan.id} className="flex items-center gap-3 border-b border-line-soft py-2.5 last:border-0">
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate font-bold">{plan.name}</span>
-                  <span className="text-[13px] text-muted">
-                    {plan.months === 1 ? "One payment" : `${plan.months} months`} · {paidCount} of {plan.months} paid
-                    {plan.feeTotal > 0 && ` · fees ${formatPeso(plan.feeTotal)}`}
-                    {splitOfPlan.has(plan.id) && ` · split bill`}
+              <li key={plan.id} className="flex flex-col gap-2 border-b border-line-soft py-2.5 last:border-0">
+                <div className="flex items-center gap-3">
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate font-bold">{plan.name}</span>
+                    <span className="text-[13px] text-muted">
+                      {plan.months === 1 ? "One payment" : `${plan.months} months`} · {paidCount} of {plan.months} paid
+                      {plan.feeTotal > 0 && ` · fees ${formatPeso(plan.feeTotal)}`}
+                      {splitOfPlan.has(plan.id) && ` · split bill`}
+                    </span>
+                    {payer && plan.personId && (
+                      <Link href={`/money/people/${plan.personId}`} className="w-fit text-[13px] font-extrabold text-sea-dark">
+                        {payer} pays this · not in your forecast
+                      </Link>
+                    )}
                   </span>
-                </span>
-                <span className="font-display text-[17px] font-semibold">
-                  {formatPeso(each)}{plan.months > 1 && <span className="text-sm text-muted">/mo</span>}
-                </span>
-                <RemovePlanButton id={plan.id} name={plan.name} />
+                  <span className="font-display text-[17px] font-semibold">
+                    {formatPeso(each)}{plan.months > 1 && <span className="text-sm text-muted">/mo</span>}
+                  </span>
+                  <RemovePlanButton id={plan.id} name={plan.name} />
+                </div>
+                {!payer && !splitOfPlan.has(plan.id) && left > 0 && (
+                  <AssignPlanButton
+                    planId={plan.id}
+                    name={plan.name}
+                    left={left}
+                    interest={roundCents(unpaid.reduce((sum, p) => sum + p.feePart, 0))}
+                    loan={plan.kind === "loan" ? { movesMoney: Boolean(plan.sourceTxnId) && paidCount === 0 } : null}
+                    people={people.map((p) => ({ id: p.id, name: p.name }))}
+                  />
+                )}
               </li>
             );
           })}
@@ -263,15 +321,17 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
               <ul className="flex flex-col">
                 {bill.items.map((item) => {
                   const split = splitOfPlan.get(planOfPayment.get(item.id) ?? "");
+                  const payer = payerOf(item.id);
                   return (
                     <li key={item.key} className="flex flex-col gap-2 border-b border-line-soft py-2.5 last:border-0">
                       <div className="flex items-center gap-3">
                         <span className="flex min-w-0 flex-1 flex-col">
                           <span className="truncate font-bold">{item.name}</span>
                           {split && <span className="text-[13px] text-muted">Split bill · {split.others.length + (split.mine ? 1 : 0)} people</span>}
+                          {payer && <span className="text-[13px] font-bold text-sea-dark">{payer.name} pays this</span>}
                         </span>
                         <span className="font-display text-[17px] font-semibold">{formatPeso(item.amount ?? 0)}</span>
-                        <LogButton item={item} accounts={accounts} />
+                        {payer ? <TheyPaidButton ids={[item.id]} label="They paid" /> : <LogButton item={item} accounts={accounts} />}
                       </div>
                       {split && <SplitBreakdown split={split} />}
                     </li>
@@ -282,7 +342,7 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
           ))}
           <p className="text-xs text-muted">
             {credit
-              ? "A purchase you log with + lands on the bill it's due with, and that bill's total goes up. All of these are in your forecast and Safe to spend."
+              ? `A purchase you log with + lands on the bill it's due with, and that bill's total goes up. All of these are in your forecast and Safe to spend${plans.some((p) => p.personId) ? ", except what someone else pays: their money goes straight to the bill" : ""}.`
               : "All of these are in your forecast and Safe to spend."}
           </p>
         </section>
@@ -294,7 +354,8 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
           credit
             ? undefined
             : {
-                plan: plans.find((p) => p.kind === "loan") ?? null,
+                // Someone else's loan: its terms set what they owe, so only the name can change.
+                plan: plans.find((p) => p.kind === "loan" && !p.personId) ?? null,
                 wallets: accounts.filter((a) => paysInPesos(a) && !a.archived),
                 today,
               }
@@ -326,4 +387,10 @@ function SplitBreakdown({ split }: { split: SplitBill }) {
       </span>
     </Link>
   );
+}
+
+function ordinal(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
 }

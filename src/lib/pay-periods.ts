@@ -78,3 +78,40 @@ export function paymentsByPeriod({
   // The days before payday only when something's due in them.
   return nextPayday && nextPayday > today && !periods[0].payments.length ? periods.slice(1) : periods;
 }
+
+/** Where a group of payments goes: one credit line or loan, a person you owe, or one bill. */
+export type PayTo = {
+  key: string;
+  name: string;
+  /** The credit line or loan, for installments. */
+  lenderId: string | null;
+  total: number;
+  /** How many payments are in it. */
+  count: number;
+  firstDue: string;
+  lastDue: string;
+  /** One of them is past its date. */
+  late: boolean;
+};
+
+/**
+ * Payments grouped by where the money goes: every installment on Atome
+ * together, every SLoan payment together, and each other bill on its own.
+ * Soonest first.
+ */
+export function groupByPayee(items: ForecastItem[], lenderName: (id: string) => string | undefined, today: string): PayTo[] {
+  const groups = new Map<string, PayTo>();
+  for (const i of items) {
+    const lender = i.kind === "installment" && i.lenderId ? i.lenderId : null;
+    const key = lender ? `lender|${lender}` : i.kind === "utang" ? `utang|${i.id}` : `item|${i.name}`;
+    const name = (lender && lenderName(lender)) || i.name;
+    const g = groups.get(key) ?? { key, name, lenderId: lender, total: 0, count: 0, firstDue: i.dueOn, lastDue: i.dueOn, late: false };
+    g.total = roundCents(g.total + (i.amount ?? 0));
+    g.count += 1;
+    if (i.dueOn < g.firstDue) g.firstDue = i.dueOn;
+    if (i.dueOn > g.lastDue) g.lastDue = i.dueOn;
+    g.late ||= i.dueOn < today;
+    groups.set(key, g);
+  }
+  return [...groups.values()].sort((a, b) => a.firstDue.localeCompare(b.firstDue) || b.total - a.total);
+}

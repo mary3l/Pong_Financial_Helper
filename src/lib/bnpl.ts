@@ -29,6 +29,8 @@ export type CreditRoom = {
   creditLeft: number | null;
   /** The day of the month its bill is due. */
   dueDay: number | null;
+  /** The day its statement closes, if saved. */
+  cutoffDay?: number | null;
 };
 
 type CreditAccount = {
@@ -38,6 +40,7 @@ type CreditAccount = {
   balance: number;
   creditLimit: number | null;
   dueDay: number | null;
+  cutoffDay?: number | null;
 };
 
 /** Every BNPL line and how much of its limit is left. */
@@ -54,6 +57,7 @@ export function creditRoom(accounts: CreditAccount[]): CreditRoom[] {
         owed,
         creditLeft: limit === null ? null : roundCents(Math.max(0, limit - owed)),
         dueDay: a.dueDay,
+        cutoffDay: a.cutoffDay ?? null,
       };
     });
 }
@@ -296,7 +300,7 @@ export function affordWithCredit({
     .map((line) => {
       const room = usableOn(line, capRoom)!;
       const capped = capRoom !== null && (line.creditLeft === null || capRoom < line.creditLeft);
-      const firstDue = bnplFirstDue(purchase.first, line.dueDay);
+      const firstDue = bnplFirstDue(purchase.first, line.dueDay, line.cutoffDay ?? null);
       const payment = splitAmount(purchase.amount, purchase.months)[0];
       const fits = purchase.amount <= room;
       const verdict = fits

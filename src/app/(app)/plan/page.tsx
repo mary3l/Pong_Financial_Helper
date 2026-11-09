@@ -3,14 +3,15 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { ForecastChart } from "@/components/forecast-chart";
 import { Pong, type PongMood } from "@/components/pong";
-import { DEBT_SHARE } from "@/lib/bnpl";
 import { categoryInfo } from "@/lib/categories";
-import { getPlanInputs, type Account } from "@/lib/data";
+import { getPayroll, getPlanInputs } from "@/lib/data";
 import { addDays, formatShortDay, today as getToday } from "@/lib/dates";
 import { itemEffect, itemLabel, lowestBetween, project, type DayBalance } from "@/lib/forecast";
 import { formatPeso } from "@/lib/money";
-import { PERIOD_DAYS, paymentsByPeriod, type PeriodPayments } from "@/lib/pay-periods";
+import { billsByPayday } from "@/lib/office-days";
+import { PERIOD_DAYS, paymentsByPeriod } from "@/lib/pay-periods";
 import { nextOccurrence } from "@/lib/schedule";
+import { BillsByPayday, PaymentsByPeriod } from "./payment-sections";
 import { PlanTabs, SegmentLinks } from "./plan-tabs";
 import { LogButton } from "@/components/log-button";
 
@@ -39,7 +40,10 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
   await connection();
   const today = getToday();
   // Enough items for the pay periods too; the chart and list still stop at `days`.
-  const { accounts, inWallets, payday, items } = await getPlanInputs(today, Math.max(days, PERIOD_DAYS));
+  const [{ accounts, inWallets, payday, items }, payroll] = await Promise.all([
+    getPlanInputs(today, Math.max(days, PERIOD_DAYS)),
+    getPayroll(today),
+  ]);
 
   if (!accounts.length) {
     return (
@@ -58,6 +62,9 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
   const end = addDays(today, days);
   const paydays = items.filter((i) => i.kind === "payday" && i.dueOn < end).map((i) => i.dueOn);
   const periods = paymentsByPeriod({ items, today, nextPayday });
+  // Office days need the payroll calculator, which pays each cutoff on its own payday.
+  const records = payroll && payroll !== "missing" && payday?.frequency === "twice_monthly" ? payroll : null;
+  const byPayday = payday ? billsByPayday({ items, today, payday, inWallets, payroll: records }) : [];
   const weekOut = addDays(today, 7);
   const lowBeforePayday = nextPayday ? lowestBetween(forecast.days, today, nextPayday) : null;
   const headsUp = lowBeforePayday ?? forecast.lowest;
@@ -128,6 +135,8 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
           Can I afford this?
         </Link>
 
+        {byPayday.some((p) => p.bills.length) && <BillsByPayday periods={byPayday} accounts={accounts} today={today} />}
+
         {periods.some((p) => p.payments.length) && (
           <PaymentsByPeriod periods={periods} accounts={accounts} today={today} />
         )}
@@ -177,88 +186,6 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
         </p>
       </section>
     </div>
-  );
-}
-
-/** Every BNPL and loan payment, a month at a time from payday, against the pay that comes in. */
-function PaymentsByPeriod({ periods, accounts, today }: { periods: PeriodPayments[]; accounts: Account[]; today: string }) {
-  const name = (id: string | null) => accounts.find((a) => a.id === id)?.name ?? "Other";
-  return (
-    <section aria-labelledby="periods-heading" className="flex flex-col gap-2.5">
-      <div className="flex flex-col gap-0.5">
-        <h2 id="periods-heading" className="font-display text-xl font-semibold">BNPL &amp; loan payments</h2>
-        <p className="text-[13px] text-muted">By pay period, against the pay coming in.</p>
-      </div>
-      <div className="flex flex-col gap-2">
-        {periods.map((p, index) => {
-          const percent = p.share === null ? null : Math.round(p.share * 100);
-          const bar = p.share === null ? "" : p.share > 0.5 ? "bg-coral" : p.share > DEBT_SHARE ? "bg-sun" : "bg-sea";
-          return (
-            <details key={p.from} open={index === 0} className="group rounded-[20px] bg-card px-4 py-3">
-              <summary className="flex cursor-pointer list-none flex-col gap-1.5 [&::-webkit-details-marker]:hidden">
-                <span className="flex items-baseline justify-between gap-3">
-                  <span className="font-bold">
-                    {formatShortDay(p.from, today)} – {formatShortDay(p.to, today)}
-                  </span>
-                  <span className="font-display text-[19px] font-semibold">{formatPeso(p.total)}</span>
-                </span>
-                {percent !== null ? (
-                  <>
-                    <span aria-hidden="true" className="h-2 overflow-hidden rounded-full bg-line-soft">
-                      <span className={`block h-full rounded-full ${bar}`} style={{ width: `${Math.min(100, percent)}%` }} />
-                    </span>
-                    <span className="flex justify-between gap-3 text-[13px] text-muted">
-                      <span className={p.share! > 0.5 ? "font-extrabold text-coral-text" : ""}>
-                        {percent}% of {formatPeso(p.income)} pay
-                      </span>
-                      <span className="font-extrabold text-sea-dark group-open:hidden">Show</span>
-                      <span className="hidden font-extrabold text-sea-dark group-open:inline">Hide</span>
-                    </span>
-                  </>
-                ) : (
-                  <span className="flex justify-between gap-3 text-[13px] text-muted">
-                    <span>{p.payments.length ? "No pay comes in these days" : "Nothing due"}</span>
-                    <span className="font-extrabold text-sea-dark group-open:hidden">Show</span>
-                    <span className="hidden font-extrabold text-sea-dark group-open:inline">Hide</span>
-                  </span>
-                )}
-              </summary>
-              {p.payments.length > 0 && (
-                <>
-                  <ul className="mt-2 flex flex-col border-t border-line-soft">
-                    {p.payments.map((item) => {
-                      const late = item.dueOn < today;
-                      return (
-                        <li key={item.key} className="grid grid-cols-[52px_minmax(0,1fr)_auto] items-baseline gap-x-3 border-b border-line-soft py-2 last:border-0">
-                          <span className={`text-xs font-extrabold uppercase ${late ? "text-coral-text" : "text-muted"}`}>
-                            {late ? "Late" : formatShortDay(item.dueOn, today)}
-                          </span>
-                          <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-                            <span className="truncate font-bold">{item.name}</span>
-                            {item.lastPayment && (
-                              <span className="rounded-full bg-sea-tint px-2 text-xs font-extrabold text-sea-dark">Last payment</span>
-                            )}
-                          </span>
-                          <span className="text-right font-display text-[17px] font-semibold">{formatPeso(item.amount ?? 0)}</span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  <p className="pt-2 text-[13px] text-muted">
-                    {p.byLender.map((l) => `${name(l.lenderId)} ${formatPeso(l.total)}`).join(" · ")}
-                  </p>
-                </>
-              )}
-            </details>
-          );
-        })}
-      </div>
-      <p className="text-xs text-muted">
-        Installments and loan payments set up in Pong. Bills are in What&apos;s coming, and split
-        bills that aren&apos;t on a credit line&apos;s bill yet aren&apos;t here. Pay is your
-        Payroll estimate until it comes in.
-      </p>
-    </section>
   );
 }
 

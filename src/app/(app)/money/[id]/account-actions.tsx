@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { addUpcomingPayments, deleteLoanForGood, payInstallments, removePlan } from "@/app/credit-actions";
+import { assignPlanToPerson, theyPaidInstallments } from "@/app/people-actions";
 import { removeWallet, restoreWallet } from "@/app/wallet-actions";
 import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
@@ -34,6 +35,139 @@ export function PayBillButton({ ids, total }: { ids: string[]; total: number }) 
       </button>
       <p role="alert" className="text-xs font-bold text-coral-text empty:hidden">{error}</p>
     </div>
+  );
+}
+
+/**
+ * Someone else's installments on this credit line: they paid. Their money
+ * goes straight to the bill, so your wallets don't move.
+ */
+export function TheyPaidButton({ ids, label }: { ids: string[]; label: string }) {
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <span className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() =>
+          startTransition(async () => {
+            const result = await theyPaidInstallments(ids);
+            setError(result.error ?? null);
+          })
+        }
+        className="h-10 shrink-0 rounded-full border-2 border-sea px-3.5 text-[13px] font-extrabold text-sea-dark disabled:opacity-60"
+      >
+        {pending ? "Saving…" : label}
+      </button>
+      <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">{error}</span>
+    </span>
+  );
+}
+
+/**
+ * Someone else pays this plan: what's left becomes pautang, and its
+ * payments leave your forecast and Safe to spend.
+ */
+export function AssignPlanButton({
+  planId,
+  name,
+  left,
+  interest,
+  loan,
+  people,
+}: {
+  planId: string;
+  name: string;
+  /** Principal still unpaid: what they'll owe you. */
+  left: number;
+  /** Interest or fees in the payments left: theirs to pay too. */
+  interest: number;
+  /** A loan; `movesMoney` when its money came into a wallet and nothing's paid yet. */
+  loan: { movesMoney: boolean } | null;
+  people: { id: string; name: string }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [personId, setPersonId] = useState<string | null>(null);
+  const [typed, setTyped] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="w-fit text-[13px] font-extrabold text-sea-dark underline">
+        Someone else pays this
+      </button>
+    );
+  }
+  const search = typed.trim().toLowerCase();
+  const matches = search ? people.filter((p) => p.name.toLowerCase().includes(search)) : people;
+  const exact = people.find((p) => p.name.toLowerCase() === search);
+  const who = personId ? people.find((p) => p.id === personId)?.name : exact?.name ?? typed.trim();
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        setError(null);
+        const target = personId ? { personId } : exact ? { personId: exact.id } : { name: typed };
+        if (!personId && !search) {
+          setError("Who pays it? Pick someone or type a name.");
+          return;
+        }
+        startTransition(async () => {
+          const result = await assignPlanToPerson(planId, target);
+          if (result.error) setError(result.error);
+          else setOpen(false);
+        });
+      }}
+      className="flex flex-col gap-2 rounded-[16px] bg-mint p-3"
+    >
+      <label htmlFor={`assign-${planId}`} className="text-sm font-bold">{loan ? `Who is this ${name} loan for?` : `Who uses your account for ${name}?`}</label>
+      <input
+        id={`assign-${planId}`}
+        value={personId ? (people.find((p) => p.id === personId)?.name ?? "") : typed}
+        onChange={(e) => {
+          setPersonId(null);
+          setTyped(e.target.value);
+        }}
+        maxLength={60}
+        placeholder="Search or add a person"
+        className={FIELD_CLASS}
+      />
+      {matches.length > 0 && (
+        <div role="group" aria-label="People" className="flex flex-wrap gap-2">
+          {matches.slice(0, 8).map((p) => (
+            <ChoiceChip
+              key={p.id}
+              selected={personId === p.id}
+              onClick={() => {
+                setPersonId(p.id);
+                setTyped("");
+              }}
+            >
+              {p.name}
+            </ChoiceChip>
+          ))}
+        </div>
+      )}
+      <p className="text-xs leading-snug text-muted">
+        {who || "They"} will owe you {formatPeso(left)}
+        {interest > 0 && <>, plus the {formatPeso(interest)} {loan ? "interest" : "fees"} in the payments left</>}. Its
+        payments leave your forecast and Safe to spend, and <strong>They paid</strong> sends their money straight to{" "}
+        {loan ? name : "the bill"}, so none of it is your expense. Payments already made stay as they are.
+        {loan?.movesMoney && " The loan money that landed in your wallet changes to having gone to them."}
+      </p>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <div className="flex flex-wrap gap-2">
+        <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-4 font-extrabold text-ink disabled:opacity-60">
+          {pending ? "Saving…" : `${who || "They"} pays it`}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card">
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 

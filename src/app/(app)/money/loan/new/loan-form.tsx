@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { addLoan } from "@/app/credit-actions";
+import { addLoanForPerson } from "@/app/people-actions";
 import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import type { Account } from "@/lib/data";
@@ -16,9 +17,21 @@ const PROVIDERS = ["SLoan", "MariLoan", "GLoan", "Pag-IBIG", "SSS"];
 /** Just got the money, or got it before and already paying monthly. */
 type Mode = "new" | "running";
 
-export function LoanForm({ wallets, today }: { wallets: Account[]; today: string }) {
+export function LoanForm({
+  wallets,
+  people,
+  today,
+}: {
+  wallets: Account[];
+  people: { id: string; name: string }[];
+  today: string;
+}) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("new");
+  // In your name but someone else's (Tita Flora's MariLoan): they got the money and pay it, interest included.
+  const [forOther, setForOther] = useState(false);
+  const [personId, setPersonId] = useState<string | null>(null);
+  const [typed, setTyped] = useState("");
   const [name, setName] = useState("SLoan");
   const [received, setReceived] = useState("");
   const [into, setInto] = useState(wallets[0]?.id ?? "");
@@ -50,6 +63,11 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
   const leftToPay = roundCents(schedule.reduce((sum, r) => sum + r.amount, 0));
   const fullyPaid = running && datesOk && paid >= terms.months;
 
+  const search = typed.trim().toLowerCase();
+  const matches = search ? people.filter((p) => p.name.toLowerCase().includes(search)) : people;
+  const exact = people.find((p) => p.name.toLowerCase() === search);
+  const who = personId ? people.find((p) => p.id === personId)?.name : (exact?.name ?? typed.trim());
+
   function pickMode(next: Mode) {
     setMode(next);
     setPaidOverride(null);
@@ -74,6 +92,25 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
                   ? "Every payment's due date has passed, so this loan looks paid off. Check the first due date or payments made."
                   : `Pick when the ${running ? "1st payment was" : "first payment is"} due.`,
       );
+      return;
+    }
+    if (forOther) {
+      if (!personId && !search) {
+        setError("Who is the loan for? Pick someone or type a name.");
+        return;
+      }
+      startTransition(async () => {
+        const result = await addLoanForPerson({
+          who: personId ? { personId } : exact ? { personId: exact.id } : { name: typed },
+          name,
+          ...terms,
+          receivedOn,
+          nextDue,
+          alreadyPaid: paid,
+        });
+        if (result.error) setError(result.error);
+        else router.push(`/money/${result.loanId}`);
+      });
       return;
     }
     startTransition(async () => {
@@ -125,6 +162,56 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
         ))}
       </div>
 
+      <div className="flex flex-col gap-2 rounded-[20px] bg-card p-4">
+        <span id="loan-for-label" className="text-sm font-bold">Whose loan is it?</span>
+        <div role="group" aria-labelledby="loan-for-label" className="grid grid-cols-2 gap-1 rounded-2xl bg-mint p-1">
+          {[false, true].map((other) => (
+            <button
+              key={String(other)}
+              type="button"
+              aria-pressed={forOther === other}
+              onClick={() => setForOther(other)}
+              className={`h-10 rounded-xl text-sm ${forOther === other ? "bg-sea font-extrabold text-white" : "font-bold text-muted hover:text-ink"}`}
+            >
+              {other ? "Someone else's, in my name" : "Mine"}
+            </button>
+          ))}
+        </div>
+        {forOther && (
+          <>
+            <label htmlFor="loan-who" className="text-sm font-bold">Who got the money and pays it?</label>
+            <input
+              id="loan-who"
+              value={personId ? (people.find((p) => p.id === personId)?.name ?? "") : typed}
+              onChange={(e) => {
+                setPersonId(null);
+                setTyped(e.target.value);
+              }}
+              maxLength={60}
+              placeholder="Search or add a person"
+              className={FIELD_CLASS}
+            />
+            {matches.length > 0 && (
+              <div role="group" aria-label="People" className="flex flex-wrap gap-2">
+                {matches.slice(0, 8).map((p) => (
+                  <ChoiceChip
+                    key={p.id}
+                    selected={personId === p.id}
+                    onClick={() => {
+                      setPersonId(p.id);
+                      setTyped("");
+                    }}
+                    className={personId === p.id ? "" : "bg-mint"}
+                  >
+                    {p.name}
+                  </ChoiceChip>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
       <div role="group" aria-label="Lender" className="flex flex-wrap gap-2">
         {[...PROVIDERS, "Other"].map((p) => {
           const selected = p === "Other" ? !PROVIDERS.includes(name) : name === p;
@@ -157,6 +244,8 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
                 className={FIELD_CLASS}
               />
             </div>
+          ) : forOther ? (
+            dateField("loan-date", `${who || "They"} got it on`, receivedOn, setReceivedOn)
           ) : (
             <div className="flex flex-col gap-1">
               <label htmlFor="loan-into" className="text-sm font-bold">Received into</label>
@@ -210,6 +299,8 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
           ) : (
             dateField("loan-next", "First due", firstDue, setFirstDue)
           )}
+          {forOther && running && dateField("loan-date", `${who || "They"} got it on`, receivedOn, setReceivedOn)}
+          {!forOther && (
           <div className="flex flex-col gap-1">
             <label htmlFor="loan-from" className="text-sm font-bold">Pay from</label>
             <select id="loan-from" value={payFrom} onChange={(e) => setPayFrom(e.target.value)} className={FIELD_CLASS}>
@@ -219,9 +310,10 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
               {!wallets.length && <option value="">Any wallet</option>}
             </select>
           </div>
-          {!running && into && dateField("loan-date", "Received on", receivedOn, setReceivedOn)}
+          )}
+          {!forOther && !running && into && dateField("loan-date", "Received on", receivedOn, setReceivedOn)}
         </div>
-        {!running && into && isValidDate(receivedOn) && receivedOn < today && (
+        {!forOther && !running && into && isValidDate(receivedOn) && receivedOn < today && (
           <p className="rounded-2xl bg-sun-tint px-3.5 py-2.5 text-[13px] leading-snug">
             Received before today? If {wallets.find((w) => w.id === into)?.name}&apos;s balance here already includes it,
             or you&apos;ve spent it, adding it again counts it twice.{" "}
@@ -255,7 +347,14 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
       )}
 
       <p className="rounded-2xl bg-sun-tint px-4 py-3 text-sm leading-relaxed">
-        {running ? (
+        {forOther ? (
+          <>
+            The money went to <strong>{who || "them"}</strong>, not your wallet, so they owe you what&apos;s still
+            owed on it{valid ? ` (${formatPeso(owedNow)})` : ""}. They pay every payment, interest included
+            {valid ? ` (${formatPeso(leftToPay)} in all)` : ""}: none of it is in your forecast or Safe to spend, and
+            none of the interest is your expense. Tap <strong>They paid</strong> on the loan when they do.
+          </>
+        ) : running ? (
           <>
             You got this money before, so it&apos;s <strong>not added to any wallet</strong> and the {paid} payment
             {paid === 1 ? "" : "s"} you already made {paid === 1 ? "isn't" : "aren't"} logged again. {name || "The loan"}{" "}
@@ -289,14 +388,16 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
             ))}
           </ul>
           {schedule.length > 3 && (
-            <span className="text-[13px] text-muted">+ {schedule.length - 3} more · all added to your forecast</span>
+            <span className="text-[13px] text-muted">
+              + {schedule.length - 3} more · {forOther ? `${who || "they"} pays these, not in your forecast` : "all added to your forecast"}
+            </span>
           )}
         </section>
       )}
 
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
       <button type="submit" disabled={pending} className="h-14 rounded-[20px] bg-sun text-lg font-extrabold text-ink disabled:opacity-60">
-        {pending ? "Saving…" : "Add loan"}
+        {pending ? "Saving…" : forOther ? `Add ${who ? `${who}'s` : "their"} loan` : "Add loan"}
       </button>
     </form>
   );

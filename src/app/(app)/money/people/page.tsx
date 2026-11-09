@@ -3,11 +3,11 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { ChevronIcon, PathIcon } from "@/components/icons";
 import { Pong } from "@/components/pong";
-import { getAccounts, getPeople, getTransactions, hasSplitIds } from "@/lib/data";
+import { getAccounts, getInstallmentPlans, getPeople, getTransactions, hasSplitIds } from "@/lib/data";
 import { daysBetween, formatShortDay, today as getToday } from "@/lib/dates";
 import { categoryInfo } from "@/lib/categories";
 import { formatPeso, roundCents } from "@/lib/money";
-import { dueDate, isOverdue, type Person } from "@/lib/people";
+import { dueDate, inYourName, isLate, type Person } from "@/lib/people";
 import { groupSplits, unpaidByRecord, type SplitBill } from "@/lib/splits";
 import { MoneyTabs } from "../money-tabs";
 import { Avatar } from "./avatar";
@@ -33,17 +33,22 @@ async function People({ searchParams }: Pick<PageProps<"/money/people">, "search
   await connection();
   const byBill = (await searchParams).view === "bills";
   const today = getToday();
-  const [people, accounts, recent, splitsReady] = await Promise.all([
+  const [people, accounts, recent, splitsReady, plans] = await Promise.all([
     getPeople(),
     getAccounts({ includePeople: true }),
     getTransactions({ limit: 200 }),
     byBill ? hasSplitIds() : true,
+    getInstallmentPlans(),
   ]);
+  // Loans and purchases in your name that they pay (Tita Flora's MariLoan): the interest on top, and the next payment.
+  const theirs = new Map(people.map((p) => [p.id, inYourName(p.id, plans)]));
+  const of = (p: Person) => theirs.get(p.id)!;
   const oweYou = people.filter((p) => p.balance > 0);
   const youOwe = people.filter((p) => p.balance < 0);
-  const owedTotal = roundCents(oweYou.reduce((sum, p) => sum + p.balance, 0));
+  const interestTotal = roundCents(oweYou.reduce((sum, p) => sum + of(p).interest, 0));
+  const owedTotal = roundCents(oweYou.reduce((sum, p) => sum + p.balance, 0) + interestTotal);
   const oweTotal = roundCents(youOwe.reduce((sum, p) => sum - p.balance, 0));
-  const overdue = oweYou.filter((p) => isOverdue(p, today)).length;
+  const overdue = oweYou.filter((p) => isLate(p, of(p), today)).length;
 
   // The latest note for each person, e.g. "Split Grab ride · Nov 7".
   const names = new Map(accounts.map((a) => [a.id, a.name]));
@@ -51,7 +56,7 @@ async function People({ searchParams }: Pick<PageProps<"/money/people">, "search
     const t = recent.find((x) => x.accountId === p.id || x.toAccountId === p.id);
     return t ? `${t.note ?? "Utang"} · ${formatShortDay(t.occurredOn, today)}` : null;
   };
-  const sinceOldest = (p: Person) => dueDate(p) ?? "9999-12-31";
+  const sinceOldest = (p: Person) => of(p).next?.dueOn ?? dueDate(p) ?? "9999-12-31";
 
   return (
     <>
@@ -61,6 +66,7 @@ async function People({ searchParams }: Pick<PageProps<"/money/people">, "search
           <span className="font-display text-2xl font-semibold">{formatPeso(owedTotal)}</span>
           <span className="text-xs text-muted">
             {oweYou.length} {oweYou.length === 1 ? "person" : "people"}
+            {interestTotal > 0 && ` · incl. ${formatPeso(interestTotal)} interest`}
             {overdue > 0 && <strong className="text-coral-text"> · {overdue} overdue</strong>}
           </span>
         </div>
@@ -124,7 +130,8 @@ async function People({ searchParams }: Pick<PageProps<"/money/people">, "search
             <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
               {[...oweYou].sort((a, b) => sinceOldest(a).localeCompare(sinceOldest(b))).map((p) => {
                 const due = dueDate(p);
-                const late = isOverdue(p, today);
+                const { interest, next } = of(p);
+                const late = isLate(p, of(p), today);
                 return (
                   <li key={p.id} className="border-b border-line-soft last:border-0">
                     <Link href={`/money/people/${p.id}`} className="flex min-h-14 items-center gap-3 py-2.5 text-ink">
@@ -132,14 +139,23 @@ async function People({ searchParams }: Pick<PageProps<"/money/people">, "search
                       <span className="flex min-w-0 flex-1 flex-col">
                         <span className="truncate font-bold">{p.name}</span>
                         <span className={`truncate text-[13px] ${late ? "font-bold text-coral-text" : "text-muted"}`}>
-                          {late
-                            ? `Overdue ${daysBetween(due!, today)} ${daysBetween(due!, today) === 1 ? "day" : "days"}`
-                            : due
-                              ? `Expected ${formatShortDay(due, today)}`
-                              : lastNote(p)}
+                          {next
+                            ? `${next.dueOn < today ? "Late · was due" : "Next"} ${formatPeso(next.amount)}${next.dueOn < today ? "" : " due"} ${formatShortDay(next.dueOn, today)}`
+                            : late
+                              ? `Overdue ${daysBetween(due!, today)} ${daysBetween(due!, today) === 1 ? "day" : "days"}`
+                              : due
+                                ? `Expected ${formatShortDay(due, today)}`
+                                : lastNote(p)}
                         </span>
                       </span>
-                      <span className="font-display text-[17px] font-semibold">{formatPeso(p.balance)}</span>
+                      <span className="flex shrink-0 flex-col items-end">
+                        <span className="font-display text-[17px] font-semibold">{formatPeso(roundCents(p.balance + interest))}</span>
+                        {interest > 0 && (
+                          <span className="text-xs text-muted">
+                            {formatPeso(p.balance)} + {formatPeso(interest)} interest
+                          </span>
+                        )}
+                      </span>
                       <ChevronIcon size={20} className="text-muted" />
                     </Link>
                   </li>

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { getAccounts } from "@/lib/data";
+import { getAccounts, getPeople } from "@/lib/data";
 import { today } from "@/lib/dates";
 import { paysInPesos } from "@/lib/money";
 import { LoanForm } from "./loan-form";
@@ -23,6 +23,12 @@ export default function NewLoanPage() {
 
 async function Loan() {
   await connection();
-  const accounts = await getAccounts();
-  return <LoanForm wallets={accounts.filter((a) => paysInPesos(a))} today={today()} />;
+  const [accounts, people] = await Promise.all([getAccounts(), getPeople()]);
+  return (
+    <LoanForm
+      wallets={accounts.filter((a) => paysInPesos(a))}
+      people={people.map((p) => ({ id: p.id, name: p.name }))}
+      today={today()}
+    />
+  );
 }

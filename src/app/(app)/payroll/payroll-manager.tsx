@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
-import { saveContributionAmounts, saveCutoff, savePayrollSettings } from "@/app/payroll-actions";
+import { saveContributionAmounts, saveCutoff, savePayrollSettings, setContributionDay } from "@/app/payroll-actions";
 import { AmountInput } from "@/components/amount-input";
 import { FIELD_CLASS } from "@/components/choice-chip";
 import { ChevronIcon } from "@/components/icons";
@@ -22,6 +22,7 @@ import {
   monthlyBase,
   overtimeMinutes,
   upcomingTaxPayments,
+  type ContributionKey,
   type DayStatus,
   type OvertimeEntry,
   type PayrollDay,
@@ -58,6 +59,7 @@ export function PayrollManager({
   records,
   missing,
   payday,
+  contributionDays,
 }: {
   today: string;
   period: Period;
@@ -67,6 +69,8 @@ export function PayrollManager({
   missing: boolean;
   /** Twice-a-month payday, or null if it's set up another way. */
   payday: Schedule | null;
+  /** The day each contribution's bill is due, by key ("sss"): the pay it comes out of. */
+  contributionDays: Record<string, number>;
 }) {
   if (missing) {
     return (
@@ -94,7 +98,7 @@ export function PayrollManager({
       {records && (
         <>
           <CutoffCard records={records} period={period} payday={payday} today={today} />
-          <SelfPaidCard records={records} today={today} />
+          <SelfPaidCard records={records} today={today} payday={payday} days={contributionDays} />
         </>
       )}
     </div>
@@ -549,7 +553,17 @@ function Line({ label, value, muted, coral }: { label: string; value: string; mu
 
 // ---------------------------------------------------------------- Bills
 
-function SelfPaidCard({ records, today }: { records: PayrollRecords; today: string }) {
+function SelfPaidCard({
+  records,
+  today,
+  payday,
+  days,
+}: {
+  records: PayrollRecords;
+  today: string;
+  payday: Schedule;
+  days: Record<string, number>;
+}) {
   const { settings } = records;
   const [editing, setEditing] = useState(false);
   const monthly = contributions(settings);
@@ -581,17 +595,22 @@ function SelfPaidCard({ records, today }: { records: PayrollRecords; today: stri
         monthly.length > 0 && (
           <div className="flex flex-col gap-1.5">
             <h3 className="text-sm font-extrabold">
-              Every {RATES.contributionDay}th ·{" "}
-              {allCustom ? "the amounts you entered" : `based on ${formatPeso(monthlyBase(settings))} a month`}
+              Each month · {allCustom ? "the amounts you entered" : `based on ${formatPeso(monthlyBase(settings))} a month`}
             </h3>
-            <dl className="flex flex-col gap-1.5 text-[15px]">
+            <dl className="flex flex-col gap-2.5 text-[15px]">
               {monthly.map((c) => (
-                <div key={c.key} className="flex items-baseline justify-between gap-3">
-                  <dt>
+                <div key={c.key} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                  <dt className="min-w-0 flex-1">
                     {c.name}
                     {c.custom && !allCustom && <span className="block text-xs text-muted">Your amount</span>}
                   </dt>
-                  <dd className="font-bold">{formatPeso(c.amount)}</dd>
+                  <ContributionDay
+                    contribution={c.key}
+                    name={c.name}
+                    day={days[c.key] ?? RATES.contributionDay}
+                    paydays={[payday.day1, payday.day2 ?? RATES.contributionDay]}
+                  />
+                  <dd className="w-20 text-right font-bold">{formatPeso(c.amount)}</dd>
                 </div>
               ))}
               <div className="flex items-baseline justify-between gap-3 border-t-2 border-line-soft pt-1.5">
@@ -627,6 +646,64 @@ function SelfPaidCard({ records, today }: { records: PayrollRecords; today: stri
 
       {!monthly.length && !settings.payTax && <p className="text-[15px] text-muted">You haven&apos;t picked any. Edit your pay to add them.</p>}
     </Card>
+  );
+}
+
+function ordinal(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+}
+
+/** Which pay a contribution comes out of: the 15th or the 30th. */
+function ContributionDay({
+  contribution,
+  name,
+  day,
+  paydays,
+}: {
+  contribution: ContributionKey;
+  name: string;
+  day: number;
+  paydays: number[];
+}) {
+  const [picked, setPicked] = useState(day);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  // Due on a day that isn't one of your paydays (your payday changed): neither is picked until you choose.
+  const current = paydays.includes(picked) ? picked : null;
+  return (
+    <span className="flex flex-col items-end">
+      <span role="group" aria-label={`${name}: which pay it comes out of`} className="flex rounded-full bg-mint p-0.5">
+        {paydays.map((p) => (
+          <button
+            key={p}
+            type="button"
+            aria-pressed={current === p}
+            disabled={pending}
+            onClick={() => {
+              if (p === current) return;
+              const before = picked;
+              setPicked(p);
+              setError(null);
+              startTransition(async () => {
+                const result = await setContributionDay(contribution, p);
+                if (result.error) {
+                  setPicked(before);
+                  setError(result.error);
+                }
+              });
+            }}
+            className={`h-8 rounded-full px-3 text-xs font-extrabold disabled:opacity-60 ${
+              current === p ? "bg-sea text-white" : "text-muted hover:text-ink"
+            }`}
+          >
+            {ordinal(p)} pay
+          </button>
+        ))}
+      </span>
+      <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">{error}</span>
+    </span>
   );
 }
 

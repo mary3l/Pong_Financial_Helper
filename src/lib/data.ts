@@ -40,6 +40,8 @@ export type Account = {
   creditLimit: number | null;
   /** Credit lines: the day of the month the bill is due. */
   dueDay: number | null;
+  /** Credit lines: the day the statement closes (migration 0019). Null: not saved. */
+  cutoffDay: number | null;
   archived: boolean;
   /** Cash, bank and e-wallets: what the money is for. Only "spending" counts in Safe to spend. */
   purpose: WalletPurpose;
@@ -140,6 +142,11 @@ export type InstallmentPlan = {
   payFromAccountId: string | null;
   /** The purchase behind it (a split bill: one of its records); null for a bill added by hand. */
   sourceTxnId: string | null;
+  /**
+   * Someone else's plan on your credit line: the person who pays it
+   * (migration 0019). Never in your forecast or Safe to spend.
+   */
+  personId: string | null;
   payments: ScheduledPayment[];
 };
 
@@ -198,15 +205,18 @@ const readAccounts = cache(async (includeArchived: boolean, includePeople: boole
   const payout = `${wallet}, interest_payout`;
   const goals = `${payout}, goal_amount, goal_date`;
 
+  const dollars = `${goals}, currency, fx_rate, matures_on`;
+
   const [first, balances] = await Promise.all([
-    select(`${goals}, currency, fx_rate, matures_on`),
+    select(`${dollars}, cutoff_day`),
     supabase.from("account_balances").select("account_id, balance"),
   ]);
-  // 42703: migration 0017 (or 0016, 0011, 0010) hasn't been run yet. Every
-  // wallet is then in pesos, wallets have no goals, interest is credited
-  // daily, and without 0010 every wallet is spending money.
+  // 42703: migration 0019 (or 0017, 0016, 0011, 0010) hasn't been run yet.
+  // Credit lines then have no cutoff day, every wallet is in pesos, wallets
+  // have no goals, interest is credited daily, and without 0010 every wallet
+  // is spending money.
   let accounts = first;
-  for (const columns of [goals, payout, wallet, base]) {
+  for (const columns of [dollars, goals, payout, wallet, base]) {
     if (accounts.error?.code !== "42703") break;
     accounts = await select(columns);
   }
@@ -227,6 +237,7 @@ const readAccounts = cache(async (includeArchived: boolean, includePeople: boole
     balance: balanceById.get(a.id) ?? Number(a.starting_balance),
     creditLimit: a.credit_limit === null ? null : Number(a.credit_limit),
     dueDay: a.due_day,
+    cutoffDay: a.cutoff_day ?? null,
     archived: a.archived,
     purpose: isWalletPurpose(a.purpose) ? a.purpose : "spending",
     interestRate: a.interest_rate == null ? null : Number(a.interest_rate),
@@ -256,6 +267,7 @@ type AccountRow = {
   starting_balance: number | string;
   credit_limit: number | string | null;
   due_day: number | null;
+  cutoff_day?: number | null;
   archived: boolean;
   purpose?: string;
   interest_rate?: number | string | null;
@@ -413,9 +425,11 @@ type PlannedRow = {
  * while migration 0013 hasn't been run.
  */
 export async function getPayroll(today: string): Promise<PayrollRecords | null | "missing"> {
-  const supabase = await db();
-  return readPayroll(supabase, today);
+  return readPayrollOnce(today);
 }
+
+// Plan reads it for the paydays and for office days; once per request.
+const readPayrollOnce = cache(async (today: string) => readPayroll(await db(), today));
 
 /** getPayroll with a client you already have, e.g. in a Server Action. */
 export async function readPayroll(
@@ -503,22 +517,24 @@ export async function getBudgets(): Promise<Budget[]> {
  */
 export async function getInstallmentPlans(accountId?: string): Promise<InstallmentPlan[]> {
   const supabase = await db();
-  let plans = supabase
-    .from("installment_plans")
-    .select("id, kind, account_id, name, principal, fee_total, months, pay_from_account_id, source_txn_id")
-    .order("created_at");
-  if (accountId) plans = plans.eq("account_id", accountId);
-  const [p, s] = await Promise.all([
-    plans,
+  const columns = "id, kind, account_id, name, principal, fee_total, months, pay_from_account_id, source_txn_id";
+  const select = (cols: string) => {
+    const query = supabase.from("installment_plans").select(cols).order("created_at");
+    return accountId ? query.eq("account_id", accountId) : query;
+  };
+  const [first, s] = await Promise.all([
+    select(`${columns}, person_id`),
     supabase
       .from("scheduled_payments")
       .select("id, plan_id, seq, due_on, amount, principal_part, fee_part, transfer_txn_id, fee_txn_id")
       .order("due_on"),
   ]);
+  // 42703: migration 0019 hasn't been run yet, so every plan is yours.
+  const p = first.error?.code === "42703" ? await select(columns) : first;
   if (p.error) throw dbError(p.error);
   if (s.error) throw dbError(s.error);
 
-  return p.data.map((plan) => ({
+  return (p.data as unknown as PlanRow[]).map((plan) => ({
     id: plan.id,
     kind: plan.kind,
     accountId: plan.account_id,
@@ -528,6 +544,7 @@ export async function getInstallmentPlans(accountId?: string): Promise<Installme
     months: plan.months,
     payFromAccountId: plan.pay_from_account_id,
     sourceTxnId: plan.source_txn_id,
+    personId: plan.person_id ?? null,
     payments: s.data
       .filter((row) => row.plan_id === plan.id)
       .map((row) => ({
@@ -542,6 +559,19 @@ export async function getInstallmentPlans(accountId?: string): Promise<Installme
       })),
   }));
 }
+
+type PlanRow = {
+  id: string;
+  kind: InstallmentPlan["kind"];
+  account_id: string;
+  name: string;
+  principal: number | string;
+  fee_total: number | string;
+  months: number;
+  pay_from_account_id: string | null;
+  source_txn_id: string | null;
+  person_id?: string | null;
+};
 
 /**
  * Drops the activity of archived wallets, credit lines and loans: anything
@@ -712,12 +742,19 @@ export async function getBnplCap(
   const from = dateInMonth(month > HISTORY_MONTHS ? year : year - 1, ((month - HISTORY_MONTHS + 11) % 12) + 1, 1);
   const thisMonth = monthContaining(today).start;
   const supabase = await db();
-  const rows: { id: string; account_id: string; type: string; amount: number | string; occurred_on: string }[] = [];
+  const rows: {
+    id: string;
+    account_id: string;
+    to_account_id: string | null;
+    type: string;
+    amount: number | string;
+    occurred_on: string;
+  }[] = [];
   // A few months of transactions can be more than one page.
   for (let page = 0; ; page += 1) {
     const { data, error } = await supabase
       .from("transactions")
-      .select("id, account_id, type, amount, occurred_on")
+      .select("id, account_id, to_account_id, type, amount, occurred_on")
       .gte("occurred_on", from)
       .lte("occurred_on", today)
       .order("id")
@@ -754,8 +791,11 @@ export async function getBnplCap(
         daysLogged: daysBetween(first, today) + 1,
       }) ?? history;
   }
+  // Someone using your credit line (a transfer to a person) pays it themselves, so it isn't yours.
+  const people = new Set((await getPeople({ includeArchived: true })).map((p) => p.id));
   const used = current
     .filter((t) => credit.has(t.account_id) && (t.type === "expense" || t.type === "transfer"))
+    .filter((t) => !(t.type === "transfer" && t.to_account_id && people.has(t.to_account_id)))
     .reduce((sum, t) => sum + Number(t.amount), 0);
   return bnplCap({ history, items, start: inWallets, today, used });
 }
@@ -770,7 +810,8 @@ export async function getPlanInputs(today: string, days: number): Promise<PlanIn
     getInstallmentPlans(),
     getPeople(),
   ]);
-  const installments = installmentInputs(plans);
+  // Someone else's plan on your credit line never touches your wallets.
+  const installments = installmentInputs(plans.filter((p) => !p.personId));
   const until = addDays(today, days);
   const paydayAmounts = await payrollAmounts(recurring, today, until);
   return {

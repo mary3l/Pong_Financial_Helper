@@ -12,6 +12,7 @@ import {
   isTime,
   typicalCutoffPay,
   upcomingTaxPayments,
+  type ContributionKey,
   type OvertimeEntry,
   type PayrollDay,
   type PayrollSettings,
@@ -182,6 +183,30 @@ export async function saveCutoff(input: CutoffInput): Promise<PayrollResult> {
 }
 
 /**
+ * Which pay a contribution comes out of: the day it's due each month, one of
+ * your paydays (the 15th or the 30th). Your forecast, Safe to spend and Bills
+ * by payday follow it.
+ */
+export async function setContributionDay(key: ContributionKey, day: number): Promise<PayrollResult> {
+  if (!["sss", "philhealth", "pagibig"].includes(key)) return { error: "Pick a contribution." };
+  if (!(Number.isInteger(day) && day >= 1 && day <= 31)) return { error: "Pick a day." };
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+
+  const { data, error } = await supabase
+    .from("recurring_items")
+    .update({ day1: day })
+    .eq("payroll_key", key)
+    .eq("frequency", "monthly")
+    .select("id");
+  if (error) return FAILED;
+  if (!data.length) return { error: "Save your pay first, so the bill is in Money going out." };
+
+  refresh();
+  return {};
+}
+
+/**
  * Brings Money coming in and going out in line with the calculator: the
  * payday's typical amount, the monthly contributions and the next four
  * income tax payments. Paid ones are never touched.
@@ -202,11 +227,12 @@ async function sync(supabase: Client): Promise<PayrollResult> {
     .eq("frequency", "twice_monthly");
   if (payday.error) return FAILED;
 
-  // SSS, PhilHealth and Pag-IBIG: monthly, on the 30th.
-  const bills = await supabase.from("recurring_items").select("id, payroll_key").not("payroll_key", "is", null);
+  // SSS, PhilHealth and Pag-IBIG: monthly, on the 30th unless you picked the 15th (setContributionDay).
+  const bills = await supabase.from("recurring_items").select("id, payroll_key, day1").not("payroll_key", "is", null);
   if (bills.error) return FAILED;
   const wanted = contributions(settings);
   for (const c of wanted) {
+    const found = bills.data.find((b) => b.payroll_key === c.key);
     const row = {
       kind: "bill",
       name: c.name,
@@ -214,11 +240,10 @@ async function sync(supabase: Client): Promise<PayrollResult> {
       amount_varies: false,
       category: "gov",
       frequency: "monthly",
-      day1: RATES.contributionDay,
+      day1: found?.day1 ?? RATES.contributionDay,
       day2: null,
       payroll_key: c.key,
     };
-    const found = bills.data.find((b) => b.payroll_key === c.key);
     const { error } = found
       ? await supabase.from("recurring_items").update(row).eq("id", found.id)
       : await supabase.from("recurring_items").insert(row);

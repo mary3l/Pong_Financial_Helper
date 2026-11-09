@@ -44,22 +44,32 @@ export function buildSchedule({
   }));
 }
 
+const monthly = (day: number) => ({ frequency: "monthly" as const, day1: day, day2: null });
+
+/** The statement a purchase lands on: the first cutoff day on or after it. */
+export function statementFor(purchasedOn: string, cutoffDay: number): string {
+  return nextOccurrence(monthly(cutoffDay), addDays(purchasedOn, -1));
+}
+
 /**
- * When a BNPL purchase is first billed: the next due day at least a week
- * after buying (statements need time to close), or a month later when the
- * credit line has no due day saved.
+ * When a BNPL purchase is first billed. With a cutoff day: the first due
+ * day after the statement it lands on (bought on or before the cutoff, this
+ * statement; after it, the next). Without one: the next due day at least a
+ * week after buying (statements need time to close). Without a due day: a
+ * month later.
  */
-export function bnplFirstDue(purchasedOn: string, dueDay: number | null): string {
+export function bnplFirstDue(purchasedOn: string, dueDay: number | null, cutoffDay: number | null = null): string {
   if (!dueDay) return monthlyDates(purchasedOn, 2)[1];
-  return nextOccurrence({ frequency: "monthly", day1: dueDay, day2: null }, addDays(purchasedOn, 6));
+  if (cutoffDay) return nextOccurrence(monthly(dueDay), statementFor(purchasedOn, cutoffDay));
+  return nextOccurrence(monthly(dueDay), addDays(purchasedOn, 6));
 }
 
 /**
  * The bill an older, unpaid purchase goes on when you add it now: the one
  * after the purchase, or the next one from today if that date has passed.
  */
-export function catchUpDue(purchasedOn: string, dueDay: number | null, today: string): string {
-  const afterPurchase = bnplFirstDue(purchasedOn, dueDay);
+export function catchUpDue(purchasedOn: string, dueDay: number | null, today: string, cutoffDay: number | null = null): string {
+  const afterPurchase = bnplFirstDue(purchasedOn, dueDay, cutoffDay);
   const nextBill = dueDay ? nextOccurrence({ frequency: "monthly", day1: dueDay, day2: null }, addDays(today, -1)) : today;
   return afterPurchase < nextBill ? nextBill : afterPurchase;
 }

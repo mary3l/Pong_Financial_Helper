@@ -444,6 +444,33 @@ where table_name = 'payroll_settings' and column_name in ('sss_amount', 'philhea
 
 Expect `3`.
 
+## Step 19 · Statement cutoff, and someone else using your credit line
+
+File: `migrations/0019_cutoff_and_borrowed_lines.sql`
+
+Powers **Statement cuts off** when you add or edit a credit line, and lending from a
+credit line (Tita Flora used your Atome and pays it herself).
+
+- `accounts.cutoff_day`: the day the credit line's statement closes. A purchase on or
+  before it goes on the next bill; one after it waits a month. Empty: Pong guesses, as
+  before.
+- `installment_plans.person_id`: the person who pays a plan on your credit line. Their
+  installments stay on the credit line's bills, but never count in your forecast, Safe
+  to spend or BNPL cap, and **They paid** sends their payment straight to the bill.
+
+Until you run this, credit lines work as before; saving a cutoff day or lending from a
+credit line asks you to run this step.
+
+**Check**
+
+```sql
+select count(*) from information_schema.columns
+where (table_name = 'accounts' and column_name = 'cutoff_day')
+   or (table_name = 'installment_plans' and column_name = 'person_id');
+```
+
+Expect `2`.
+
 ---
 
 ## All done?
@@ -479,7 +506,9 @@ select
   exists (select 1 from information_schema.columns
           where table_name = 'transactions' and column_name = 'to_amount') as step_17,
   exists (select 1 from information_schema.columns
-          where table_name = 'payroll_settings' and column_name = 'sss_amount') as step_18;
+          where table_name = 'payroll_settings' and column_name = 'sss_amount') as step_18,
+  exists (select 1 from information_schema.columns
+          where table_name = 'installment_plans' and column_name = 'person_id') as step_19;
 ```
 
 The first `false` is the step to run next.

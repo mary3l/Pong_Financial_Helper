@@ -68,6 +68,22 @@ pay. They only raise what you owe (by the principal left) if you tick "Add it to
 a purchase you haven't logged. The credit line screen shows one bill per due date, so a purchase
 logged with + adds to the bill it's due with.
 
+Statement cutoff: a credit line can save the day its statement closes (**Statement cuts off**,
+step 19 in `supabase/SQL_GUIDE.md`). A purchase on or before it goes on the bill due after that
+statement; one after it waits for the next. Without it, Pong guesses: the next due day at least a
+week after buying. `bnplFirstDue` in `src/lib/installments.ts` has the math.
+
+Someone else on your credit line (Tita Flora used your Atome and pays it herself): Lend from the
+credit line, or tap **Someone else pays this** on a plan already there. What's left of it is
+pautang (a transfer from the credit line to her, never your spending), and its payments stay on
+the credit line's bills marked as hers but never count in your forecast, Safe to spend or BNPL
+cap. **They paid** records her money going straight to the bill (a transfer from her to the
+credit line), so your wallets don't move. If you cover a payment yourself, Pay bill as usual: she
+still owes you. A loan in your name works the same (Tita Flora's MariLoan): **+ Loan › Someone
+else's, in my name**, or **Someone else pays this** on a loan already added. The money went to her,
+so what's still owed is her pautang, and every payment, interest included, is hers: the interest is
+never your expense. Her page and **Send breakdown** show what she'll pay in all, interest included.
+
 Wallet categories: each cash, bank or e-wallet is Spending, Savings, Emergency fund or
 Investments. All of it counts in You have and Net worth; only Spending counts in Safe to spend
 and the forecast. Moving money into savings is a transfer, so it's never spending.
@@ -100,6 +116,17 @@ due in the next 30 days, rounded down to ₱100. Everything charged to a credit 
 counts against it. It's ₱0 (paused) while a bill or installment is late, when the forecast dips
 below ₱0 within 30 days, or when you spend all you take home. "Can I afford this?" shows the same
 purchase on each line within the cap. `src/lib/bnpl.ts` has the math.
+
+Bills by payday (Plan): each bill goes with the pay that covers it, from one payday to the day
+before the next; what's due before the next payday comes out of your wallets now. With the
+Payroll calculator, each pay also says how many days to go in during its cutoff to cover those
+bills, counting what you've already earned and leaving out days off and leave you saved. What a
+pay can't cover even going in every day carries into the next one. `src/lib/office-days.ts`.
+
+Breakdowns: a person's page and a split bill's page have **Send breakdown**: a receipt card with
+Pong (PNG, `src/components/receipt-image.ts` from `src/lib/receipt.ts`) to send through the phone's
+share sheet or copy as a picture, and **Copy text** for the same breakdown as plain text
+(`breakdownText` in `src/lib/people.ts`, `billBreakdownText` in `src/lib/splits.ts`).
 
 Safe to spend = spending money in cash, bank and e-wallets, minus unpaid bills and expenses due
 before the next payday, divided by the days until payday. Income you haven't received yet

@@ -3,12 +3,16 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { getCurrentUser } from "@/lib/auth";
-import { getAccounts, getPeople, getTransactions } from "@/lib/data";
+import { ShareText } from "@/components/share-text";
+import { getAccounts, getInstallmentPlans, getPeople, getTransactions } from "@/lib/data";
 import { formatShortDay, today as getToday } from "@/lib/dates";
-import { balanceEffect, formatPeso, paysInPesos } from "@/lib/money";
-import { dueDate, isOverdue, reminderText, type PersonEntry } from "@/lib/people";
+import { dueText } from "@/lib/installments";
+import { balanceEffect, formatPeso, paysInPesos, roundCents } from "@/lib/money";
+import { breakdownText, dueDate, inYourName, isLate, openRecords, type PersonEntry } from "@/lib/people";
+import { personReceipt, planLineText, type PlanLine } from "@/lib/receipt";
+import { TheyPaidButton } from "../../[id]/account-actions";
 import { Avatar } from "../avatar";
-import { EditPerson, ForgiveButton, PaymentForm, ReminderButton } from "../person-actions";
+import { EditPerson, ForgiveButton, PaymentForm } from "../person-actions";
 
 export const metadata = { title: "Person · Pong Money" };
 
@@ -39,11 +43,12 @@ async function PersonDetail({ params }: Pick<PageProps<"/money/people/[id]">, "p
   // Read the clock only at request time (Cache Components).
   await connection();
   const today = getToday();
-  const [people, accounts, history, user] = await Promise.all([
+  const [people, accounts, history, user, allPlans] = await Promise.all([
     getPeople({ includeArchived: true }),
     getAccounts({ includeArchived: true }),
     getTransactions({ accountId: id, limit: 100 }),
     getCurrentUser(),
+    getInstallmentPlans(),
   ]);
   const person = people.find((p) => p.id === id);
   if (!person) notFound();
@@ -51,8 +56,49 @@ async function PersonDetail({ params }: Pick<PageProps<"/money/people/[id]">, "p
   const names = new Map(accounts.map((a) => [a.id, a.name]));
   const wallets = accounts.filter((a) => paysInPesos(a) && !a.archived);
   const due = dueDate(person);
-  const late = isOverdue(person, today);
+  const theirs = inYourName(person.id, allPlans);
+  const late = isLate(person, theirs, today);
   const owesYou = person.balance > 0;
+  // Their purchases and loans in your name (Tita Flora on your Atome or MariLoan), with the next payment of each.
+  const onYourLines = allPlans
+    .filter((p) => p.personId === person.id)
+    .map((plan) => {
+      const unpaid = plan.payments.filter((p) => !p.transactionId);
+      return {
+        plan,
+        next: unpaid[0],
+        unpaid,
+        left: roundCents(unpaid.reduce((sum, p) => sum + p.amount, 0)),
+        principal: roundCents(unpaid.reduce((sum, p) => sum + p.principalPart, 0)),
+        interest: roundCents(unpaid.reduce((sum, p) => sum + p.feePart, 0)),
+      };
+    })
+    .filter((p) => p.next);
+  // They pay the lender this on top of what they owe you: theirs, never your expense.
+  const interestLeft = roundCents(onYourLines.reduce((sum, p) => sum + p.interest, 0));
+  const open = openRecords(person, history);
+  const theirPlans: PlanLine[] = onYourLines.map(({ plan, next, unpaid, left, principal, interest }) => {
+    const lender = names.get(plan.accountId) ?? (plan.kind === "loan" ? "loan" : "credit line");
+    return {
+      label: plan.kind === "loan" ? `My ${lender} loan` : `${plan.name} on my ${lender}`,
+      next: { amount: next!.amount, dueOn: next!.dueOn },
+      which: plan.months > 1 ? `${next!.seq} of ${plan.months}` : null,
+      payments: unpaid.length,
+      left,
+      principal,
+      interest,
+      interestWord: plan.kind === "loan" ? "interest" : "fees",
+    };
+  });
+  const breakdown = breakdownText({
+    person,
+    open,
+    today,
+    myName: user.name,
+    extra: theirPlans.map((p) => planLineText(p, today)),
+    theirs,
+  });
+  const receipt = personReceipt({ person, open, plans: theirPlans, theirs, today, myName: user.name });
 
   return (
     <>
@@ -70,18 +116,67 @@ async function PersonDetail({ params }: Pick<PageProps<"/money/people/[id]">, "p
           {person.balance === 0 ? "All square" : owesYou ? `${person.name} owes you` : `You owe ${person.name}`}
         </h2>
         <span className="font-display text-4xl font-semibold">{formatPeso(Math.abs(person.balance))}</span>
-        {due && person.balance !== 0 && (
-          <span className="text-[15px] font-bold opacity-90">
-            {late ? `Overdue · was due ${formatShortDay(due, today)}` : `Due ${formatShortDay(due, today)}`}
+        {owesYou && interestLeft > 0 && (
+          <span className="text-[15px] opacity-90">
+            + {formatPeso(interestLeft)} interest &amp; fees they pay the lender directly ·{" "}
+            <strong>{formatPeso(roundCents(person.balance + interestLeft))} in all</strong>
           </span>
+        )}
+        {owesYou && theirs.next ? (
+          <span className="text-[15px] font-bold opacity-90">
+            {theirs.next.dueOn < today
+              ? `Payment late · ${formatPeso(theirs.next.amount)} was due ${formatShortDay(theirs.next.dueOn, today)}`
+              : `Next payment ${formatPeso(theirs.next.amount)} due ${formatShortDay(theirs.next.dueOn, today)}`}
+          </span>
+        ) : (
+          due &&
+          person.balance !== 0 && (
+            <span className="text-[15px] font-bold opacity-90">
+              {late ? `Overdue · was due ${formatShortDay(due, today)}` : `Due ${formatShortDay(due, today)}`}
+            </span>
+          )
         )}
       </section>
 
       {person.balance !== 0 && (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-2">
           <PaymentForm personId={person.id} balance={person.balance} wallets={wallets} today={today} />
-          {owesYou && <ReminderButton text={reminderText(person, today, user.name)} />}
         </div>
+      )}
+
+      {person.balance !== 0 && open.length > 0 && (
+        <ShareText
+          text={breakdown}
+          receipt={receipt}
+          filename={`breakdown-${person.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.png`}
+        />
+      )}
+
+      {onYourLines.length > 0 && (
+        <section aria-labelledby="lines-heading" className="flex flex-col gap-2">
+          <h2 id="lines-heading" className="font-display text-xl font-semibold">In your name</h2>
+          <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
+            {onYourLines.map(({ plan, next, unpaid, left, interest }) => (
+              <li key={plan.id} className="flex items-center gap-3 border-b border-line-soft py-2.5 last:border-0">
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <Link href={`/money/${plan.accountId}`} className="truncate font-bold text-ink">
+                    {plan.kind === "loan" ? `${names.get(plan.accountId) ?? "Loan"} loan` : `${plan.name} · ${names.get(plan.accountId) ?? "Credit line"}`}
+                  </Link>
+                  <span className={`text-[13px] ${next!.dueOn < today ? "font-bold text-coral-text" : "text-muted"}`}>
+                    {formatPeso(next!.amount)} {dueText(next!.dueOn, today).toLowerCase()}
+                    {plan.months > 1 && ` · ${next!.seq} of ${plan.months}`} · {formatPeso(left)} left
+                    {interest > 0 && ` (incl. ${formatPeso(interest)} ${plan.kind === "loan" ? "interest" : "fees"})`}
+                  </span>
+                </span>
+                <TheyPaidButton ids={[next!.id]} label={unpaid.length > 1 ? `Paid ${next!.seq} of ${plan.months}` : "They paid"} />
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-muted">
+            Their payments, interest included, go straight to the lender, so your wallets and forecast don&apos;t
+            change and none of it is your expense.
+          </p>
+        </section>
       )}
 
       <section aria-labelledby="history-heading" className="flex flex-col gap-2">

@@ -113,31 +113,6 @@ export function PaymentForm({
   );
 }
 
-/** Copies a friendly reminder to paste in Messenger or SMS. */
-export function ReminderButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState<"yes" | "no" | null>(null);
-  return (
-    <span className="flex flex-col">
-      <button
-        type="button"
-        onClick={async () => {
-          try {
-            await navigator.clipboard.writeText(text);
-            setCopied("yes");
-          } catch {
-            setCopied("no");
-          }
-        }}
-        className="h-12 w-full rounded-[16px] border-2 border-sea font-extrabold text-sea-dark"
-      >
-        {copied === "yes" ? "Copied! Paste it in a chat" : "Send reminder"}
-      </button>
-      {copied === "no" && <span className="pt-1 text-xs text-muted">Couldn&apos;t copy. Here it is: {text}</span>}
-      <span role="status" className="sr-only">{copied === "yes" ? "Reminder copied" : ""}</span>
-    </span>
-  );
-}
-
 /** Forgive remaining balance: turns what's left into an expense (Gifts). */
 export function ForgiveButton({ personId, balance }: { personId: string; balance: number }) {
   const [confirm, setConfirm] = useState(false);

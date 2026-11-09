@@ -6,6 +6,8 @@ import { addCreditLine, updateCreditLine } from "@/app/credit-actions";
 import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import type { Account } from "@/lib/data";
+import { formatShortDay, today as getToday } from "@/lib/dates";
+import { bnplFirstDue } from "@/lib/installments";
 import { parseAmount } from "@/lib/money";
 
 // BNPL apps, and banks that turn purchases into installments.
@@ -19,6 +21,7 @@ export function CreditLineForm({ account, onDone }: { account?: Account; onDone?
   const [name, setName] = useState(account?.name ?? "SPayLater");
   const [limit, setLimit] = useState(account?.creditLimit ? String(account.creditLimit) : "");
   const [dueDay, setDueDay] = useState(account?.dueDay ? String(account.dueDay) : "5");
+  const [cutoffDay, setCutoffDay] = useState(account?.cutoffDay ? String(account.cutoffDay) : "");
   const [used, setUsed] = useState(account ? String(Math.max(0, -account.balance)) : "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -33,7 +36,13 @@ export function CreditLineForm({ account, onDone }: { account?: Account; onDone?
       setError("Check the amounts.");
       return;
     }
-    const input = { name, limit: limitValue, dueDay: dueDay ? Number(dueDay) : null, used: usedValue };
+    const input = {
+      name,
+      limit: limitValue,
+      dueDay: dueDay ? Number(dueDay) : null,
+      cutoffDay: cutoffDay ? Number(cutoffDay) : null,
+      used: usedValue,
+    };
     startTransition(async () => {
       const result = account ? await updateCreditLine(account.id, input) : await addCreditLine(input);
       if (result.error) setError(result.error);
@@ -83,6 +92,20 @@ export function CreditLineForm({ account, onDone }: { account?: Account; onDone?
         </div>
       </div>
       <div className="flex flex-col gap-1">
+        <label htmlFor={`credit-cutoff-${id}`} className="text-sm font-bold">
+          Statement cuts off <span className="font-semibold text-muted">(optional)</span>
+        </label>
+        <select id={`credit-cutoff-${id}`} value={cutoffDay} onChange={(e) => setCutoffDay(e.target.value)} className={FIELD_CLASS}>
+          <option value="">Not sure</option>
+          {DAYS.map((d) => (
+            <option key={d} value={d}>Day {d}</option>
+          ))}
+        </select>
+        <span className="text-xs text-muted">
+          <CutoffHint dueDay={dueDay ? Number(dueDay) : null} cutoffDay={cutoffDay ? Number(cutoffDay) : null} />
+        </span>
+      </div>
+      <div className="flex flex-col gap-1">
         <label htmlFor={`credit-used-${id}`} className="text-sm font-bold">You owe on it now</label>
         <div className="relative">
           <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
@@ -108,5 +131,20 @@ export function CreditLineForm({ account, onDone }: { account?: Account; onDone?
         </button>
       </div>
     </form>
+  );
+}
+
+/** What the cutoff means for something bought today. */
+function CutoffHint({ dueDay, cutoffDay }: { dueDay: number | null; cutoffDay: number | null }) {
+  if (!cutoffDay) {
+    return <>The day the statement closes, in the app&apos;s billing or statement screen. Without it I guess: the next due day at least a week after you buy.</>;
+  }
+  if (!dueDay) return <>Pick the bill&apos;s due day too.</>;
+  const today = getToday();
+  return (
+    <>
+      Bought on or before day {cutoffDay}, it&apos;s on that statement; after it, the next one. Bought today:
+      due {formatShortDay(bnplFirstDue(today, dueDay, cutoffDay), today)}.
+    </>
   );
 }

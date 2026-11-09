@@ -4,9 +4,9 @@ import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
 import { isValidDate, today } from "@/lib/dates";
 import { loanSchedule, upcomingSchedule } from "@/lib/installments";
-import { editLoan } from "@/lib/loan-edit";
+import { checkLoan, editLoan, exactRate } from "@/lib/loan-edit";
 import { MAX_AMOUNT, isSpendable, roundCents, type AccountType } from "@/lib/money";
-import { pickWallet, savePlan } from "@/lib/server-writes";
+import { isMissingColumn, pickWallet, savePlan } from "@/lib/server-writes";
 
 // Phase 3: credit lines (SPayLater, Atome), loans (SLoan, MariLoan) and
 // paying their installments. See 0005_installments_loans.sql for how each
@@ -20,11 +20,6 @@ function cleanName(name: unknown) {
   return String(name ?? "").replace(/\s+/g, " ").trim();
 }
 
-/** A monthly payment as the lender quotes it, to 4 decimals (SLoan's ₱944.585). Rounded per payment in the schedule. */
-function exactRate(value: number) {
-  return Math.round(value * 10000) / 10000;
-}
-
 function validAmount(value: number, allowZero = false) {
   return Number.isFinite(value) && (allowZero ? value >= 0 : value > 0) && value <= MAX_AMOUNT;
 }
@@ -34,18 +29,35 @@ export type CreditLineInput = {
   limit: number | null;
   /** Day of the month the bill is due. */
   dueDay: number | null;
+  /** Day of the month the statement closes; null when you don't know. */
+  cutoffDay: number | null;
   /** What you owe on it right now. */
   used: number;
 };
+
+const isDay = (day: number | null) => day === null || (Number.isInteger(day) && day >= 1 && day <= 31);
+
+const CUTOFF_MISSING = "To save a cutoff day, run step 19 in supabase/SQL_GUIDE.md first. Or set it to Not sure.";
+
+/** Saves `row` with the cutoff day; before migration 0019, without it when there's none to save. */
+async function withCutoff<T extends { error: { code?: string } | null }>(
+  cutoffDay: number | null,
+  save: (cutoff: { cutoff_day?: number | null }) => PromiseLike<T>,
+): Promise<T | { error: { code: string; message: string } }> {
+  const result = await save({ cutoff_day: cutoffDay });
+  if (!isMissingColumn(result.error)) return result;
+  if (cutoffDay !== null) return { error: { code: "missing", message: CUTOFF_MISSING } };
+  return save({});
+}
 
 function checkCreditLine(input: CreditLineInput): string | null {
   const name = cleanName(input.name);
   if (!name) return "Give it a name, like SPayLater.";
   if (name.length > 60) return "Keep the name to 60 characters.";
   if (input.limit !== null && !validAmount(input.limit)) return "Check the credit limit, or leave it blank.";
-  if (input.dueDay !== null && !(Number.isInteger(input.dueDay) && input.dueDay >= 1 && input.dueDay <= 31)) {
-    return "Pick the day the bill is due.";
-  }
+  if (!isDay(input.dueDay)) return "Pick the day the bill is due.";
+  if (!isDay(input.cutoffDay)) return "Pick the day the statement cuts off.";
+  if (input.cutoffDay !== null && input.dueDay === null) return "Pick the day the bill is due too, so I know when each statement is paid.";
   if (!validAmount(input.used, true)) return "Check how much you owe on it now.";
   return null;
 }
@@ -57,21 +69,25 @@ export async function addCreditLine(input: CreditLineInput): Promise<CreditResul
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
-  const { data, error } = await supabase
-    .from("accounts")
-    .insert({
-      name: cleanName(input.name),
-      type: "credit_line",
-      credit_limit: input.limit === null ? null : roundCents(input.limit),
-      due_day: input.dueDay,
-      starting_balance: -roundCents(input.used),
-    })
-    .select("id")
-    .single();
-  if (error) return FAILED;
+  const saved = await withCutoff(input.cutoffDay, (cutoff) =>
+    supabase
+      .from("accounts")
+      .insert({
+        name: cleanName(input.name),
+        type: "credit_line",
+        credit_limit: input.limit === null ? null : roundCents(input.limit),
+        due_day: input.dueDay,
+        ...cutoff,
+        starting_balance: -roundCents(input.used),
+      })
+      .select("id")
+      .single(),
+  );
+  if (saved.error?.code === "missing") return { error: CUTOFF_MISSING };
+  if (saved.error || !("data" in saved) || !saved.data) return FAILED;
 
   refresh();
-  return { id: data.id };
+  return { id: saved.data.id };
 }
 
 /**
@@ -91,15 +107,19 @@ export async function updateCreditLine(id: string, input: CreditLineInput): Prom
   if (!account.data || !current.data) return { error: "Couldn't find that credit line." };
 
   const starting = Number(account.data.starting_balance) + (-input.used - Number(current.data.balance));
-  const { error } = await supabase
-    .from("accounts")
-    .update({
-      name: cleanName(input.name),
-      credit_limit: input.limit === null ? null : roundCents(input.limit),
-      due_day: input.dueDay,
-      starting_balance: roundCents(starting),
-    })
-    .eq("id", id);
+  const { error } = await withCutoff(input.cutoffDay, (cutoff) =>
+    supabase
+      .from("accounts")
+      .update({
+        name: cleanName(input.name),
+        credit_limit: input.limit === null ? null : roundCents(input.limit),
+        due_day: input.dueDay,
+        ...cutoff,
+        starting_balance: roundCents(starting),
+      })
+      .eq("id", id),
+  );
+  if (error?.code === "missing") return { error: CUTOFF_MISSING };
   if (error) return FAILED;
 
   refresh();
@@ -198,27 +218,6 @@ export type LoanInput = {
   /** Payments made before you added it here. */
   alreadyPaid: number;
 };
-
-function checkLoan(input: LoanInput): string | null {
-  const name = cleanName(input.name);
-  if (!name) return "Give the loan a name, like SLoan.";
-  if (name.length > 60) return "Keep the name to 60 characters.";
-  if (!validAmount(input.received)) return "Enter the amount you received.";
-  if (!validAmount(input.monthly)) return "Enter the monthly payment.";
-  if (!Number.isInteger(input.months) || input.months < 1 || input.months > 60) return "Pick how many months.";
-  if (roundCents(input.monthly * input.months) < input.received) {
-    return "The payments add up to less than you received. Check the monthly payment and months.";
-  }
-  if (!isValidDate(input.nextDue)) return "Pick when the next payment is due.";
-  if (input.intoAccountId && !isValidDate(input.receivedOn)) return "Pick the day you received it.";
-  if (!Number.isInteger(input.alreadyPaid) || input.alreadyPaid < 0 || input.alreadyPaid >= input.months) {
-    return "Check how many payments you've already made.";
-  }
-  if (input.intoAccountId && input.alreadyPaid > 0) {
-    return "A loan you just received has no payments yet. Set payments made to 0.";
-  }
-  return null;
-}
 
 /**
  * Adds a loan: a loan account, the money received as a transfer from it
@@ -329,14 +328,15 @@ export async function updateLoan(accountId: string, input: LoanUpdate): Promise<
 
   const { data: plan } = await supabase
     .from("installment_plans")
-    .select("id, source_txn_id")
+    // "*": person_id only exists after migration 0019.
+    .select("*")
     .eq("account_id", accountId)
     .eq("kind", "loan")
     .order("created_at")
     .limit(1)
     .maybeSingle();
-  if (!plan) {
-    // Its plan was removed: only the name is left to change.
+  // Its plan was removed, or someone else pays it (what they owe follows its terms): only the name changes.
+  if (!plan || plan.person_id) {
     const { error } = await supabase.from("accounts").update({ name }).eq("id", accountId);
     if (error) return FAILED;
     refresh();

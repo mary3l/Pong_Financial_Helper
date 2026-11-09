@@ -89,9 +89,9 @@ async function Wallets() {
     debts.reduce((sum, a) => sum + Math.max(0, -a.balance), 0) + people.reduce((sum, p) => sum + Math.max(0, -p.balance), 0),
   );
 
-  // What installments cost per month: the next unpaid payment of each plan.
+  // What installments cost per month: the next unpaid payment of each plan. Others' plans on your lines are theirs.
   const perMonth = roundCents(
-    plans.reduce((sum, p) => sum + (p.payments.find((x) => !x.transactionId)?.amount ?? 0), 0),
+    plans.filter((p) => !p.personId).reduce((sum, p) => sum + (p.payments.find((x) => !x.transactionId)?.amount ?? 0), 0),
   );
   const payday = recurring.find((r) => r.kind === "payday");
   const payPerMonth = payday?.amount

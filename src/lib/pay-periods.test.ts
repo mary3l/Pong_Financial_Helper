@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { scheduledItems, type ScheduleInputs } from "@/lib/forecast";
-import { paymentsByPeriod } from "@/lib/pay-periods";
+import { scheduledItems, type ForecastItem, type ScheduleInputs } from "@/lib/forecast";
+import { groupByPayee, paymentsByPeriod } from "@/lib/pay-periods";
 
 const TODAY = "2026-11-08";
 
@@ -94,6 +94,43 @@ describe("payments by pay period", () => {
       ["2026-11-08", "2026-12-07"],
       ["2026-12-08", "2027-01-07"],
       ["2027-01-08", "2027-02-07"],
+    ]);
+  });
+});
+
+describe("payments by where they go", () => {
+  const at = (name: string, dueOn: string, amount: number, lenderId: string | null, kind: ForecastItem["kind"] = "installment"): ForecastItem => ({
+    key: `${name}|${dueOn}`,
+    kind,
+    flow: "out",
+    id: name,
+    name,
+    amount,
+    dueOn,
+    accountId: null,
+    category: null,
+    estimate: false,
+    transactionId: null,
+    lenderId,
+  });
+
+  it("puts each lender's installments together and keeps other bills apart, soonest first", () => {
+    const names: Record<string, string> = { atome: "Atome", sloan: "SLoan" };
+    const groups = groupByPayee(
+      [
+        at("SLoan (1 of 3)", "2026-11-22", 944.59, "sloan"),
+        at("Shawarma", "2026-11-16", 115, "atome"),
+        at("October Billing", "2026-11-16", 6302.12, "atome"),
+        at("SSS contribution", "2026-11-30", 750, null, "bill"),
+        at("Hairbox", "2026-11-05", 456.12, "atome"),
+      ],
+      (id) => names[id],
+      "2026-11-09",
+    );
+    expect(groups.map((g) => [g.name, g.total, g.count, g.firstDue, g.late])).toEqual([
+      ["Atome", 6873.24, 3, "2026-11-05", true],
+      ["SLoan", 944.59, 1, "2026-11-22", false],
+      ["SSS contribution", 750, 1, "2026-11-30", false],
     ]);
   });
 });

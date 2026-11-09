@@ -233,7 +233,7 @@ export function TransactionForm({
       ? roundCents(amount - ["me", ...participants.map((p) => p.key)].reduce((s, k) => s + readShare(exact[k]), 0))
       : null;
   const rate = Number(planRate);
-  const firstDue = planFirstDue ?? (isValidDate(date) ? bnplFirstDue(date, account?.dueDay ?? null) : "");
+  const firstDue = planFirstDue ?? (isValidDate(date) ? bnplFirstDue(date, account?.dueDay ?? null, account?.cutoffDay ?? null) : "");
   const planRows =
     withPlan && amount && isValidDate(firstDue) && rate >= 0
       ? buildSchedule({ principal: amount, feeTotal: bnplFee(amount, rate, planMonths), months: planMonths, firstDue })

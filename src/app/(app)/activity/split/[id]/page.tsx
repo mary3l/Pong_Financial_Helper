@@ -3,12 +3,15 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { ChevronIcon, PathIcon } from "@/components/icons";
 import { Pong } from "@/components/pong";
+import { ShareText } from "@/components/share-text";
+import { getCurrentUser } from "@/lib/auth";
 import { categoryInfo } from "@/lib/categories";
 import { getAccounts, getInstallmentPlans, getPeople, getSplit, getTransactions } from "@/lib/data";
 import { formatRelativeDay, formatShortDay, today as getToday, transactionTime } from "@/lib/dates";
 import { dueText } from "@/lib/installments";
 import { formatPeso, roundCents } from "@/lib/money";
-import { toSplitBill, typedNote, unpaidByRecord } from "@/lib/splits";
+import { billReceipt } from "@/lib/receipt";
+import { billBreakdownText, toSplitBill, typedNote, unpaidByRecord } from "@/lib/splits";
 import { AddToBill } from "./add-to-bill";
 import { DeleteSplit } from "./delete-split";
 import { EditSplit } from "./edit-split";
@@ -29,11 +32,12 @@ export default function SplitPage({ params, searchParams }: PageProps<"/activity
 
 async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/[id]">) {
   const [{ id }, query] = await Promise.all([params, searchParams]);
-  const [records, accounts, people, recent] = await Promise.all([
+  const [records, accounts, people, recent, user] = await Promise.all([
     getSplit(id),
     getAccounts({ includeArchived: true, includePeople: true }),
     getPeople({ includeArchived: true }),
     getTransactions({ limit: 200 }),
+    getCurrentUser(),
   ]);
   if (!records.length) notFound();
   const unpaid = unpaidByRecord(people, recent);
@@ -122,6 +126,14 @@ async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/
           <span className="font-display text-[17px] font-semibold">{formatPeso(split.total)}</span>
         </div>
       </section>
+
+      {split.others.length > 0 && (
+        <ShareText
+          filename={`split-${split.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${split.occurredOn}.png`}
+          text={billBreakdownText({ split, names, unpaid, dateLabel: formatShortDay(split.occurredOn, today), myName: user.name })}
+          receipt={billReceipt({ split, names, unpaid, dateLabel: formatShortDay(split.occurredOn, today), wallet, myName: user.name })}
+        />
+      )}
 
       {credit && (
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] bg-card px-4 py-3.5">

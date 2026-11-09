@@ -1,6 +1,7 @@
 import { monthlyDates, splitAmount } from "@/lib/forecast";
 import { loanPayment, type PaymentRow } from "@/lib/installments";
-import { roundCents } from "@/lib/money";
+import { isValidDate } from "@/lib/dates";
+import { MAX_AMOUNT, roundCents } from "@/lib/money";
 
 // Editing a loan after it's saved: payments already made stay as they are,
 // and the unpaid ones are worked out again from the new terms. Pure, so the
@@ -85,4 +86,42 @@ export function editLoan(saved: SavedPayment[], edit: LoanEdit): EditedLoan | { 
     paid.reduce((sum, p) => sum + p.feePart, 0) + rows.reduce((sum, r) => sum + r.feePart, 0),
   );
   return { owedAtStart, owedNow: Math.max(0, owedNow), rows, feeTotal };
+}
+
+/** A monthly payment as the lender quotes it, to 4 decimals (SLoan's ₱944.585). Rounded per payment in the schedule. */
+export function exactRate(value: number) {
+  return Math.round(value * 10000) / 10000;
+}
+
+const validAmount = (value: number) => Number.isFinite(value) && value > 0 && value <= MAX_AMOUNT;
+
+/** What's wrong with a new loan's terms, or null. Shared by Add loan and a loan for someone else. */
+export function checkLoan(input: {
+  name: string;
+  received: number;
+  intoAccountId: string | null;
+  receivedOn: string;
+  monthly: number;
+  months: number;
+  nextDue: string;
+  alreadyPaid: number;
+}): string | null {
+  const name = String(input.name ?? "").replace(/\s+/g, " ").trim();
+  if (!name) return "Give the loan a name, like SLoan.";
+  if (name.length > 60) return "Keep the name to 60 characters.";
+  if (!validAmount(input.received)) return "Enter the amount you received.";
+  if (!validAmount(input.monthly)) return "Enter the monthly payment.";
+  if (!Number.isInteger(input.months) || input.months < 1 || input.months > 60) return "Pick how many months.";
+  if (roundCents(input.monthly * input.months) < input.received) {
+    return "The payments add up to less than you received. Check the monthly payment and months.";
+  }
+  if (!isValidDate(input.nextDue)) return "Pick when the next payment is due.";
+  if (input.intoAccountId && !isValidDate(input.receivedOn)) return "Pick the day you received it.";
+  if (!Number.isInteger(input.alreadyPaid) || input.alreadyPaid < 0 || input.alreadyPaid >= input.months) {
+    return "Check how many payments you've already made.";
+  }
+  if (input.intoAccountId && input.alreadyPaid > 0) {
+    return "A loan you just received has no payments yet. Set payments made to 0.";
+  }
+  return null;
 }

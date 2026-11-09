@@ -25,6 +25,20 @@ describe("BNPL plans", () => {
     expect(bnplFirstDue("2026-11-29", 5)).toBe("2027-01-05");
     expect(bnplFirstDue("2026-01-31", null)).toBe("2026-02-28");
   });
+
+  it("with a cutoff day, bills on the first due day after the statement", () => {
+    // Statement closes on the 25th, due on the 5th.
+    expect(bnplFirstDue("2026-11-02", 5, 25)).toBe("2026-12-05");
+    expect(bnplFirstDue("2026-11-25", 5, 25)).toBe("2026-12-05");
+    expect(bnplFirstDue("2026-11-26", 5, 25)).toBe("2027-01-05");
+    // Closes on the 1st, due on the 16th of the same month.
+    expect(bnplFirstDue("2026-11-01", 16, 1)).toBe("2026-11-16");
+    expect(bnplFirstDue("2026-11-02", 16, 1)).toBe("2026-12-16");
+    // A cutoff on the 31st closes on the last day of short months.
+    expect(bnplFirstDue("2026-02-28", 5, 31)).toBe("2026-03-05");
+    expect(catchUpDue("2026-10-28", 16, "2026-11-04", 1)).toBe("2026-11-16");
+    expect(catchUpDue("2026-11-02", 16, "2026-11-04", 1)).toBe("2026-12-16");
+  });
 });
 
 describe("loans", () => {

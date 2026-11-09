@@ -37,6 +37,8 @@ export async function savePlan(
     months: number;
     payFromAccountId: string | null;
     sourceTxnId: string | null;
+    /** Someone else pays it (migration 0019). */
+    personId?: string | null;
     rows: PaymentRow[];
   },
 ): Promise<string | null> {
@@ -52,6 +54,7 @@ export async function savePlan(
       first_due: plan.rows[0].dueOn,
       pay_from_account_id: plan.payFromAccountId,
       source_txn_id: plan.sourceTxnId,
+      ...(plan.personId ? { person_id: plan.personId } : {}),
     })
     .select("id")
     .single();
@@ -72,4 +75,25 @@ export async function savePlan(
     return null;
   }
   return data.id;
+}
+
+/** PostgREST says PGRST204 for a column it doesn't know, Postgres 42703: a migration hasn't been run. */
+export function isMissingColumn(error: { code?: string } | null): boolean {
+  return error?.code === "PGRST204" || error?.code === "42703";
+}
+
+export type CreditTerms = { id: string; type: AccountType; dueDay: number | null; cutoffDay: number | null };
+
+/** Each account's type, due day and statement cutoff (null before migration 0019). */
+export async function creditTerms(supabase: Client, ids: string[]): Promise<CreditTerms[]> {
+  if (!ids.length) return [];
+  const read = (columns: string) => supabase.from("accounts").select(columns).in("id", ids);
+  const first = await read("id, type, due_day, cutoff_day");
+  const { data } = isMissingColumn(first.error) ? await read("id, type, due_day") : first;
+  return ((data ?? []) as unknown as { id: string; type: string; due_day: number | null; cutoff_day?: number | null }[]).map((a) => ({
+    id: a.id,
+    type: a.type as AccountType,
+    dueDay: a.due_day,
+    cutoffDay: a.cutoff_day ?? null,
+  }));
 }

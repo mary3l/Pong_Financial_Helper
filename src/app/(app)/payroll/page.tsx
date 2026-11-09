@@ -33,6 +33,8 @@ async function Payroll({ searchParams }: Pick<PageProps<"/payroll">, "searchPara
   const [{ cutoff }, payroll, recurring] = await Promise.all([searchParams, getPayroll(today), getRecurringItems()]);
   const picked = typeof cutoff === "string" && isValidDate(cutoff) ? cutoff : today;
   const payday = recurring.find((r) => r.kind === "payday") ?? null;
+  // The day each SSS, PhilHealth and Pag-IBIG bill is due: which pay it comes out of.
+  const contributionDays = Object.fromEntries(recurring.filter((r) => r.payrollKey).map((r) => [r.payrollKey!, r.day1]));
 
   return (
     <PayrollManager
@@ -41,6 +43,7 @@ async function Payroll({ searchParams }: Pick<PageProps<"/payroll">, "searchPara
       period={periodContaining(picked)}
       records={payroll === "missing" ? null : payroll}
       missing={payroll === "missing"}
+      contributionDays={contributionDays}
       payday={payday?.frequency === "twice_monthly" ? { frequency: payday.frequency, day1: payday.day1, day2: payday.day2 } : null}
     />
   );
