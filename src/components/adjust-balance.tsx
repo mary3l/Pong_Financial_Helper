@@ -6,6 +6,7 @@ import { useState, useTransition } from "react";
 import { adjustBalance, deleteTransaction, updateAdjustment } from "@/app/transaction-actions";
 import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
+import { FormDialog } from "@/components/form-dialog";
 import { PlusIcon } from "@/components/icons";
 import type { Account, Transaction } from "@/lib/data";
 import { isValidDate } from "@/lib/dates";
@@ -30,14 +31,18 @@ export function WalletButtons({ account, today }: { account: Account; today: str
         </Link>
         <button
           type="button"
-          aria-expanded={adjusting}
-          onClick={() => setAdjusting((a) => !a)}
-          className={`h-12 rounded-[18px] font-extrabold ${adjusting ? "bg-ink text-mint" : "bg-card text-ink hover:bg-sea-tint"}`}
+          aria-haspopup="dialog"
+          onClick={() => setAdjusting(true)}
+          className="h-12 rounded-[18px] bg-card font-extrabold text-ink hover:bg-sea-tint"
         >
           Adjust balance
         </button>
       </div>
-      {adjusting && <AdjustBalanceForm account={account} today={today} onDone={() => setAdjusting(false)} />}
+      {adjusting && (
+        <FormDialog title="Adjust balance" onClose={() => setAdjusting(false)}>
+          <AdjustBalanceForm account={account} today={today} onDone={() => setAdjusting(false)} />
+        </FormDialog>
+      )}
     </>
   );
 }
@@ -80,7 +85,7 @@ function AdjustBalanceForm({ account, today, onDone }: { account: Account; today
         e.preventDefault();
         save();
       }}
-      className="flex flex-col gap-3 rounded-[20px] bg-card p-4"
+      className="flex flex-col gap-3"
     >
       <div className="flex flex-col gap-1">
         <label htmlFor="adjust-actual" className="text-sm font-extrabold">
@@ -128,7 +133,7 @@ function AdjustBalanceForm({ account, today, onDone }: { account: Account; today
       </div>
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
       <div className="flex gap-2.5">
-        <button type="button" onClick={onDone} className="h-12 flex-1 rounded-[18px] bg-mint font-extrabold">
+        <button type="button" onClick={onDone} className="h-12 flex-1 rounded-[18px] bg-card font-extrabold">
           Cancel
         </button>
         <button type="submit" disabled={pending} className="h-12 flex-[2] rounded-[18px] bg-sun font-extrabold text-ink disabled:opacity-60">

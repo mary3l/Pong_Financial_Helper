@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { lendFromCreditLine, lendOrBorrow } from "@/app/people-actions";
 import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
+import { EXPENSE_CATEGORIES } from "@/lib/categories";
 import type { Account } from "@/lib/data";
 import { addDays } from "@/lib/dates";
 import { upcomingSchedule } from "@/lib/installments";
@@ -56,6 +57,9 @@ export function LendForm({
   const [dueOn, setDueOn] = useState("");
   const [note, setNote] = useState("");
   const [count, setCount] = useState(false);
+  // Borrowing: off when they paid for something of yours directly (a flight).
+  const [toWallet, setToWallet] = useState(true);
+  const [category, setCategory] = useState("other");
   // From a credit line: their installment.
   const [fee, setFee] = useState("");
   const [months, setMonths] = useState(3);
@@ -65,6 +69,7 @@ export function LendForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const lend = direction === "lend";
+  const paidForMe = !lend && !toWallet;
   const line = lend ? creditLines.find((c) => c.id === walletId) : undefined;
   const each = parseAmount(amount);
   const feeValue = fee.trim() ? parseAmount(fee) : 0;
@@ -127,6 +132,7 @@ export function LendForm({
         dueOn: dueOn || null,
         countInForecast: count,
         note,
+        paidForMe: paidForMe ? { category } : null,
       });
       if (result.error) setError(result.error);
       else router.push(`/money/people/${result.personId}`);
@@ -200,7 +206,33 @@ export function LendForm({
       </div>
 
       <div className="flex flex-col gap-3 rounded-[20px] bg-card p-4">
+        {!lend && (
+          <label className="flex items-start justify-between gap-3 text-sm font-bold">
+            <span className="flex flex-col gap-0.5">
+              The money came to one of my wallets
+              <span className="text-xs font-semibold text-muted">
+                Untick if they paid for something of yours directly, like a flight they booked for you.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={toWallet}
+              onChange={(e) => setToWallet(e.target.checked)}
+              className="h-6 w-6 shrink-0 accent-sea"
+            />
+          </label>
+        )}
         <div className="grid grid-cols-2 gap-3">
+          {paidForMe ? (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="lend-category" className="text-sm font-bold">What it was for</label>
+            <select id="lend-category" value={category} onChange={(e) => setCategory(e.target.value)} className={FIELD_CLASS}>
+              {EXPENSE_CATEGORIES.map((c) => (
+                <option key={c.key} value={c.key}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+          ) : (
           <div className="flex flex-col gap-1">
             <label htmlFor="lend-wallet" className="text-sm font-bold">{lend ? "Sent from" : "Received in"}</label>
             <select
@@ -233,6 +265,7 @@ export function LendForm({
               )}
             </select>
           </div>
+          )}
           <div className="flex flex-col gap-1">
             <label htmlFor="lend-date" className="text-sm font-bold">{line ? "Bought on" : "Date"}</label>
             <input id="lend-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className={FIELD_CLASS} />
@@ -300,7 +333,7 @@ export function LendForm({
               value={note}
               onChange={(e) => setNote(e.target.value)}
               maxLength={120}
-              placeholder={line ? "e.g. phone" : "e.g. tuition"}
+              placeholder={line ? "e.g. phone" : paidForMe ? "e.g. Flight to Siargao" : "e.g. tuition"}
               className={FIELD_CLASS}
             />
           </div>
@@ -339,7 +372,9 @@ export function LendForm({
           ? `Their payments go on ${line.name}'s bills marked as theirs, and never count in your forecast or Safe to spend. When they pay, tap They paid: their money goes straight to the bill, so your wallets don't move.`
           : lend
           ? "Off by default: I won't count on money until it's actually paid back. Lending isn't spending either; it's still your money."
-          : "Borrowed money isn't income. It's a transfer from them, so your budget stays honest."}
+          : paidForMe
+            ? "None of your wallets go up, since the money never reached you. It counts as your spending on the date, paid by them, and you owe them for it."
+            : "Borrowed money isn't income. It's a transfer from them, so your budget stays honest."}
       </p>
 
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>

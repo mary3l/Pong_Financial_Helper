@@ -335,8 +335,8 @@ export async function updateLoan(accountId: string, input: LoanUpdate): Promise<
     .order("created_at")
     .limit(1)
     .maybeSingle();
-  // Its plan was removed, or someone else pays it (what they owe follows its terms): only the name changes.
-  if (!plan || plan.person_id) {
+  // Its plan was removed: only the name changes.
+  if (!plan) {
     const { error } = await supabase.from("accounts").update({ name }).eq("id", accountId);
     if (error) return FAILED;
     refresh();
@@ -348,9 +348,12 @@ export async function updateLoan(accountId: string, input: LoanUpdate): Promise<
     .select("id, seq, due_on, amount, principal_part, fee_part, transfer_txn_id, fee_txn_id")
     .eq("plan_id", plan.id);
   if (readError) return FAILED;
+  // Someone else pays it (Tita Flora's MariLoan in your name): its money went
+  // to them as pautang, so their wallets, not yours, follow the new terms.
+  const theirs: string | null = plan.person_id ?? null;
   // From here on it's a loan you were already paying: no transfer in.
-  const hadIt = Boolean(plan.source_txn_id && input.alreadyHad);
-  const sourceTxnId = hadIt ? null : plan.source_txn_id;
+  const hadIt = !theirs && Boolean(plan.source_txn_id && input.alreadyHad);
+  const sourceTxnId = theirs || hadIt ? null : plan.source_txn_id;
   if (sourceTxnId && input.paidBefore) {
     return { error: "This loan's money came in here, so there are no payments from before." };
   }
@@ -371,6 +374,29 @@ export async function updateLoan(accountId: string, input: LoanUpdate): Promise<
     },
   );
   if ("error" in edited) return edited;
+
+  // Theirs: what they owe you moves by exactly as much as the loan's principal,
+  // on the pautang transfer from the loan to them. The loan's balance follows it.
+  let pautang: { id: string; next: number } | null = null;
+  if (theirs) {
+    const oldPrincipal = roundCents(payments.reduce((sum, p) => sum + Number(p.principal_part), 0));
+    const change = roundCents(edited.owedAtStart - oldPrincipal);
+    const { data: lent } = await supabase
+      .from("transactions")
+      .select("id, amount")
+      .eq("type", "transfer")
+      .eq("account_id", accountId)
+      .eq("to_account_id", theirs)
+      .order("occurred_on")
+      .limit(1)
+      .maybeSingle();
+    if (!lent && change !== 0) return { error: "Couldn't find what they owe you for this loan, so its amount can't change." };
+    if (lent) {
+      const next = roundCents(Number(lent.amount) + change);
+      if (!(next > 0)) return { error: "That would leave them owing nothing for this loan. Check the loan amount and months." };
+      pautang = { id: lent.id, next };
+    }
+  }
 
   // Swap the unpaid payments for the new ones, putting the old back if that fails.
   const unpaid = payments.filter((p) => !isPaid(p));
@@ -419,7 +445,8 @@ export async function updateLoan(accountId: string, input: LoanUpdate): Promise<
         fee_total: edited.feeTotal,
         months: input.months,
         first_due: dues[0] ?? input.nextDue,
-        pay_from_account_id: input.payFromAccountId,
+        // Theirs never comes out of your wallets.
+        pay_from_account_id: theirs ? null : input.payFromAccountId,
         // Unlinked before the transfer goes: deleting a plan's source deletes the plan.
         ...(hadIt ? { source_txn_id: null } : {}),
       })
@@ -427,13 +454,19 @@ export async function updateLoan(accountId: string, input: LoanUpdate): Promise<
     // Already paying when added: no transfer in, so the loan starts at what was owed.
     supabase
       .from("accounts")
-      .update(sourceTxnId || hadIt ? { name } : { name, starting_balance: -edited.owedAtStart })
+      .update(sourceTxnId || hadIt || theirs ? { name } : { name, starting_balance: -edited.owedAtStart })
       .eq("id", accountId),
     sourceTxnId
       ? supabase.from("transactions").update({ amount: roundCents(input.received) }).eq("id", sourceTxnId)
-      : Promise.resolve({ error: null }),
+      : pautang
+        ? supabase.from("transactions").update({ amount: pautang.next }).eq("id", pautang.id)
+        : Promise.resolve({ error: null }),
   ]);
   if (planUpdate.error || accountUpdate.error || sourceUpdate.error) return FAILED;
+  if (pautang && dues.length) {
+    // They promised to pay it all back by the last payment.
+    await supabase.from("person_entries").update({ due_on: dues.at(-1) }).eq("transaction_id", pautang.id);
+  }
 
   if (hadIt && plan.source_txn_id) {
     // Take the money back out of the wallet, then start the loan at what was owed.

@@ -11,6 +11,7 @@ import {
   type WalletResult,
 } from "@/app/wallet-actions";
 import { AmountInput } from "@/components/amount-input";
+import { FormDialog } from "@/components/form-dialog";
 import { FIELD_CLASS } from "@/components/choice-chip";
 import { ChevronIcon } from "@/components/icons";
 import type { Account } from "@/lib/data";
@@ -47,6 +48,7 @@ export function WalletManager({
   accrued,
   today,
   usdRate = null,
+  purposes = WALLET_PURPOSES.map((p) => p.value),
 }: {
   accounts: Account[];
   /** By account id, for wallets with an interest rate. */
@@ -54,6 +56,11 @@ export function WalletManager({
   today: string;
   /** Today's pesos per US$1, null when no feed answered. */
   usdRate?: number | null;
+  /**
+   * The categories this list shows (Wallets: spending; Savings: the rest).
+   * The first always shows, and a new wallet starts in it.
+   */
+  purposes?: readonly WalletPurpose[];
 }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -61,14 +68,64 @@ export function WalletManager({
   const [pending, startTransition] = useTransition();
   const active = accounts.filter((a) => !a.archived);
   const archived = accounts.filter((a) => a.archived);
-  // Grouped by category. Spending always shows, so "No wallets yet" has a place.
-  const groups = WALLET_PURPOSES.map((p) => ({ ...p, wallets: active.filter((a) => a.purpose === p.value) })).filter(
-    (g) => g.value === "spending" || g.wallets.length > 0,
-  );
+  const editingAccount = active.find((a) => a.id === editing) ?? null;
+  const savingsOnly = !purposes.includes("spending");
+  // Grouped by category. The first always shows, so "No wallets yet" has a place,
+  // and takes any wallet whose category isn't listed (dollars marked Spending).
+  const groups = WALLET_PURPOSES.filter((p) => purposes.includes(p.value))
+    .map((p) => ({
+      ...p,
+      wallets: active.filter((a) => a.purpose === p.value || (p.value === purposes[0] && !purposes.includes(a.purpose))),
+    }))
+    .filter((g) => g.value === purposes[0] || g.wallets.length > 0);
+
+  // Saved into a category this list doesn't show: say where it went.
+  function movedNotice(name: string, purpose: WalletPurpose): string | null {
+    if (purposes.includes(purpose)) return null;
+    return purpose === "spending"
+      ? `${name} is spending money now, so it's on the Wallets tab.`
+      : `${name} is set aside now, so it's on the Savings tab.`;
+  }
 
   return (
     <div className="flex flex-col gap-4">
       <p role="status" className="text-sm font-bold text-sea-dark empty:hidden">{notice}</p>
+
+      {editingAccount && (
+        <FormDialog title={`Edit ${editingAccount.name}`} onClose={() => setEditing(null)}>
+          <WalletForm
+            account={editingAccount}
+            today={today}
+            usdRate={usdRate}
+            onCancel={() => setEditing(null)}
+            onDone={(result, saved) => {
+              setEditing(null);
+              setNotice(
+                result.archived
+                  ? `${editingAccount.name} has history, so it was archived instead of deleted.`
+                  : saved
+                    ? movedNotice(saved.name, saved.purpose)
+                    : null,
+              );
+            }}
+          />
+        </FormDialog>
+      )}
+
+      {adding && (
+        <FormDialog title={savingsOnly ? "Add a savings wallet" : "Add wallet"} onClose={() => setAdding(false)}>
+          <WalletForm
+            today={today}
+            usdRate={usdRate}
+            defaultPurpose={purposes[0]}
+            onCancel={() => setAdding(false)}
+            onDone={(_, saved) => {
+              setAdding(false);
+              setNotice(saved ? movedNotice(saved.name, saved.purpose) : null);
+            }}
+          />
+        </FormDialog>
+      )}
 
       {groups.map((group) => (
         <section key={group.value} aria-label={group.label} className="flex flex-col gap-1.5">
@@ -85,96 +142,83 @@ export function WalletManager({
           <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
             {group.wallets.map((a) => (
               <li key={a.id} className="border-b border-line-soft py-2.5 last:border-0">
-                {editing === a.id ? (
-                  <WalletForm
-                    account={a}
-                    today={today}
-                    usdRate={usdRate}
-                    onCancel={() => setEditing(null)}
-                    onDone={(result) => {
-                      setEditing(null);
-                      setNotice(result.archived ? `${a.name} has history, so it was archived instead of deleted.` : null);
-                    }}
-                  />
-                ) : (
-                  <>
-                    <div className="flex items-center gap-1">
-                      <Link href={`/money/${a.id}`} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 text-ink">
-                        <span className="flex min-w-0 flex-1 flex-col">
-                          <span className="truncate font-bold">{a.name}</span>
-                          <span className="text-[13px] text-muted">
-                            {accountTypeLabel(a.type)}
-                            {a.currency === "USD" && " · US dollars"}
-                            {a.interestRate !== null && ` · ${a.interestRate}% a year`}
-                            {a.interestRate !== null && a.interestPayout === "monthly" && ", paid on the 1st"}
-                            {a.interestRate !== null &&
-                              a.interestPayout === "maturity" &&
-                              a.maturesOn &&
-                              (a.maturesOn > today
-                                ? `, matures ${formatShortDay(a.maturesOn, today)}`
-                                : `, matured ${formatShortDay(a.maturesOn, today)}`)}
-                          </span>
-                        </span>
-                        <span className="flex flex-col items-end">
-                          <span className={`font-display text-[17px] font-semibold ${a.balance < 0 ? "text-coral-text" : ""}`}>
-                            {formatBalance(a)}
-                          </span>
-                          {a.currency === "USD" && (
-                            <span className="text-xs text-muted">
-                              ≈ {formatPeso(pesoValue(a))}
-                              {fxGain(a) !== 0 && (
-                                <span className={`font-bold ${fxGain(a) > 0 ? "text-sea-dark" : "text-coral-text"}`}>
-                                  {" "}
-                                  {fxGain(a) > 0 ? "+" : "−"}
-                                  {formatPeso(Math.abs(fxGain(a)))}
-                                </span>
-                              )}
+                <div className="flex items-center gap-1">
+                  <Link href={`/money/${a.id}`} className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-ink sm:gap-3">
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="font-bold leading-snug break-words">{a.name}</span>
+                      <span className="text-[13px] text-muted">
+                        {accountTypeLabel(a.type)}
+                        {a.currency === "USD" && " · US dollars"}
+                        {a.interestRate !== null && ` · ${a.interestRate}% a year`}
+                        {a.interestRate !== null && a.interestPayout === "monthly" && ", paid on the 1st"}
+                        {a.interestRate !== null &&
+                          a.interestPayout === "maturity" &&
+                          a.maturesOn &&
+                          (a.maturesOn > today
+                            ? `, matures ${formatShortDay(a.maturesOn, today)}`
+                            : `, matured ${formatShortDay(a.maturesOn, today)}`)}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 flex-col items-end">
+                      <span className={`font-display text-[17px] font-semibold whitespace-nowrap ${a.balance < 0 ? "text-coral-text" : ""}`}>
+                        {formatBalance(a)}
+                      </span>
+                      {a.currency === "USD" && (
+                        <span className="text-xs text-muted">
+                          ≈ {formatPeso(pesoValue(a))}
+                          {fxGain(a) !== 0 && (
+                            <span className={`font-bold ${fxGain(a) > 0 ? "text-sea-dark" : "text-coral-text"}`}>
+                              {" "}
+                              {fxGain(a) > 0 ? "+" : "−"}
+                              {formatPeso(Math.abs(fxGain(a)))}
                             </span>
                           )}
                         </span>
-                        <ChevronIcon size={20} className="text-muted" />
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditing(a.id);
-                          setNotice(null);
-                        }}
-                        aria-label={`Edit ${a.name}`}
-                        className="h-11 rounded-full px-3 text-sm font-extrabold text-sea-dark hover:bg-mint"
-                      >
-                        Edit
-                      </button>
-                    </div>
-                    {accrued[a.id] && <InterestRow account={a} accrued={accrued[a.id]} today={today} />}
-                    {a.goalAmount !== null && a.purpose !== "spending" && (
-                      <GoalRow account={a} goalAmount={a.goalAmount} accrued={accrued[a.id] ?? null} today={today} />
-                    )}
-                  </>
+                      )}
+                    </span>
+                    {/* The whole row opens the wallet; on phones the name needs the room more. */}
+                    <ChevronIcon size={20} className="hidden shrink-0 text-muted sm:block" />
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditing(a.id);
+                      setNotice(null);
+                    }}
+                    aria-label={`Edit ${a.name}`}
+                    className="h-11 shrink-0 rounded-full px-2.5 text-sm font-extrabold text-sea-dark hover:bg-mint sm:px-3"
+                  >
+                    Edit
+                  </button>
+                </div>
+                {accrued[a.id] && <InterestRow account={a} accrued={accrued[a.id]} today={today} />}
+                {a.goalAmount !== null && a.purpose !== "spending" && (
+                  <GoalRow account={a} goalAmount={a.goalAmount} accrued={accrued[a.id] ?? null} today={today} />
                 )}
               </li>
             ))}
-            {!active.length && <li className="py-3 text-[15px] text-muted">No wallets yet. Add the places you keep money.</li>}
+            {!active.length && (
+              <li className="py-3 text-[15px] text-muted">
+                {savingsOnly
+                  ? "Nothing set aside yet. Add where you save, like MariBank, a GoTyme GoalSave or a time deposit."
+                  : "No wallets yet. Add the places you keep money."}
+              </li>
+            )}
           </ul>
         </section>
       ))}
 
-      {adding ? (
-        <div className="rounded-[20px] bg-card p-4">
-          <WalletForm today={today} usdRate={usdRate} onCancel={() => setAdding(false)} onDone={() => setAdding(false)} />
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => {
-            setAdding(true);
-            setNotice(null);
-          }}
-          className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
-        >
-          + Add wallet
-        </button>
-      )}
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        onClick={() => {
+          setAdding(true);
+          setNotice(null);
+        }}
+        className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
+      >
+        + Add wallet
+      </button>
 
       {archived.length > 0 && (
         <section aria-labelledby="archived-heading" className="flex flex-col gap-2">
@@ -210,6 +254,7 @@ function WalletForm({
   account,
   today,
   usdRate,
+  defaultPurpose = "spending",
   onCancel,
   onDone,
 }: {
@@ -217,15 +262,18 @@ function WalletForm({
   account?: Account;
   today: string;
   usdRate: number | null;
+  /** A new wallet's category, like Savings when added from the Savings tab. */
+  defaultPurpose?: WalletPurpose;
   onCancel: () => void;
-  onDone: (result: WalletResult) => void;
+  /** `saved` is what was saved; absent when it was removed. */
+  onDone: (result: WalletResult, saved?: { name: string; purpose: WalletPurpose }) => void;
 }) {
   const [name, setName] = useState(account?.name ?? "");
   const [type, setType] = useState<WalletType>(
-    account && isWalletType(account.type) ? account.type : "ewallet",
+    account && isWalletType(account.type) ? account.type : defaultPurpose === "spending" ? "ewallet" : "bank",
   );
   const [balance, setBalance] = useState(account ? String(account.balance) : "");
-  const [purpose, setPurpose] = useState<WalletPurpose>(account?.purpose ?? "spending");
+  const [purpose, setPurpose] = useState<WalletPurpose>(account?.purpose ?? defaultPurpose);
   const [rate, setRate] = useState(account?.interestRate ? String(account.interestRate) : "");
   // A new wallet follows its name (GoTyme pays monthly) until you pick one.
   const [pickedPayout, setPayout] = useState<InterestPayout | null>(account?.interestPayout ?? null);
@@ -316,7 +364,7 @@ function WalletForm({
       };
       const result = account ? await updateWallet(account.id, input) : await addWallets([input]);
       if (result.error) setError(result.error);
-      else onDone(result);
+      else onDone(result, { name: name.trim() || name, purpose });
     });
   }
 
@@ -349,12 +397,12 @@ function WalletForm({
         </div>
       </div>
       {offerPreset && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[14px] bg-mint px-3 py-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[14px] bg-card px-3 py-2">
           <span className="flex-1 basis-56 text-[13px]">
             <strong>{preset.label}?</strong> {preset.about}{" "}
             {preset.rate !== null && <span className="text-muted">Rate as of {PRESET_RATES_AS_OF}; check the app.</span>}
           </span>
-          <button type="button" onClick={applyPreset} className="h-9 rounded-full bg-card px-3 text-sm font-extrabold text-sea-dark">
+          <button type="button" onClick={applyPreset} className="h-9 rounded-full bg-mint px-3 text-sm font-extrabold text-sea-dark">
             {preset.rate !== null ? `Use ${preset.rate}%` : "Set it up"}
           </button>
         </div>
@@ -374,7 +422,7 @@ function WalletForm({
                 type="button"
                 aria-pressed={currency === c.value}
                 onClick={() => setCurrency(c.value)}
-                className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${currency === c.value ? "bg-ink text-mint" : "bg-mint text-ink"}`}
+                className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${currency === c.value ? "bg-ink text-mint" : "bg-card text-ink"}`}
               >
                 {c.symbol} {c.label}
               </button>
@@ -400,7 +448,7 @@ function WalletForm({
                 <button
                   type="button"
                   onClick={() => setFxRate(String(usdRate))}
-                  className="h-9 rounded-full bg-mint px-3 text-sm font-extrabold text-sea-dark"
+                  className="h-9 rounded-full bg-card px-3 text-sm font-extrabold text-sea-dark"
                 >
                   Today: {formatPeso(usdRate)}
                 </button>
@@ -421,7 +469,7 @@ function WalletForm({
             type="button"
             aria-pressed={type === t.value}
             onClick={() => setType(t.value)}
-            className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${type === t.value ? "bg-ink text-mint" : "bg-mint text-ink"}`}
+            className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${type === t.value ? "bg-ink text-mint" : "bg-card text-ink"}`}
           >
             {t.label}
           </button>
@@ -436,7 +484,7 @@ function WalletForm({
               type="button"
               aria-pressed={purpose === p.value}
               onClick={() => setPurpose(p.value)}
-              className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${purpose === p.value ? "bg-ink text-mint" : "bg-mint text-ink"}`}
+              className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${purpose === p.value ? "bg-ink text-mint" : "bg-card text-ink"}`}
             >
               {p.label}
             </button>
@@ -445,7 +493,7 @@ function WalletForm({
         <span className="text-xs text-muted">
           {purpose === "spending"
             ? "Spending money counts in Safe to spend and your forecast."
-            : "Still counts in You have and Net worth, but not in Safe to spend, so you won't plan to spend it."}
+            : "Shows on the Savings tab and counts in Net worth, but not in You have or Safe to spend, so you won't plan to spend it."}
         </span>
       </div>
       {purpose !== "spending" && !usd && (
@@ -511,7 +559,7 @@ function WalletForm({
                     type="button"
                     aria-pressed={payout === p.value}
                     onClick={() => setPayout(p.value)}
-                    className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${payout === p.value ? "bg-ink text-mint" : "bg-mint text-ink"}`}
+                    className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${payout === p.value ? "bg-ink text-mint" : "bg-card text-ink"}`}
                   >
                     {p.label}
                   </button>
@@ -567,7 +615,7 @@ function WalletForm({
         <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
           {pending ? "Saving…" : account ? "Update wallet" : "Add wallet"}
         </button>
-        <button type="button" onClick={onCancel} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-mint">
+        <button type="button" onClick={onCancel} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card">
           Cancel
         </button>
         {account && (
@@ -654,9 +702,10 @@ function InterestRow({ account, accrued, today }: { account: Account; accrued: I
             </span>
           )}
         </span>
-        {!open && toLog && (
+        {toLog && (
           <button
             type="button"
+            aria-haspopup="dialog"
             onClick={() => {
               setOpen(true);
               setAmount(toLog.amount > 0 ? String(toLog.amount) : "");
@@ -669,52 +718,56 @@ function InterestRow({ account, accrued, today }: { account: Account; accrued: I
         )}
       </div>
       {open && (
-        <form onSubmit={save} className="flex flex-wrap items-end gap-2">
-          <div className="flex flex-col gap-1">
-            <label htmlFor={`interest-${account.id}`} className="text-xs font-bold">
-              Interest credited to {account.name}
-              {monthly && toLog && ` on ${formatShortDay(toLog.on, today)}`}
-            </label>
-            <div className="relative w-36">
-              <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">
-                {currencySymbol(account.currency)}
-              </span>
-              <input
-                id={`interest-${account.id}`}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                inputMode="decimal"
-                placeholder="0.00"
-                className={`${FIELD_CLASS} h-11 w-full pl-8 text-right`}
-              />
+        <FormDialog title={`Interest on ${account.name}`} onClose={() => setOpen(false)}>
+          <form onSubmit={save} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <label htmlFor={`interest-${account.id}`} className="text-sm font-bold">
+                Interest credited to {account.name}
+                {monthly && toLog && ` on ${formatShortDay(toLog.on, today)}`}
+              </label>
+              <div className="relative sm:w-44">
+                <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">
+                  {currencySymbol(account.currency)}
+                </span>
+                <input
+                  id={`interest-${account.id}`}
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  className={`${FIELD_CLASS} w-full pl-8 text-right`}
+                />
+              </div>
             </div>
-          </div>
-          <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-4 font-extrabold text-ink disabled:opacity-60">
-            {pending ? "Saving…" : "Add as income"}
-          </button>
-          <button type="button" onClick={() => setOpen(false)} className="h-11 rounded-[14px] px-3 font-extrabold text-ink">
-            Cancel
-          </button>
-          <p className="basis-full text-xs text-muted">
-            {account.interestPayout === "maturity" ? (
-              <>
-                Filled in with Pong&apos;s estimate. The bank adds the interest when it matures, after
-                tax, so type the exact amount from its app if you have it.
-              </>
-            ) : monthly ? (
-              <>
-                Filled in with Pong&apos;s estimate on today&apos;s balance. The bank adds the month&apos;s
-                interest on the 1st, after tax, so type the exact amount from its app if you have it.
-              </>
-            ) : (
-              <>
-                Filled in with Pong&apos;s estimate. The bank adds interest daily on that day&apos;s
-                balance, so type the exact amount from its app if you have it.
-              </>
-            )}
-          </p>
-          <p role="alert" className="basis-full text-xs font-bold text-coral-text empty:hidden">{error}</p>
-        </form>
+            <p className="text-xs text-muted">
+              {account.interestPayout === "maturity" ? (
+                <>
+                  Filled in with Pong&apos;s estimate. The bank adds the interest when it matures, after
+                  tax, so type the exact amount from its app if you have it.
+                </>
+              ) : monthly ? (
+                <>
+                  Filled in with Pong&apos;s estimate on today&apos;s balance. The bank adds the month&apos;s
+                  interest on the 1st, after tax, so type the exact amount from its app if you have it.
+                </>
+              ) : (
+                <>
+                  Filled in with Pong&apos;s estimate. The bank adds interest daily on that day&apos;s
+                  balance, so type the exact amount from its app if you have it.
+                </>
+              )}
+            </p>
+            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+            <div className="flex flex-wrap gap-2">
+              <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
+                {pending ? "Saving…" : "Add as income"}
+              </button>
+              <button type="button" onClick={() => setOpen(false)} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </FormDialog>
       )}
     </div>
   );

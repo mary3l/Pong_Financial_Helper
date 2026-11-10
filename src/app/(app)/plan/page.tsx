@@ -168,7 +168,18 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
                       {" · "}balance after{" "}
                       <span className={balanceAfter < 0 ? "font-bold text-coral-text" : ""}>{formatPeso(balanceAfter)}</span>
                     </span>
-                    {date < weekOut ? <LogButton item={item} accounts={accounts} /> : <span />}
+                    <span className="flex items-center justify-end gap-1">
+                      {(item.kind === "planned" || item.kind === "bill" || item.kind === "income") && (
+                        <Link
+                          href={`/plan/scheduled?edit=${item.id}`}
+                          aria-label={`Edit ${item.name}`}
+                          className="flex h-9 items-center rounded-full px-2.5 text-[13px] font-extrabold text-sea-dark hover:bg-mint"
+                        >
+                          Edit
+                        </Link>
+                      )}
+                      {date < weekOut && <LogButton item={item} accounts={accounts} />}
+                    </span>
                   </li>
                 );
               })}

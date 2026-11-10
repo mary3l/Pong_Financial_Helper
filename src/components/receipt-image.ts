@@ -118,6 +118,18 @@ function layout(ctx: CanvasRenderingContext2D, r: Receipt, pong: CanvasImageSour
   if (draw && pong) ctx.drawImage(pong, cardR - PONG - 20, PAD + headerH - PONG + 6, PONG, PONG);
   y = PAD + headerH + 12;
 
+  // ── The headline amount (what to pay this month), right under the header.
+  if (r.lead) {
+    y += 36;
+    const [bg, fg] = r.lead.late ? [C.coralTint, C.coral] : [C.sunTint, C.sunText];
+    const leadH = r.lead.detail ? 150 : 116;
+    if (draw) fillRound(ctx, left - 16, y, right - left + 32, leadH, 28, bg);
+    text(r.lead.label.toUpperCase(), left + 16, y + 62, `800 28px ${f.body}`, fg);
+    text(r.lead.amount, right - 16, y + 80, `600 64px ${f.display}`, C.ink, "right");
+    if (r.lead.detail) text(r.lead.detail, right - 16, y + 124, `700 24px ${f.body}`, fg, "right");
+    y += leadH - 12;
+  }
+
   // ── Sections.
   for (const section of r.sections) {
     if (section.heading) {
@@ -178,12 +190,21 @@ function layout(ctx: CanvasRenderingContext2D, r: Receipt, pong: CanvasImageSour
     ctx.restore();
   }
   y += 36;
-  const totalH = r.total.detail ? 150 : 116;
-  if (draw) fillRound(ctx, left - 16, y, right - left + 32, totalH, 28, C.sunTint);
-  text(r.total.label.toUpperCase(), left + 16, y + 62, `800 28px ${f.body}`, C.sunText);
-  text(r.total.amount, right - 16, y + 80, `600 64px ${f.display}`, C.ink, "right");
-  if (r.total.detail) text(r.total.detail, right - 16, y + 124, `700 24px ${f.body}`, C.sunText, "right");
-  y += totalH;
+  if (r.lead) {
+    // The headline is at the top: the total in all is quieter here.
+    const totalH = r.total.detail ? 104 : 68;
+    text(r.total.label.toUpperCase(), left, y + 46, `800 24px ${f.body}`, C.muted);
+    text(r.total.amount, right, y + 50, `600 44px ${f.display}`, C.ink, "right");
+    if (r.total.detail) text(r.total.detail, right, y + 90, `700 24px ${f.body}`, C.muted, "right");
+    y += totalH;
+  } else {
+    const totalH = r.total.detail ? 150 : 116;
+    if (draw) fillRound(ctx, left - 16, y, right - left + 32, totalH, 28, C.sunTint);
+    text(r.total.label.toUpperCase(), left + 16, y + 62, `800 28px ${f.body}`, C.sunText);
+    text(r.total.amount, right - 16, y + 80, `600 64px ${f.display}`, C.ink, "right");
+    if (r.total.detail) text(r.total.detail, right - 16, y + 124, `700 24px ${f.body}`, C.sunText, "right");
+    y += totalH;
+  }
 
   // ── Next payment or due date.
   if (r.note) {

@@ -40,10 +40,12 @@ Screens and the phased dev plan live on the design canvas.
   money rules, pay and bill schedules, the forecast and Safe to spend, Philippine-time dates and the
   keypad.
 - `src/components/pong.tsx` is Pong, with every mood. Swap the art there.
-- `public/pong-widget.js` is the iPhone home screen widget (Spent today) for the Scriptable app.
-  Settings › Home screen widget makes its widget key (`src/app/widget-actions.ts`); the widget
-  reads Supabase directly through `widget_spent_today` (migration 0009), so it works even when
-  this app isn't reachable from the phone.
+- `public/pong-widget.js` is the iPhone home screen widget (Safe to spend today) for the Scriptable
+  app. Settings › Home screen widget makes its widget key (`src/app/widget-actions.ts`); the widget
+  reads Supabase directly through `widget_safe_to_spend` (migration 0020), so it works even when
+  this app isn't reachable from the phone. Home saves the day's amount on the widget key
+  (`src/lib/widget-snapshot.ts`) and the widget takes today's spending off it live. Before step 20
+  it falls back to `widget_spent_today` (migration 0009).
 - `scripts/make-icons.mjs` regenerates the app icons.
 - `public/sw.js` is the service worker (production only): it caches the hashed build files
   and shows `public/offline.html` when a page is opened with no signal. Pages themselves are
@@ -130,7 +132,11 @@ share sheet or copy as a picture, and **Copy text** for the same breakdown as pl
 (`breakdownText` in `src/lib/people.ts`, `billBreakdownText` in `src/lib/splits.ts`).
 
 Safe to spend = spending money in cash, bank and e-wallets, minus unpaid bills and expenses due
-before the next payday, divided by the days until payday. Income you haven't received yet
+before the next payday, divided by the days until payday. With pay every week, Pong also looks a
+month ahead: the daily amount is the most you could spend every day without any day's balance
+dropping below ₱0, counting each week's pay only from its payday. Whatever that holds back for
+bills the coming pays can't cover shows in the breakdown. Future pay only ever lowers what's held
+back; it never raises the daily amount above what's in your wallets now. Income you haven't received yet
 never counts. Coming up on Home lists the next 7 days: **Mark paid** logs the real expense
 and **Add income** logs the real income, so the item stops counting and the wallet balance
 changes instead. Deleting that transaction in Activity un-marks it. Log pay with Add income

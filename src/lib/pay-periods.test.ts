@@ -133,4 +133,25 @@ describe("payments by where they go", () => {
       ["SSS contribution", 750, 1, "2026-11-30", false],
     ]);
   });
+
+  it("lets your own bills and planned items be edited, never installments", () => {
+    const groups = groupByPayee(
+      [
+        at("Shawarma", "2026-11-16", 115, "atome"),
+        at("sample", "2026-11-15", 10000, null, "planned"),
+        at("SSS contribution", "2026-11-30", 750, null, "bill"),
+        { ...at("Tickets", "2026-11-20", 500, null, "planned"), id: "t1" },
+        { ...at("Tickets", "2026-11-21", 500, null, "planned"), id: "t2" },
+      ],
+      () => "Atome",
+      "2026-11-09",
+    );
+    expect(Object.fromEntries(groups.map((g) => [g.name, g.editId]))).toEqual({
+      Atome: null,
+      sample: "sample",
+      "SSS contribution": "SSS contribution",
+      // Two planned rows with one name: nothing single to open.
+      Tickets: null,
+    });
+  });
 });

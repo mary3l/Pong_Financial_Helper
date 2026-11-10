@@ -262,7 +262,12 @@ export type SafeToSpend = {
   nextPayday: string | null;
   /** Days from today until payday, counting today. */
   daysLeft: number | null;
-  /** Wallet money minus what's due, never below 0. */
+  /**
+   * Weekly pay: money held back now for bills after payday that the pays
+   * before them can't cover. 0 for pay twice a month or monthly.
+   */
+  setAsideLater: number;
+  /** Wallet money minus what's due and what's held back, never below 0. */
   free: number;
   /** What's free per day until payday, from the start of today; null without a payday. */
   perDay: number | null;
@@ -300,6 +305,7 @@ export function safeToSpend({
       dueCount: 0,
       nextPayday: null,
       daysLeft: null,
+      setAsideLater: 0,
       free: inWallets,
       perDay: null,
       spentToday,
@@ -310,7 +316,12 @@ export function safeToSpend({
   const daysLeft = daysBetween(today, nextPayday);
   const due = items.filter((i) => isOwed(i) && i.amount !== null && i.dueOn < nextPayday);
   const dueBeforePayday = roundCents(due.reduce((sum, i) => sum + i.amount!, 0));
-  const free = Math.max(0, roundCents(inWallets + spentToday - dueBeforePayday));
+  const freeUntilPayday = Math.max(0, roundCents(inWallets + spentToday - dueBeforePayday));
+  const setAsideLater =
+    payday.frequency === "weekly"
+      ? heldBackForLater({ freeUntilPayday, startOfDay: roundCents(inWallets + spentToday), daysLeft, items, today, nextPayday })
+      : 0;
+  const free = roundCents(freeUntilPayday - setAsideLater);
   const perDay = Math.floor(free / daysLeft);
   return {
     inWallets,
@@ -318,11 +329,57 @@ export function safeToSpend({
     dueCount: due.length,
     nextPayday,
     daysLeft,
+    setAsideLater,
     free,
     perDay,
     spentToday,
     leftToday: roundCents(perDay - spentToday),
   };
+}
+
+/** How far ahead weekly pay looks: about a month of bills, within the 30 days Home reads. */
+export const WEEKLY_LOOK_AHEAD_DAYS = 30;
+
+/**
+ * Weekly pay: a week's pay often can't cover the rent or a loan due later in
+ * the month, so dividing everything by the days until Friday would let you
+ * spend money those bills need. Spending the same amount every day, each
+ * day's balance must stay at or above ₱0 counting only the pay that has come
+ * in by then: perDay ≤ balance(t) ÷ days from today through t, for every day
+ * t in the next month. What that holds back beyond the bills before payday
+ * is returned. Pay only ever lowers what's held back, never raises Safe to
+ * spend above what's in your wallets now, so income you haven't received
+ * still never counts. A payday with no amount saved counts as ₱0.
+ */
+function heldBackForLater({
+  freeUntilPayday,
+  startOfDay,
+  daysLeft,
+  items,
+  today,
+  nextPayday,
+}: {
+  freeUntilPayday: number;
+  startOfDay: number;
+  daysLeft: number;
+  items: ForecastItem[];
+  today: string;
+  nextPayday: string;
+}): number {
+  const untilPayday = freeUntilPayday / daysLeft;
+  let limit = untilPayday;
+  // From payday on, both money in and money out count, by date (late items today).
+  const after = items
+    .map((i) => ({ date: i.dueOn < today ? today : i.dueOn, change: itemEffect(i) }))
+    .filter((e) => e.change !== 0);
+  const last = addDays(today, WEEKLY_LOOK_AHEAD_DAYS - 1);
+  for (let t = nextPayday; t <= last; t = addDays(t, 1)) {
+    const balance = after.filter((e) => e.date <= t && (e.change < 0 || e.date >= nextPayday)).reduce((sum, e) => sum + e.change, startOfDay);
+    limit = Math.min(limit, Math.max(0, balance) / (daysBetween(today, t) + 1));
+  }
+  // Only later bills hold anything back; the cents left over from ÷ days stay free.
+  if (Math.floor(limit) >= Math.floor(untilPayday)) return 0;
+  return roundCents(freeUntilPayday - Math.floor(limit) * daysLeft);
 }
 
 /** `count` monthly dates on the same day as `first`, short months clamped. */

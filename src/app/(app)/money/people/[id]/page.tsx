@@ -8,16 +8,17 @@ import { getAccounts, getInstallmentPlans, getPeople, getTransactions } from "@/
 import { formatShortDay, today as getToday } from "@/lib/dates";
 import { dueText } from "@/lib/installments";
 import { balanceEffect, formatPeso, paysInPesos, roundCents } from "@/lib/money";
-import { breakdownText, dueDate, inYourName, isLate, openRecords, type PersonEntry } from "@/lib/people";
-import { personReceipt, planLineText, type PlanLine } from "@/lib/receipt";
+import { breakdownText, dueDate, dueThisMonth, inYourName, isLate, openRecords, type PersonEntry, type TheirPlan } from "@/lib/people";
+import { personReceipt } from "@/lib/receipt";
 import { TheyPaidButton } from "../../[id]/account-actions";
 import { Avatar } from "../avatar";
-import { EditPerson, ForgiveButton, PaymentForm } from "../person-actions";
+import { DeleteEntry, DeletePerson, EditPerson, ForgiveButton, PaidForMeButton, PaymentForm, RestorePerson } from "../person-actions";
 
 export const metadata = { title: "Person · Pong Money" };
 
 // Design canvas 5.3: the balance with one person, Record payment, Send
-// reminder, history, and Forgive remaining balance.
+// reminder (this month's bill first for someone paying loans in your name),
+// history with a delete on each record, Forgive remaining balance, and Delete.
 export default function PersonPage({ params }: PageProps<"/money/people/[id]">) {
   return (
     <div className="flex flex-col gap-4 lg:max-w-2xl">
@@ -45,7 +46,7 @@ async function PersonDetail({ params }: Pick<PageProps<"/money/people/[id]">, "p
   const today = getToday();
   const [people, accounts, history, user, allPlans] = await Promise.all([
     getPeople({ includeArchived: true }),
-    getAccounts({ includeArchived: true }),
+    getAccounts({ includeArchived: true, includePeople: true }),
     getTransactions({ accountId: id, limit: 100 }),
     getCurrentUser(),
     getInstallmentPlans(),
@@ -54,6 +55,7 @@ async function PersonDetail({ params }: Pick<PageProps<"/money/people/[id]">, "p
   if (!person) notFound();
 
   const names = new Map(accounts.map((a) => [a.id, a.name]));
+  const archived = accounts.find((a) => a.id === person.id)?.archived ?? false;
   const wallets = accounts.filter((a) => paysInPesos(a) && !a.archived);
   const due = dueDate(person);
   const theirs = inYourName(person.id, allPlans);
@@ -77,28 +79,25 @@ async function PersonDetail({ params }: Pick<PageProps<"/money/people/[id]">, "p
   // They pay the lender this on top of what they owe you: theirs, never your expense.
   const interestLeft = roundCents(onYourLines.reduce((sum, p) => sum + p.interest, 0));
   const open = openRecords(person, history);
-  const theirPlans: PlanLine[] = onYourLines.map(({ plan, next, unpaid, left, principal, interest }) => {
+  const theirPlans: TheirPlan[] = onYourLines.map(({ plan, unpaid }) => {
     const lender = names.get(plan.accountId) ?? (plan.kind === "loan" ? "loan" : "credit line");
     return {
       label: plan.kind === "loan" ? `My ${lender} loan` : `${plan.name} on my ${lender}`,
-      next: { amount: next!.amount, dueOn: next!.dueOn },
-      which: plan.months > 1 ? `${next!.seq} of ${plan.months}` : null,
-      payments: unpaid.length,
-      left,
-      principal,
-      interest,
-      interestWord: plan.kind === "loan" ? "interest" : "fees",
+      payments: unpaid.map((p) => ({ amount: p.amount, dueOn: p.dueOn, which: plan.months > 1 ? `${p.seq} of ${plan.months}` : null })),
     };
   });
-  const breakdown = breakdownText({
-    person,
-    open,
-    today,
-    myName: user.name,
-    extra: theirPlans.map((p) => planLineText(p, today)),
-    theirs,
-  });
-  const receipt = personReceipt({ person, open, plans: theirPlans, theirs, today, myName: user.name });
+  // Paying loans in your name: the breakdown leads with this calendar month's payments.
+  const month = theirPlans.length ? dueThisMonth(theirPlans, today) : null;
+  const breakdown = breakdownText({ person, open, today, myName: user.name, month, theirs });
+  const receipt = personReceipt({ person, open, month, theirs, today, myName: user.name });
+  // Delete for good would leave these with no one paying them.
+  const paysInYourName = [
+    ...new Set(
+      allPlans
+        .filter((p) => p.personId === person.id)
+        .map((p) => (p.kind === "loan" ? `${names.get(p.accountId) ?? p.name} loan` : `${p.name} on ${names.get(p.accountId) ?? "a credit line"}`)),
+    ),
+  ];
 
   return (
     <>
@@ -106,9 +105,19 @@ async function PersonDetail({ params }: Pick<PageProps<"/money/people/[id]">, "p
         <Avatar name={person.name} size={52} />
         <div className="flex min-w-0 flex-1 flex-col">
           <h1 className="truncate font-display text-3xl font-semibold">{person.name}</h1>
-          {person.contact && <span className="text-sm text-muted">{person.contact}</span>}
+          {(person.contact || archived) && (
+            <span className="text-sm text-muted">{[person.contact, archived && "Archived"].filter(Boolean).join(" · ")}</span>
+          )}
         </div>
-        <EditPerson personId={person.id} name={person.name} contact={person.contact} />
+        {archived && <RestorePerson personId={person.id} />}
+        <EditPerson
+          personId={person.id}
+          name={person.name}
+          contact={person.contact}
+          loans={onYourLines
+            .filter(({ plan }) => plan.kind === "loan")
+            .map(({ plan }) => ({ href: `/money/${plan.accountId}?edit=1#edit`, label: `${names.get(plan.accountId) ?? "Loan"} loan` }))}
+        />
       </div>
 
       <section className={`flex flex-col gap-1 rounded-[28px] p-6 ${late ? "bg-coral text-white" : "bg-sea text-white"}`}>
@@ -168,7 +177,16 @@ async function PersonDetail({ params }: Pick<PageProps<"/money/people/[id]">, "p
                     {interest > 0 && ` (incl. ${formatPeso(interest)} ${plan.kind === "loan" ? "interest" : "fees"})`}
                   </span>
                 </span>
-                <TheyPaidButton ids={[next!.id]} label={unpaid.length > 1 ? `Paid ${next!.seq} of ${plan.months}` : "They paid"} />
+                <span className="flex shrink-0 flex-col items-end gap-1">
+                  <TheyPaidButton ids={[next!.id]} label={unpaid.length > 1 ? `Paid ${next!.seq} of ${plan.months}` : "They paid"} />
+                  {/* The amount, payments and interest are edited on the loan itself. */}
+                  <Link
+                    href={plan.kind === "loan" ? `/money/${plan.accountId}?edit=1#edit` : `/money/${plan.accountId}`}
+                    className="flex h-9 items-center rounded-full px-3 text-[13px] font-extrabold text-sea-dark hover:bg-mint"
+                  >
+                    {plan.kind === "loan" ? "Edit loan" : "See bill"}
+                  </Link>
+                </span>
               </li>
             ))}
           </ul>
@@ -197,26 +215,51 @@ async function PersonDetail({ params }: Pick<PageProps<"/money/people/[id]">, "p
               .filter(Boolean)
               .join(" · ");
             return (
-              <li key={t.id} className="border-b border-line-soft last:border-0">
-                <Link href={`/activity/${t.id}`} className="flex min-h-14 items-center justify-between gap-3 py-2.5 text-ink">
+              <li key={t.id} className="flex items-center gap-1 border-b border-line-soft last:border-0">
+                <Link href={`/activity/${t.id}`} className="flex min-h-14 min-w-0 flex-1 items-center justify-between gap-3 py-2.5 text-ink">
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate font-bold">{title}</span>
                     <span className="truncate text-[13px] text-muted">{detail}</span>
                   </span>
-                  <span className="font-display text-[17px] font-semibold">
+                  <span className="shrink-0 font-display text-[17px] font-semibold">
                     {change >= 0 ? "+" : "−"}
                     {formatPeso(Math.abs(change))}
                   </span>
                 </Link>
+                <span className="flex shrink-0 flex-col items-end">
+                  {entry?.kind === "borrow" && t.accountId === person.id && t.toAccountId && (
+                    <PaidForMeButton
+                      personId={person.id}
+                      txnId={t.id}
+                      name={person.name}
+                      amount={t.amount}
+                      wallet={names.get(t.toAccountId) ?? "your wallet"}
+                      note={t.note && t.note !== "Utang" ? t.note : null}
+                    />
+                  )}
+                  <DeleteEntry personId={person.id} txnId={t.id} what={`${title}, ${formatShortDay(t.occurredOn, today)}`} split={Boolean(t.splitId)} />
+                </span>
               </li>
             );
           })}
           {!history.length && <li className="py-3 text-[15px] text-muted">Nothing yet.</li>}
         </ul>
-        <p className="text-xs text-muted">+ means they owe you more, − means less (or you owe them).</p>
+        <p className="text-xs text-muted">
+          + means they owe you more, − means less (or you owe them). Deleting a split share takes them off that bill.
+        </p>
       </section>
 
       {person.balance !== 0 && <ForgiveButton personId={person.id} balance={person.balance} />}
+
+      {!archived && (
+        <DeletePerson
+          personId={person.id}
+          name={person.name}
+          records={history.length}
+          balance={person.balance}
+          inYourName={paysInYourName}
+        />
+      )}
     </>
   );
 }

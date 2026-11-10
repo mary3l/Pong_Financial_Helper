@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { removeBudget, saveBudget } from "@/app/plan-actions";
 import { AmountInput } from "@/components/amount-input";
 import { FIELD_CLASS } from "@/components/choice-chip";
+import { FormDialog } from "@/components/form-dialog";
 import { PathIcon } from "@/components/icons";
 import { Pong } from "@/components/pong";
 import { EXPENSE_CATEGORIES, categoryInfo } from "@/lib/categories";
@@ -27,49 +28,49 @@ export function BudgetManager({ rows, view }: { rows: BudgetRow[]; view: "kinsen
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const free = EXPENSE_CATEGORIES.filter((c) => !rows.some((r) => r.category === c.key));
+  const edited = rows.find((r) => r.id === editing) ?? null;
 
   return (
     <div className="flex flex-col gap-4">
+      {edited && (
+        <FormDialog title={`${categoryInfo("expense", edited.category).label} budget`} onClose={() => setEditing(null)}>
+          <BudgetForm row={edited} onDone={() => setEditing(null)} />
+        </FormDialog>
+      )}
+      {adding && (
+        <FormDialog title="Add budget" onClose={() => setAdding(false)}>
+          <BudgetForm categories={free} onDone={() => setAdding(false)} />
+        </FormDialog>
+      )}
       {rows.length ? (
         <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
           {rows.map((r) => (
             <li key={r.id} className="border-b border-line-soft py-3 last:border-0">
-              {editing === r.id ? (
-                <BudgetForm row={r} onDone={() => setEditing(null)} />
-              ) : (
-                <BudgetLine row={r} onEdit={() => setEditing(r.id)} />
-              )}
+              <BudgetLine row={r} onEdit={() => setEditing(r.id)} />
             </li>
           ))}
         </ul>
       ) : (
-        !adding && (
-          <div className="flex flex-col items-center gap-3 rounded-3xl bg-card px-6 py-8 text-center">
-            <Pong mood="listen" size={100} decorative />
-            <p className="max-w-xs text-[15px] text-muted">
-              Set a limit per kinsenas for things like Food or Groceries, and I&apos;ll tell you when you&apos;re close.
-            </p>
-          </div>
-        )
+        <div className="flex flex-col items-center gap-3 rounded-3xl bg-card px-6 py-8 text-center">
+          <Pong mood="listen" size={100} decorative />
+          <p className="max-w-xs text-[15px] text-muted">
+            Set a limit per kinsenas for things like Food or Groceries, and I&apos;ll tell you when you&apos;re close.
+          </p>
+        </div>
       )}
 
-      {adding ? (
-        <div className="rounded-[20px] bg-card p-4">
-          <BudgetForm categories={free} onDone={() => setAdding(false)} />
-        </div>
-      ) : (
-        free.length > 0 && (
-          <button
-            type="button"
-            onClick={() => {
-              setAdding(true);
-              setEditing(null);
-            }}
-            className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
-          >
-            + Add budget
-          </button>
-        )
+      {free.length > 0 && (
+        <button
+          type="button"
+          aria-haspopup="dialog"
+          onClick={() => {
+            setAdding(true);
+            setEditing(null);
+          }}
+          className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
+        >
+          + Add budget
+        </button>
       )}
       {view === "month" && rows.length > 0 && (
         <p className="-mt-2 text-xs text-muted">Budgets are set per kinsenas, so a month is double.</p>
@@ -179,9 +180,7 @@ function BudgetForm({
   return (
     <form onSubmit={save} className="flex flex-col gap-3">
       <div className="flex flex-col gap-3 sm:flex-row">
-        {row ? (
-          <p className="flex-1 self-center font-bold">{categoryInfo("expense", row.category).label}</p>
-        ) : (
+        {!row && (
           <div className="flex flex-1 flex-col gap-1">
             <label htmlFor="budget-category" className="text-sm font-bold">Category</label>
             <select id="budget-category" value={category} onChange={(e) => setCategory(e.target.value)} className={FIELD_CLASS}>
@@ -211,7 +210,7 @@ function BudgetForm({
         <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
           {pending ? "Saving…" : row ? "Update budget" : "Add budget"}
         </button>
-        <button type="button" onClick={onDone} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-mint">
+        <button type="button" onClick={onDone} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card">
           Cancel
         </button>
         {row && (

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Transaction } from "@/lib/data";
-import { breakdownText, inYourName, isLate, openRecords, type Person } from "@/lib/people";
+import { breakdownText, dueThisMonth, inYourName, isLate, openRecords, type Person, type TheirPlan } from "@/lib/people";
 import { billBreakdownText, toSplitBill } from "@/lib/splits";
 
 const TODAY = "2026-11-09";
@@ -62,26 +62,96 @@ describe("a person's breakdown", () => {
     );
   });
 
-  it("counts the interest they pay a lender in your name in the total", () => {
+  describe("someone paying a loan in your name", () => {
+    // Tita Flora's MariLoan: ₱14,583.35 left, plus ₱5,162.46 interest she pays the lender.
+    const NOV_10 = "2026-11-10";
     const flora: Person = {
       id: "flora",
       name: "Tita Flora",
       contact: null,
-      balance: 2400,
-      entries: [{ transactionId: "loan", personId: "flora", kind: "lend", dueOn: null, countInForecast: false, splitTotal: null }],
+      balance: 14583.35,
+      entries: [{ transactionId: "loan", personId: "flora", kind: "lend", dueOn: "2027-10-12", countInForecast: false, splitTotal: null }],
     };
-    const loan = [txn({ id: "loan", type: "transfer", amount: 2400, accountId: "mariloan", toAccountId: "flora", note: "MariLoan loan", occurredOn: "2026-10-16" })];
-    const text = breakdownText({
-      person: flora,
-      open: openRecords(flora, loan),
-      today: TODAY,
-      myName: null,
-      extra: ["My MariLoan loan: ₱1,250 due Nov 16 (3 of 4). ₱2,500 left (₱2,400 + ₱100 interest), 2 payments"],
-      theirs: { interest: 100, next: { dueOn: "2026-11-16", amount: 1250 } },
+    const loan = [txn({ id: "loan", type: "transfer", amount: 14583.35, accountId: "mariloan", toAccountId: "flora", note: "MariLoan loan", occurredOn: "2026-10-16" })];
+    const theirs = { interest: 5162.46, next: { dueOn: "2026-11-12", amount: 2820.83 } };
+    const mariloan: TheirPlan = {
+      label: "My MariLoan loan",
+      payments: [
+        { amount: 2820.83, dueOn: "2026-11-12", which: "2 of 12" },
+        { amount: 2820.83, dueOn: "2026-12-12", which: "3 of 12" },
+      ],
+    };
+
+    it("finds this month's payments, late ones included, and the next one after", () => {
+      const atome: TheirPlan = {
+        label: "Phone on my Atome",
+        payments: [
+          { amount: 500, dueOn: "2026-10-28", which: "4 of 6" },
+          { amount: 500, dueOn: "2026-11-28", which: "5 of 6" },
+        ],
+      };
+      const month = dueThisMonth([mariloan, atome], NOV_10);
+      expect(month.month).toBe("November");
+      expect(month.items.map((p) => [p.label, p.dueOn, p.late])).toEqual([
+        ["Phone on my Atome", "2026-10-28", true],
+        ["My MariLoan loan", "2026-11-12", false],
+        ["Phone on my Atome", "2026-11-28", false],
+      ]);
+      expect(month.total).toBe(3820.83);
+      expect(month.late).toBe(500);
+      expect(month.next).toMatchObject({ label: "My MariLoan loan", dueOn: "2026-12-12" });
     });
-    expect(text).toContain("• Oct 16 · MariLoan loan: ₱2,400");
-    expect(text).toContain(["Monthly payments:", "• My MariLoan loan: ₱1,250 due Nov 16"].join("\n"));
-    expect(text).toContain(["Total: ₱2,500 (₱2,400 + ₱100 interest & fees)", "Next payment: ₱1,250 due Nov 16"].join("\n"));
+
+    it("leads with what to pay this month, then the total still open", () => {
+      const text = breakdownText({
+        person: flora,
+        open: openRecords(flora, loan),
+        today: NOV_10,
+        myName: "Mabs",
+        month: dueThisMonth([mariloan], NOV_10),
+        theirs,
+      });
+      expect(text).toBe(
+        [
+          "Hi Tita Flora! Here's what's due this November:",
+          "",
+          "• My MariLoan loan: ₱2,820.83 due Nov 12 (2 of 12)",
+          "",
+          "To pay this month: ₱2,820.83",
+          "",
+          "Still open in all: ₱19,745.81",
+          "• Oct 16 · MariLoan loan: ₱14,583.35",
+          "• Interest & fees in the payments left: ₱5,162.46",
+          "",
+          "Salamat! - Mabs",
+        ].join("\n"),
+      );
+    });
+
+    it("marks late payments, and says when nothing more is due this month", () => {
+      const late = breakdownText({
+        person: flora,
+        open: openRecords(flora, loan),
+        today: "2026-11-13",
+        myName: null,
+        month: dueThisMonth([mariloan], "2026-11-13"),
+        theirs,
+      });
+      expect(late).toContain("• My MariLoan loan: ₱2,820.83 was due Nov 12 (2 of 12), late");
+      expect(late).toContain("To pay this month: ₱2,820.83 (₱2,820.83 of it is late)");
+
+      const paid = { ...mariloan, payments: mariloan.payments.slice(1) };
+      const text = breakdownText({ person: flora, open: openRecords(flora, loan), today: NOV_10, myName: null, month: dueThisMonth([paid], NOV_10), theirs });
+      expect(text).toContain(
+        ["Hi Tita Flora! Nothing more to pay this November.", "Next payment: ₱2,820.83 due Dec 12 (3 of 12) · My MariLoan loan"].join("\n"),
+      );
+      expect(text).toContain("Still open in all: ₱19,745.81");
+    });
+
+    it("without this month's bill, still counts the interest in the total", () => {
+      const text = breakdownText({ person: flora, open: openRecords(flora, loan), today: NOV_10, myName: null, theirs });
+      expect(text).toContain(["Total: ₱19,745.81 (₱14,583.35 + ₱5,162.46 interest & fees)", "Next payment: ₱2,820.83 due Nov 12"].join("\n"));
+    });
   });
 
   it("tracks the interest and next payment on a loan in your name", () => {

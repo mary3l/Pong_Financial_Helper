@@ -951,7 +951,8 @@ export function TransactionForm({
                 </button>
               ))}
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            {/* Fee and first due side by side, Pay from under them: three across cut off the date and wallet. */}
+            <div className="grid grid-cols-2 gap-2">
               <div className="flex flex-col gap-1">
                 <label htmlFor="plan-rate" className="text-[13px] font-extrabold">Fee % / mo</label>
                 <input
@@ -969,16 +970,16 @@ export function TransactionForm({
                   type="date"
                   value={firstDue}
                   onChange={(e) => setPlanFirstDue(e.target.value)}
-                  className="h-11 min-w-0 rounded-[14px] bg-mint px-2 text-[15px] outline-none focus:ring-2 focus:ring-sea"
+                  className="h-11 w-full min-w-0 rounded-[14px] bg-mint px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
                 />
               </div>
-              <div className="flex flex-col gap-1">
+              <div className="col-span-2 flex flex-col gap-1">
                 <label htmlFor="plan-from" className="text-[13px] font-extrabold">Pay from</label>
                 <select
                   id="plan-from"
                   value={planPayFrom}
                   onChange={(e) => setPlanPayFrom(e.target.value)}
-                  className="h-11 min-w-0 rounded-[14px] bg-mint px-2 text-[15px] outline-none focus:ring-2 focus:ring-sea"
+                  className="h-11 w-full min-w-0 rounded-[14px] bg-mint px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
                 >
                   {accounts.filter((a) => paysInPesos(a)).map((a) => (
                     <option key={a.id} value={a.id}>{a.name}</option>
@@ -989,7 +990,7 @@ export function TransactionForm({
             <p className="text-xs text-muted">
               {planRows.length
                 ? `${formatPeso(planRows[0].amount)}${planMonths > 1 ? `/mo × ${planMonths}` : ""} from ${formatShortDay(planRows[0].dueOn, today)}` +
-                  (planRows.some((r) => r.feePart > 0) ? ` · fees ${formatPeso(planRows.reduce((s, r) => s + r.feePart, 0))}` : " · no fees")
+                  (planRows.some((r) => r.feePart > 0) ? ` · fees ${formatPeso(planRows.reduce((s, r) => s + r.feePart, 0))}.` : " · no fees.")
                 : "Type an amount to see the payments."}
               {splitting
                 ? " The whole bill goes on your credit line's bill. Only your share is spending; the rest is pautang."

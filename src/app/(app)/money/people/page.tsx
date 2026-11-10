@@ -11,7 +11,7 @@ import { dueDate, inYourName, isLate, type Person } from "@/lib/people";
 import { groupSplits, unpaidByRecord, type SplitBill } from "@/lib/splits";
 import { MoneyTabs } from "../money-tabs";
 import { Avatar } from "./avatar";
-import { SettleButton } from "./person-actions";
+import { RestorePerson, SettleButton } from "./person-actions";
 
 export const metadata = { title: "Utang & pautang · Pong Money" };
 
@@ -35,7 +35,7 @@ async function People({ searchParams }: Pick<PageProps<"/money/people">, "search
   const today = getToday();
   const [people, accounts, recent, splitsReady, plans] = await Promise.all([
     getPeople(),
-    getAccounts({ includePeople: true }),
+    getAccounts({ includePeople: true, includeArchived: true }),
     getTransactions({ limit: 200 }),
     byBill ? hasSplitIds() : true,
     getInstallmentPlans(),
@@ -56,6 +56,8 @@ async function People({ searchParams }: Pick<PageProps<"/money/people">, "search
     const t = recent.find((x) => x.accountId === p.id || x.toAccountId === p.id);
     return t ? `${t.note ?? "Utang"} · ${formatShortDay(t.occurredOn, today)}` : null;
   };
+  // Archived (Delete with history): hidden from the lists above, back with Restore.
+  const archivedPeople = accounts.filter((a) => a.type === "person" && a.archived);
   const sinceOldest = (p: Person) => of(p).next?.dueOn ?? dueDate(p) ?? "9999-12-31";
 
   return (
@@ -134,7 +136,7 @@ async function People({ searchParams }: Pick<PageProps<"/money/people">, "search
                 const late = isLate(p, of(p), today);
                 return (
                   <li key={p.id} className="border-b border-line-soft last:border-0">
-                    <Link href={`/money/people/${p.id}`} className="flex min-h-14 items-center gap-3 py-2.5 text-ink">
+                    <Link href={`/money/people/${p.id}`} className="flex min-h-14 items-center gap-2.5 py-2.5 text-ink sm:gap-3">
                       <Avatar name={p.name} />
                       <span className="flex min-w-0 flex-1 flex-col">
                         <span className="truncate font-bold">{p.name}</span>
@@ -148,15 +150,16 @@ async function People({ searchParams }: Pick<PageProps<"/money/people">, "search
                                 : lastNote(p)}
                         </span>
                       </span>
-                      <span className="flex shrink-0 flex-col items-end">
-                        <span className="font-display text-[17px] font-semibold">{formatPeso(roundCents(p.balance + interest))}</span>
+                      {/* The amount wraps before the name gets squeezed out. */}
+                      <span className="flex max-w-[48%] min-w-0 flex-col items-end text-right">
+                        <span className="font-display text-[17px] font-semibold whitespace-nowrap">{formatPeso(roundCents(p.balance + interest))}</span>
                         {interest > 0 && (
-                          <span className="text-xs text-muted">
+                          <span className="text-xs leading-tight text-muted">
                             {formatPeso(p.balance)} + {formatPeso(interest)} interest
                           </span>
                         )}
                       </span>
-                      <ChevronIcon size={20} className="text-muted" />
+                      <ChevronIcon size={20} className="hidden shrink-0 text-muted sm:block" />
                     </Link>
                   </li>
                 );
@@ -196,6 +199,31 @@ async function People({ searchParams }: Pick<PageProps<"/money/people">, "search
                 </span>
               ))}
             </p>
+          )}
+
+          {archivedPeople.length > 0 && (
+            <section aria-labelledby="archived-people-heading" className="flex flex-col gap-2">
+              <h2 id="archived-people-heading" className="text-[13px] font-extrabold text-muted">ARCHIVED</h2>
+              <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
+                {archivedPeople.map((a) => (
+                  <li key={a.id} className="flex min-h-14 items-center gap-3 border-b border-line-soft py-2 last:border-0">
+                    <Link href={`/money/people/${a.id}`} className="flex min-w-0 flex-1 items-center gap-3 text-muted">
+                      <Avatar name={a.name} />
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate font-bold">{a.name}</span>
+                        {a.balance !== 0 && (
+                          <span className="text-[13px]">
+                            {a.balance > 0 ? "Owed you" : "You owed"} {formatPeso(Math.abs(a.balance))}
+                          </span>
+                        )}
+                      </span>
+                    </Link>
+                    <RestorePerson personId={a.id} />
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-muted">Archived people keep their history. Restore brings them back to your lists.</p>
+            </section>
           )}
         </>
       )}

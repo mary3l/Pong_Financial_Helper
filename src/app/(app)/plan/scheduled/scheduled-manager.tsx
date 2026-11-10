@@ -10,6 +10,7 @@ import {
 } from "@/app/schedule-actions";
 import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
+import { FormDialog } from "@/components/form-dialog";
 import { PathIcon } from "@/components/icons";
 import { LogButton } from "@/components/log-button";
 import { categoriesFor, categoryInfo } from "@/lib/categories";
@@ -64,6 +65,7 @@ export function ScheduledManager({
   items,
   payroll,
   today,
+  startEditing = null,
 }: {
   accounts: Account[];
   recurring: RecurringItem[];
@@ -72,10 +74,24 @@ export function ScheduledManager({
   /** The payroll calculator works out each payday. */
   payroll: boolean;
   today: string;
+  /** An item's id from ?edit=: its form opens first. */
+  startEditing?: string | null;
 }) {
-  const [editing, setEditing] = useState<string | null>(null);
+  const [editing, setEditingState] = useState<string | null>(startEditing);
+  function setEditing(id: string | null) {
+    setEditingState(id);
+    // Opened from a link (?edit=…): drop it once closed, so a reload doesn't open it again.
+    if (id === null && typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("edit")) {
+        url.searchParams.delete("edit");
+        window.history.replaceState(window.history.state, "", url);
+      }
+    }
+  }
   const [adding, setAdding] = useState<"in" | "out" | null>(null);
 
+  const editingRow = (id: string | null) => rows.find((r) => r.ref.id === id) ?? null;
   const nextOf = (id: string) => items.find((i) => i.id === id && !i.transactionId) ?? items.find((i) => i.id === id) ?? null;
 
   const rows: Row[] = [
@@ -159,17 +175,7 @@ export function ScheduledManager({
         <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
           {list.map((row) => (
             <li key={row.ref.id} className="border-b border-line-soft py-2.5 last:border-0">
-              {editing === row.ref.id ? (
-                <ScheduledForm
-                  accounts={accounts}
-                  initial={row.input}
-                  existing={row.ref}
-                  today={today}
-                  onClose={() => setEditing(null)}
-                />
-              ) : (
-                <ItemRow row={row} accounts={accounts} today={today} onEdit={() => setEditing(row.ref.id)} />
-              )}
+              <ItemRow row={row} accounts={accounts} today={today} onEdit={() => setEditing(row.ref.id)} />
             </li>
           ))}
           {!list.length && (
@@ -180,33 +186,41 @@ export function ScheduledManager({
             </li>
           )}
         </ul>
-        {adding === flow ? (
-          <div className="rounded-[20px] bg-card p-4">
-            <ScheduledForm
-              accounts={accounts}
-              initial={blankInput(flow, today)}
-              today={today}
-              onClose={() => setAdding(null)}
-            />
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => {
-              setAdding(flow);
-              setEditing(null);
-            }}
-            className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
-          >
-            {flow === "in" ? "+ Add income" : "+ Add expense"}
-          </button>
-        )}
+        <button
+          type="button"
+          aria-haspopup="dialog"
+          onClick={() => {
+            setAdding(flow);
+            setEditing(null);
+          }}
+          className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
+        >
+          {flow === "in" ? "+ Add income" : "+ Add expense"}
+        </button>
       </section>
     );
   };
 
+  const edited = editingRow(editing);
+
   return (
     <div className="flex flex-col gap-6">
+      {edited && (
+        <FormDialog title={`Edit ${edited.name}`} onClose={() => setEditing(null)}>
+          <ScheduledForm
+            accounts={accounts}
+            initial={edited.input}
+            existing={edited.ref}
+            today={today}
+            onClose={() => setEditing(null)}
+          />
+        </FormDialog>
+      )}
+      {adding && (
+        <FormDialog title={adding === "in" ? "Add income" : "Add expense"} onClose={() => setAdding(null)}>
+          <ScheduledForm accounts={accounts} initial={blankInput(adding, today)} today={today} onClose={() => setAdding(null)} />
+        </FormDialog>
+      )}
       <p className="text-[15px] leading-relaxed text-muted">
         Everything you expect to come in or go out, once or on repeat. It all counts in your
         forecast. When the day comes, tap <strong className="text-ink">Add income</strong> or{" "}
@@ -415,7 +429,7 @@ function ScheduledForm({
 
   return (
     <form onSubmit={save} className="flex flex-col gap-3">
-      <div role="group" aria-label="Income or expense" className="grid grid-cols-2 gap-1 rounded-2xl bg-mint p-1">
+      <div role="group" aria-label="Income or expense" className="grid grid-cols-2 gap-1 rounded-2xl bg-card p-1">
         {(["in", "out"] as const).map((f) => (
           <button
             key={f}
@@ -464,7 +478,7 @@ function ScheduledForm({
               key={idea}
               type="button"
               onClick={() => setName(idea)}
-              className="h-9 rounded-full bg-mint px-3.5 text-sm font-extrabold text-ink hover:bg-sea-tint"
+              className="h-9 rounded-full bg-card px-3.5 text-sm font-extrabold text-ink hover:bg-sea-tint"
             >
               {idea}
             </button>
@@ -480,7 +494,6 @@ function ScheduledForm({
               key={r.value}
               selected={repeat === r.value}
               onClick={() => setRepeat(r.value)}
-              className={repeat === r.value ? "" : "bg-mint"}
             >
               {r.label}
             </ChoiceChip>
@@ -549,7 +562,7 @@ function ScheduledForm({
               aria-pressed={category === c.key}
               onClick={() => setCategories((cs) => ({ ...cs, [flow]: c.key }))}
               className={`flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-extrabold ${
-                category === c.key ? "bg-ink text-mint" : "bg-mint text-ink hover:bg-sea-tint"
+                category === c.key ? "bg-ink text-mint" : "bg-card text-ink hover:bg-sea-tint"
               }`}
             >
               <PathIcon d={c.icon} size={16} />
@@ -578,7 +591,7 @@ function ScheduledForm({
         <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
           {pending ? "Saving…" : existing ? `Update ${flow === "in" ? "income" : "expense"}` : flow === "in" ? "Add income" : "Add expense"}
         </button>
-        <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-mint">
+        <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card">
           Cancel
         </button>
         {existing && (

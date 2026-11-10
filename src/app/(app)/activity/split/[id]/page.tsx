@@ -19,7 +19,7 @@ import { EditSplit } from "./edit-split";
 export const metadata = { title: "Split bill · Pong Money" };
 
 // A split bill from Activity or Utang & pautang: the whole bill, each share
-// and what's still unpaid. "Edit this split" changes the whole bill.
+// and what's still unpaid. "Edit split" changes the whole bill, and can add people to it.
 export default function SplitPage({ params, searchParams }: PageProps<"/activity/split/[id]">) {
   return (
     <div className="flex flex-col gap-4 lg:max-w-2xl">
@@ -45,6 +45,8 @@ async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/
   const today = getToday();
   const split = toSplitBill(id, records);
   const names = new Map(accounts.map((a) => [a.id, a.name]));
+  // Only people still in your list can be picked to add (a typed name brings an archived one back).
+  const archivedIds = new Set(accounts.filter((a) => a.archived).map((a) => a.id));
   const info = categoryInfo("expense", split.mine?.category ?? "family");
   const wallet = names.get(split.accountId) ?? "Removed wallet";
   // Paid with a credit line: the whole bill is on its bill, as a payment plan.
@@ -60,11 +62,12 @@ async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/
   const stillOwed = roundCents(split.others.reduce((s, t) => s + (unpaid.get(t.id) ?? 0), 0));
 
   const rows = [
-    ...(split.mine ? [{ id: split.mine.id, name: "You", amount: split.mine.amount, what: `${info.label} · spending` }] : []),
+    ...(split.mine ? [{ id: split.mine.id, personId: null, name: "You", amount: split.mine.amount, what: `${info.label} · spending` }] : []),
     ...split.others.map((t) => {
       const left = unpaid.get(t.id) ?? 0;
       return {
         id: t.id,
+        personId: t.toAccountId,
         name: names.get(t.toAccountId ?? "") ?? "Removed person",
         amount: t.amount,
         what: left === 0 ? "✓ Paid back" : left < t.amount ? `Still owes ${formatPeso(left)}` : "Pautang · not paid yet",
@@ -169,7 +172,8 @@ async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/
         splitId={id}
         note={typedNote(records)}
         date={split.occurredOn}
-        shares={rows.map((r) => ({ id: r.id, name: r.name, amount: r.amount }))}
+        shares={rows.map((r) => ({ id: r.id, personId: r.personId, name: r.name, amount: r.amount }))}
+        people={people.filter((p) => !archivedIds.has(p.id)).map((p) => ({ id: p.id, name: p.name }))}
       />
 
       <p className="text-xs text-muted">

@@ -14,26 +14,23 @@ import {
 import { formatShortDay, today as getToday } from "@/lib/dates";
 import { getUsdRate } from "@/lib/fx";
 import {
-  dailyInterest,
   formatPeso,
-  interestEstimate,
-  interestTax,
   isDebt,
   isSpendable,
   pesoTotal,
-  pesoValue,
   roundCents,
-  type InterestEstimate,
 } from "@/lib/money";
 import { dueDate, isOverdue, type Person } from "@/lib/people";
 import { MoneyTabs } from "./money-tabs";
 import { WalletManager } from "./wallet-manager";
+import { isSavingsWallet, walletInterest } from "./wallet-totals";
 
 export const metadata = { title: "Money · Pong Money" };
 
-// Design canvas 4.1: money you have (cash, banks like MariBank and GoTyme,
+// Design canvas 4.1: spending money (cash, banks like MariBank and GoTyme,
 // e-wallets like GCash and Maya) and money you owe (SPayLater, Atome, SLoan,
-// MariLoan), with net worth. On desktop, Utang & pautang sits beside it.
+// MariLoan), with net worth. Savings has its own tab. On desktop, Utang &
+// pautang sits beside it.
 export default function MoneyPage() {
   return (
     <div className="flex flex-col gap-4 lg:max-w-6xl">
@@ -60,29 +57,22 @@ async function Wallets() {
   ]);
   const active = accounts.filter((a) => !a.archived);
   const wallets = active.filter((a) => isSpendable(a.type));
+  // Savings, emergency fund, investments and dollars are on the Savings tab.
+  const saved = wallets.filter(isSavingsWallet);
+  const spending = wallets.filter((a) => !isSavingsWallet(a));
   const debts = active.filter((a) => isDebt(a.type));
   const debtGroups = [
     { key: "bnpl", label: "Buy now, pay later", accounts: debts.filter((a) => a.type === "credit_line") },
     { key: "loan", label: "Loans", accounts: debts.filter((a) => a.type === "loan") },
   ].filter((g) => g.accounts.length > 0);
 
-  // MariBank: interest built up since it was last logged, or since the rate was set.
-  // GoTyme: also what it credited on the 1st that isn't logged yet.
-  const accrued: Record<string, InterestEstimate> = {};
-  for (const a of wallets) {
-    if (!a.interestRate) continue;
-    accrued[a.id] = interestEstimate({ ...a, interestRate: a.interestRate }, lastInterest.get(a.id) ?? null, today);
-  }
-  // In pesos; a time deposit stops earning once it matures.
-  const interestPerMonth = roundCents(
-    wallets.reduce((sum, a) => {
-      if (!a.interestRate || (a.interestPayout === "maturity" && a.maturesOn && a.maturesOn <= today)) return sum;
-      const perMonth = dailyInterest(a.balance, a.interestRate, interestTax(a.currency)) * 30;
-      return sum + pesoValue({ ...a, balance: perMonth });
-    }, 0),
-  );
-  // Dollars count at the rate set on each wallet.
-  const have = pesoTotal(wallets);
+  // Spending wallets can earn interest too (MariBank, GoTyme).
+  const { accrued, perMonth: interestPerMonth } = walletInterest(spending, lastInterest, today);
+  // You have: spending money only; savings are on their own tab. Net worth
+  // still counts everything. Dollars count at the rate set on each wallet.
+  const have = pesoTotal(spending);
+  const savedTotal = pesoTotal(saved);
+  const everything = pesoTotal(wallets);
   // Pautang is still your money; utang is money you owe.
   const owedToYou = roundCents(people.reduce((sum, p) => sum + Math.max(0, p.balance), 0));
   const owe = roundCents(
@@ -101,31 +91,53 @@ async function Wallets() {
   return (
     <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start lg:gap-6">
       <div className="flex flex-col gap-4">
-        <dl className="grid grid-cols-3 gap-2">
+        {/* Two across on phones, with Net worth under them, so long amounts never get cut. */}
+        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {[
-            { label: "You have", value: have },
-            { label: "You owe", value: owe },
-            { label: "Net worth", value: roundCents(have + owedToYou - owe) },
+            { label: "You have", hint: "Spending money", value: have },
+            { label: "You owe", hint: "BNPL, loans, utang", value: owe },
+            { label: "Net worth", hint: "Savings and pautang included", value: roundCents(everything + owedToYou - owe), wide: true },
           ].map((s) => (
-            <div key={s.label} className="flex flex-col gap-0.5 rounded-2xl bg-card px-3 py-3">
+            <div
+              key={s.label}
+              className={`flex min-w-0 flex-col gap-0.5 rounded-2xl bg-card px-3.5 py-3 ${s.wide ? "col-span-2 sm:col-span-1" : ""}`}
+            >
               <dt className="text-xs font-bold text-muted">{s.label}</dt>
-              <dd className={`font-display text-lg font-semibold sm:text-2xl ${s.value < 0 ? "text-coral-text" : ""}`}>
+              <dd className={`font-display text-xl font-semibold whitespace-nowrap sm:text-2xl ${s.value < 0 ? "text-coral-text" : ""}`}>
                 {formatPeso(s.value)}
               </dd>
+              <dd className="text-[11px] leading-tight text-muted">{s.hint}</dd>
             </div>
           ))}
         </dl>
 
+        <Link
+          href="/money/savings"
+          className="flex min-h-14 items-center gap-3 rounded-[20px] bg-card px-4 py-2.5 text-ink hover:bg-sea-tint"
+        >
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="font-bold">Savings</span>
+            <span className="text-[13px] text-muted">
+              {saved.length
+                ? `${saved.length} ${saved.length === 1 ? "wallet" : "wallets"} set aside, not in Safe to spend`
+                : "Emergency fund, goals, time deposits"}
+            </span>
+          </span>
+          <span className="font-display text-[17px] font-semibold">{formatPeso(savedTotal)}</span>
+          <ChevronIcon size={20} className="text-muted" />
+        </Link>
+
         <section aria-labelledby="have-heading" className="flex flex-col gap-2">
           <h2 id="have-heading" className="text-[13px] font-extrabold text-muted">
-            MONEY YOU HAVE
+            SPENDING MONEY · {formatPeso(pesoTotal(spending))}
             {interestPerMonth > 0 && ` · earning ≈ ${formatPeso(interestPerMonth)}/mo in interest`}
           </h2>
           <WalletManager
-            accounts={accounts.filter((a) => isSpendable(a.type) || a.archived)}
+            accounts={accounts.filter((a) => (isSpendable(a.type) && !isSavingsWallet(a)) || a.archived)}
             accrued={accrued}
             today={today}
             usdRate={usdRate?.rate ?? null}
+            purposes={["spending"]}
           />
         </section>
 

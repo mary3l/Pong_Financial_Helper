@@ -4,11 +4,10 @@ import { Suspense } from "react";
 import { DisplayNameForm } from "@/components/display-name-form";
 import { ForecastChart } from "@/components/forecast-chart";
 import { LogButton } from "@/components/log-button";
-import { Pong, type PongMood } from "@/components/pong";
 import { ThemeToggle } from "@/components/theme";
 import { TransactionList } from "@/components/transaction-list";
 import { getCurrentUser } from "@/lib/auth";
-import { DEBT_SHARE, SURPLUS_SHARE, creditRoom, totalUsable, type BnplCap, type CreditRoom } from "@/lib/bnpl";
+import { creditRoom } from "@/lib/bnpl";
 import { categoryInfo } from "@/lib/categories";
 import {
   getBnplCap,
@@ -29,7 +28,7 @@ import {
   periodContaining,
   today as getToday,
 } from "@/lib/dates";
-import { itemLabel, project, safeToSpend, type ForecastItem, type SafeToSpend } from "@/lib/forecast";
+import { itemLabel, project, safeToSpend, type ForecastItem } from "@/lib/forecast";
 import { getUsdRate } from "@/lib/fx";
 import {
   accountTypeLabel,
@@ -46,6 +45,8 @@ import {
   roundCents,
 } from "@/lib/money";
 import { dueDate, isOverdue } from "@/lib/people";
+import { saveWidgetSnapshot } from "@/lib/widget-snapshot";
+import { SafeToSpendCard, pongSays } from "./safe-to-spend-card";
 
 // Design canvas 2.1: Safe to spend (with its breakdown), Coming up (bills and
 // expenses with Mark paid, pay and income with Add income), the next 30 days,
@@ -118,6 +119,8 @@ async function Dashboard() {
     credit.length ? getBnplCap(today, plan) : null,
   ]);
   const sts = safeToSpend({ inWallets, payday, items, today, spentToday });
+  // The home screen widget shows this too (0020_widget_safe_to_spend.sql).
+  await saveWidgetSnapshot(sts, today);
   const forecast = project(inWallets, items, today, 30);
   const pong = pongSays(sts, accounts.length > 0, today);
   // Everything scheduled in the next 7 days, plus late planned items.
@@ -132,19 +135,7 @@ async function Dashboard() {
   return (
     <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:items-start">
       <div className="flex flex-col gap-5">
-        <div className="flex items-end gap-1">
-          <Pong mood={pong.mood} size={92} decorative />
-          <p className="relative mb-5 flex-1 rounded-[20px_20px_20px_6px] bg-card px-3.5 py-3 text-[15px] leading-relaxed shadow-[0_2px_0_var(--color-line)]">
-            {pong.message}{" "}
-            {pong.link && (
-              <Link href={pong.link.href} className="font-extrabold text-sea-dark underline">
-                {pong.link.label}
-              </Link>
-            )}
-          </p>
-        </div>
-
-        <SafeToSpendCard sts={sts} setAside={setAside} credit={credit} cap={cap} today={today} />
+        <SafeToSpendCard sts={sts} pong={pong} setAside={setAside} credit={credit} cap={cap} today={today} />
 
         {overdue.length > 0 && (
           <section aria-label="Overdue pautang" className="flex flex-col gap-1 rounded-[20px] bg-coral-tint px-4 py-3">
@@ -424,249 +415,6 @@ async function DollarsCard({ wallets, today }: { wallets: Account[]; today: stri
       </div>
     </section>
   );
-}
-
-function SafeToSpendCard({
-  sts,
-  setAside,
-  credit,
-  cap,
-  today,
-}: {
-  sts: SafeToSpend;
-  setAside: number;
-  /** BNPL lines: shown apart, never in the numbers above them. */
-  credit: CreditRoom[];
-  /** Pong's monthly BNPL cap; null without credit lines. */
-  cap: BnplCap | null;
-  today: string;
-}) {
-  const hasPayday = sts.perDay !== null && sts.nextPayday;
-  // Something to show: a limit, or a cap (or a pause) that holds every line.
-  const showCredit = cap !== null && (cap.left !== null || credit.some((l) => l.creditLeft !== null));
-  return (
-    <section className="relative flex flex-col gap-1.5 overflow-hidden rounded-[28px] bg-sea p-6 text-white lg:p-7">
-      <div aria-hidden="true" className="absolute -top-12 -right-10 h-40 w-40 rounded-full bg-sea-light" />
-      <h2 className="relative text-sm font-bold text-sea-text">
-        {hasPayday ? "SAFE TO SPEND TODAY" : "IN YOUR WALLETS"}
-      </h2>
-      <p className="relative font-display text-5xl leading-none font-semibold lg:text-6xl">
-        {formatPeso(hasPayday ? sts.leftToday! : sts.inWallets)}
-      </p>
-      {hasPayday && sts.spentToday > 0 && (
-        <p className="relative text-[15px] font-extrabold">
-          {sts.leftToday! < 0
-            ? `Over by ${formatPeso(-sts.leftToday!)}: spent ${formatPeso(sts.spentToday)} of ${formatPeso(sts.perDay!)} today`
-            : `Spent ${formatPeso(sts.spentToday)} of today's ${formatPeso(sts.perDay!)}`}
-        </p>
-      )}
-      <p className="relative text-[15px] text-sea-text">
-        {hasPayday
-          ? `${formatPeso(sts.perDay!)} a day until payday on ${formatShortDay(sts.nextPayday!, today)} · ${sts.daysLeft} ${sts.daysLeft === 1 ? "day" : "days"} left`
-          : "Set your payday to see a daily amount."}
-      </p>
-      {showCredit && <CreditAvailable lines={credit} cap={cap} />}
-      {hasPayday && (
-        <details className="group relative">
-          <summary className="flex h-11 w-fit cursor-pointer list-none items-center text-[15px] font-extrabold text-white underline underline-offset-4 [&::-webkit-details-marker]:hidden">
-            <span className="group-open:hidden">How is this computed?</span>
-            <span className="hidden group-open:inline">Hide breakdown</span>
-          </summary>
-          <dl className="flex flex-col gap-1.5 rounded-[18px] bg-sea-deep px-4 py-3.5 text-[15px]">
-            <BreakdownLine
-              label={sts.spentToday > 0 ? "Spending money in your wallets this morning" : "Spending money in your wallets"}
-              value={formatPeso(roundCents(sts.inWallets + sts.spentToday))}
-            />
-            <BreakdownLine label={`− Due before payday (${sts.dueCount})`} value={formatPeso(sts.dueBeforePayday)} />
-            <BreakdownLine
-              label={`= Free until ${formatShortDay(sts.nextPayday!, today)}`}
-              value={formatPeso(sts.free)}
-              strong
-              divider
-            />
-            <BreakdownLine
-              label={`÷ ${sts.daysLeft} ${sts.daysLeft === 1 ? "day" : "days"}`}
-              value={`${formatPeso(sts.perDay!)} / day`}
-              strong
-            />
-            <BreakdownLine label="− Spent today" value={formatPeso(sts.spentToday)} />
-            <BreakdownLine label="= Left for today" value={formatPeso(sts.leftToday!)} strong divider />
-          </dl>
-          <p className="pt-2 text-[13px] leading-snug text-sea-text">
-            Only spending money in cash, bank and e-wallets counts
-            {setAside > 0 && <> (your {formatPeso(setAside)} in savings, emergency fund and investments doesn&apos;t)</>}.
-            Pautang, credit limits and loans never do,
-            and neither does income you haven&apos;t received yet. A bill stops counting once
-            you mark it paid. What you spend today comes out of today&apos;s share; paying a
-            scheduled bill doesn&apos;t, since it was already set aside.
-          </p>
-          {cap && <CreditBreakdown lines={credit} cap={cap} />}
-        </details>
-      )}
-    </section>
-  );
-}
-
-/** Borrowed money you could still use: apart from, and quieter than, your own. */
-function CreditAvailable({ lines, cap }: { lines: CreditRoom[]; cap: BnplCap }) {
-  return (
-    <div className="relative mt-1.5 flex flex-col gap-0.5 border-t border-dashed border-sea-light pt-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-[13px] font-bold text-sea-text">BNPL YOU CAN STILL USE</h3>
-        <span className="font-display text-2xl font-semibold">{formatPeso(totalUsable(lines, cap.left))}</span>
-      </div>
-      <p className="text-[13px] leading-snug text-sea-text">
-        {cap.status === "set" && (
-          <>
-            Borrowed · my cap this month {formatPeso(cap.cap!)}
-            {cap.used > 0 && <>, {formatPeso(cap.used)} used</>}
-          </>
-        )}
-        {cap.status === "paused" && <>Paused: {cap.reason}</>}
-        {cap.status === "unknown" && <>Borrowed, you pay it back later. {cap.reason}</>}
-      </p>
-    </div>
-  );
-}
-
-function CreditBreakdown({ lines, cap }: { lines: CreditRoom[]; cap: BnplCap }) {
-  const percent = (share: number) => `${Math.round(share * 100)}%`;
-  return (
-    <>
-      <h3 className="pt-4 pb-1.5 text-[13px] font-extrabold text-sea-text">BNPL · NOT IN THE NUMBERS ABOVE</h3>
-      {cap.months > 0 && cap.income > 0 && (
-        <dl className="mb-2 flex flex-col gap-1.5 rounded-[18px] bg-sea-deep px-4 py-3.5 text-[15px]">
-          <BreakdownLine
-            label={
-              cap.estimated
-                ? "Take-home a month (your pay in the next 30 days)"
-                : `Take-home a month (last ${cap.months} ${cap.months === 1 ? "month" : "months"})`
-            }
-            value={formatPeso(cap.income)}
-          />
-          <BreakdownLine
-            label={cap.estimated ? "− Spending a month (bills + this month's daily rate)" : "− Spending a month"}
-            value={formatPeso(cap.spending)}
-          />
-          <BreakdownLine label="= Left after spending" value={formatPeso(cap.surplus)} strong divider />
-          <BreakdownLine
-            label={`All BNPL and loan payments: the smaller of ${percent(DEBT_SHARE)} of take-home (${formatPeso(cap.byIncome)}) and ${percent(SURPLUS_SHARE)} of what's left (${formatPeso(cap.bySurplus)})`}
-            value={formatPeso(cap.ceiling)}
-            strong
-            divider
-          />
-          <BreakdownLine label="− Installments and loans due in 30 days" value={formatPeso(cap.debtPayments)} />
-          <BreakdownLine label="= My cap on new BNPL this month" value={formatPeso(cap.cap!)} strong divider />
-          <BreakdownLine label="− Charged to BNPL this month" value={formatPeso(cap.used)} />
-          <BreakdownLine label="= Left this month" value={formatPeso(cap.left!)} strong divider />
-        </dl>
-      )}
-      <dl className="flex flex-col gap-2 rounded-[18px] bg-sea-deep px-4 py-3.5 text-[15px]">
-        {lines.map((l) => (
-          <div key={l.id} className="flex items-start justify-between gap-3">
-            <dt className="flex flex-col">
-              <span className="font-extrabold">{l.name}</span>
-              <span className="text-[13px] text-sea-text">
-                {l.limit === null
-                  ? `You owe ${formatPeso(l.owed)}`
-                  : `${formatPeso(l.limit)} limit − ${formatPeso(l.owed)} you owe`}
-              </span>
-            </dt>
-            <dd className="text-right font-extrabold">
-              {l.creditLeft === null ? (
-                <Link href={`/money/${l.id}`} className="text-white underline underline-offset-4">
-                  Set a limit
-                </Link>
-              ) : (
-                `${formatPeso(l.creditLeft)} left`
-              )}
-            </dd>
-          </div>
-        ))}
-      </dl>
-      <p className="pt-2 text-[13px] leading-snug text-sea-text">
-        {cap.status === "unknown" ? (
-          <>{cap.reason} </>
-        ) : (
-          <>
-            {cap.status === "paused" && <>{cap.reason} </>}
-            You can use what&apos;s left of your limits, but never more than my cap. I work it out
-            again every day from your income, spending and installments, so each BNPL purchase
-            lowers next month&apos;s cap.{" "}
-            {cap.estimated && <>Until you have a full month of records, it&apos;s an estimate. </>}
-          </>
-        )}
-        What you buy with BNPL doesn&apos;t come out of today&apos;s share. Its payments do, once
-        they&apos;re due before payday.
-      </p>
-    </>
-  );
-}
-
-function BreakdownLine({
-  label,
-  value,
-  strong = false,
-  divider = false,
-}: {
-  label: string;
-  value: string;
-  strong?: boolean;
-  divider?: boolean;
-}) {
-  return (
-    <div className={`flex justify-between gap-3 ${strong ? "font-extrabold" : ""} ${divider ? "border-t border-sea-light pt-1.5" : ""}`}>
-      <dt>{label}</dt>
-      <dd>{value}</dd>
-    </div>
-  );
-}
-
-function pongSays(
-  sts: SafeToSpend,
-  hasWallets: boolean,
-  today: string,
-): { mood: PongMood; message: string; link?: { href: string; label: string } } {
-  if (!hasWallets) {
-    return {
-      mood: "ask",
-      message: "Add your wallets and payday, and I'll work out how much you can safely spend each day.",
-      link: { href: "/setup", label: "Set up wallets" },
-    };
-  }
-  if (!sts.nextPayday || sts.perDay === null) {
-    return {
-      mood: "listen",
-      message: "When's payday? Tell me and I'll spread your money across the days until then.",
-      link: { href: "/settings/payday", label: "Set payday" },
-    };
-  }
-  if (sts.perDay === 0) {
-    return {
-      mood: "worried",
-      message: `What's due before payday is more than what's in your wallets. Let's go easy until ${formatShortDay(sts.nextPayday, today)}.`,
-      link: { href: "/plan", label: "See forecast" },
-    };
-  }
-  if (sts.leftToday !== null && sts.leftToday < 0) {
-    return {
-      mood: "worried",
-      message: `You've gone ${formatPeso(-sts.leftToday)} over today's ${formatPeso(sts.perDay)}. It's okay, let's take it easy tomorrow.`,
-    };
-  }
-  if (sts.daysLeft === 1) {
-    return { mood: "proud", message: "Payday's tomorrow! You made it, kaya natin 'to." };
-  }
-  if (sts.spentToday > 0) {
-    return {
-      mood: "happy",
-      message: `${formatPeso(sts.leftToday!)} left for today. Payday's in ${sts.daysLeft} days.`,
-    };
-  }
-  return {
-    mood: "happy",
-    message: `Payday's in ${sts.daysLeft} days. Stay under ${formatPeso(sts.perDay)} a day and you're set.`,
-  };
 }
 
 function PersonIcon() {

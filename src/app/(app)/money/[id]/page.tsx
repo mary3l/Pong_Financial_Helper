@@ -9,7 +9,7 @@ import { scheduledItems } from "@/lib/forecast";
 import { bnplFirstDue, catchUpDue, dueText, statementFor } from "@/lib/installments";
 import { formatPeso, isDebt, isSpendable, paysInPesos, roundCents } from "@/lib/money";
 import { nextOccurrence } from "@/lib/schedule";
-import { toSplitBill, type SplitBill } from "@/lib/splits";
+import { readPage, toSplitBill, type SplitBill } from "@/lib/splits";
 import { AccountActions, AssignPlanButton, PayBillButton, RemovePlanButton, TheyPaidButton, UpcomingPayments } from "./account-actions";
 import { AddSplitsButton } from "./add-splits";
 import { WalletActivity } from "./wallet-activity";
@@ -45,7 +45,7 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
   const account = accounts.find((a) => a.id === id);
   if (account && isSpendable(account.type)) {
     const p = typeof query.p === "string" && isValidDate(query.p) && query.p <= today ? query.p : today;
-    return <WalletActivity account={account} date={p} today={today} />;
+    return <WalletActivity account={account} date={p} today={today} page={readPage(query.page)} />;
   }
   if (!account || !isDebt(account.type)) notFound();
 
@@ -185,8 +185,8 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
           </div>
           {nextMine.length > 0 && <PayBillButton ids={nextMine.map((p) => p.id)} total={nextMineTotal} />}
           {nextTheirs.map((t) => (
-            <div key={t.id} className="flex w-full items-center justify-between gap-3 border-t border-line-soft pt-2.5">
-              <span className="text-[15px]">
+            <div key={t.id} className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-line-soft pt-2.5">
+              <span className="min-w-0 flex-1 basis-40 text-[15px]">
                 <strong>{t.name}</strong> pays {formatPeso(t.total)} of this bill
               </span>
               <TheyPaidButton ids={t.ids} label={`${t.name} paid`} />
@@ -221,9 +221,10 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
             const left = roundCents(unpaid.reduce((sum, p) => sum + p.principalPart, 0));
             return (
               <li key={plan.id} className="flex flex-col gap-2 border-b border-line-soft py-2.5 last:border-0">
-                <div className="flex items-center gap-3">
+                {/* Name and details get the width; the amount and Remove stack on the right. */}
+                <div className="flex items-start gap-3">
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate font-bold">{plan.name}</span>
+                    <span className="font-bold break-words">{plan.name}</span>
                     <span className="text-[13px] text-muted">
                       {plan.months === 1 ? "One payment" : `${plan.months} months`} · {paidCount} of {plan.months} paid
                       {plan.feeTotal > 0 && ` · fees ${formatPeso(plan.feeTotal)}`}
@@ -235,10 +236,12 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
                       </Link>
                     )}
                   </span>
-                  <span className="font-display text-[17px] font-semibold">
-                    {formatPeso(each)}{plan.months > 1 && <span className="text-sm text-muted">/mo</span>}
+                  <span className="flex shrink-0 flex-col items-end">
+                    <span className="font-display text-[17px] font-semibold whitespace-nowrap">
+                      {formatPeso(each)}{plan.months > 1 && <span className="text-sm text-muted">/mo</span>}
+                    </span>
+                    <RemovePlanButton id={plan.id} name={plan.name} />
                   </span>
-                  <RemovePlanButton id={plan.id} name={plan.name} />
                 </div>
                 {!payer && !splitOfPlan.has(plan.id) && left > 0 && (
                   <AssignPlanButton
@@ -354,8 +357,12 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
           credit
             ? undefined
             : {
-                // Someone else's loan: its terms set what they owe, so only the name can change.
-                plan: plans.find((p) => p.kind === "loan" && !p.personId) ?? null,
+                // Someone else's too: what they owe you follows its new terms.
+                plan: plans.find((p) => p.kind === "loan") ?? null,
+                paidBy: (() => {
+                  const theirs = plans.find((p) => p.kind === "loan")?.personId;
+                  return theirs ? (personName.get(theirs) ?? "They") : null;
+                })(),
                 wallets: accounts.filter((a) => paysInPesos(a) && !a.archived),
                 today,
               }

@@ -79,3 +79,12 @@ body {
   color: var(--color-ink);
   font-family: var(--font-sans);
 }
+
+/* Pong beside his bubble on Safe to spend: a slow little bob. */
+@keyframes pong-peek {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pong-peek { animation: pong-peek 3.2s ease-in-out infinite; }
+}

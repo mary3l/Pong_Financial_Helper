@@ -31,9 +31,10 @@ export function WidgetSetup({ keyMadeOn }: { keyMadeOn: string | null }) {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-[15px] text-muted">
-        See what you&apos;ve spent today on your iPhone home screen. It uses Scriptable, a free app
-        from the App Store. The widget can only read today&apos;s spending; it can&apos;t see
-        balances or change anything.
+        See what&apos;s left of today&apos;s Safe to spend on your iPhone home screen. It uses
+        Scriptable, a free app from the App Store. The widget can only read today&apos;s spending
+        and the daily amount Home last worked out; it can&apos;t see balances or change anything.
+        Already set it up? Copy the script again to get the new look.
       </p>
 
       <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-[15px]">

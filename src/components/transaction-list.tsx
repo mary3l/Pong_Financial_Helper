@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { PathIcon } from "@/components/icons";
+import { ChevronIcon, PathIcon } from "@/components/icons";
 import { categoryInfo, categoryLabel, isAdjustment } from "@/lib/categories";
 import type { Account, Transaction } from "@/lib/data";
 import { formatRelativeDay, formatShortDay, transactionTime } from "@/lib/dates";
 import { balanceEffect, formatMoney, formatPeso, type Currency } from "@/lib/money";
-import { groupSplits, type ListItem, type SplitBill } from "@/lib/splits";
+import { groupSplits, itemDate, type ListItem, type SplitBill } from "@/lib/splits";
 
 /**
  * Transactions grouped under day headings, each opening its edit screen. A
@@ -12,12 +12,15 @@ import { groupSplits, type ListItem, type SplitBill } from "@/lib/splits";
  */
 export function TransactionList({
   transactions,
+  items,
   accounts,
   today,
   grouped = true,
   walletId,
 }: {
   transactions: Transaction[];
+  /** Already grouped (one page of a long list): shown instead of `transactions`. */
+  items?: ListItem[];
   accounts: Account[];
   today: string;
   /** False for short lists that show the day on each row instead. */
@@ -29,8 +32,8 @@ export function TransactionList({
   // Amounts are in their wallet's currency: dollars on a USD time deposit.
   const currencies = new Map(accounts.map((a) => [a.id, a.currency]));
   const days: { date: string; items: ListItem[] }[] = [];
-  for (const item of groupSplits(transactions)) {
-    const date = item.kind === "one" ? item.txn.occurredOn : item.split.occurredOn;
+  for (const item of items ?? groupSplits(transactions)) {
+    const date = itemDate(item);
     const last = days.at(-1);
     if (grouped && last?.date === date) last.items.push(item);
     else days.push({ date, items: [item] });
@@ -59,6 +62,36 @@ export function TransactionList({
         </section>
       ))}
     </div>
+  );
+}
+
+/**
+ * Previous / next page under a long list, with "Page 2 of 4". `href` makes
+ * the link for a page; nothing shows when everything fits on one.
+ */
+export function ListPages({ page, pages, href }: { page: number; pages: number; href: (page: number) => string }) {
+  if (pages <= 1) return null;
+  const link = "flex h-11 items-center gap-1 rounded-full px-3 text-sm font-extrabold text-sea-dark hover:bg-mint";
+  return (
+    <nav aria-label="Pages" className="flex items-center justify-between gap-2 rounded-[20px] bg-card px-2 py-1.5">
+      {page > 1 ? (
+        <Link href={href(page - 1)} className={link} rel="prev">
+          <ChevronIcon direction="left" size={18} /> Newer
+        </Link>
+      ) : (
+        <span className="w-20" aria-hidden="true" />
+      )}
+      <span className="text-sm font-bold text-muted" aria-live="polite">
+        Page {page} of {pages}
+      </span>
+      {page < pages ? (
+        <Link href={href(page + 1)} className={link} rel="next">
+          Older <ChevronIcon size={18} />
+        </Link>
+      ) : (
+        <span className="w-20" aria-hidden="true" />
+      )}
+    </nav>
   );
 }
 

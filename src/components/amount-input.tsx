@@ -16,9 +16,9 @@ import {
 import { formatPeso } from "@/lib/money";
 
 // An amount field that can do math, so you never need the phone's own
-// calculator: type "120+45" (worked out on Enter or when you leave the
-// field), or tap the calculator for Pong's keypad. Phones need the keypad,
-// since their number keyboard has no + or −.
+// calculator. Tapping or clicking it opens Pong's keypad (phones need it:
+// their number keyboard has no + or −). Reaching it with Tab still lets you
+// type, "120+45" included, worked out on Enter or when you leave the field.
 
 type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "type" | "inputMode"> & {
   value: string;
@@ -35,6 +35,10 @@ export function AmountInput({ value, onChange, label, wrapperClassName = "w-full
   const inputRef = useRef<HTMLInputElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const named = label ?? rest["aria-label"];
+
+  function openCalculator() {
+    setOpen(named ?? inputRef.current?.labels?.[0]?.textContent?.trim() ?? "Amount");
+  }
 
   /** Replaces a typed sum with its answer; false if there was nothing to work out. */
   function settle(): boolean {
@@ -55,6 +59,14 @@ export function AmountInput({ value, onChange, label, wrapperClassName = "w-full
         ref={inputRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        // A tap opens Pong's calculator, once the finger is up: opened on
+        // press, the sheet would slide up under the finger and the release
+        // would land on it (closing it, or pressing a key).
+        onClick={(e) => {
+          rest.onClick?.(e);
+          if (e.defaultPrevented || rest.disabled || rest.readOnly) return;
+          openCalculator();
+        }}
         onBlur={(e) => {
           settle();
           onBlur?.(e);
@@ -65,14 +77,16 @@ export function AmountInput({ value, onChange, label, wrapperClassName = "w-full
           onKeyDown?.(e);
         }}
         type="text"
-        inputMode="decimal"
+        // No phone keyboard: Pong's keypad is how amounts go in on a phone.
+        // A computer's own keyboard still types into it.
+        inputMode="none"
         autoComplete="off"
         className={`${className} col-start-1 row-start-1 w-full pr-11`}
       />
       <button
         ref={buttonRef}
         type="button"
-        onClick={() => setOpen(named ?? inputRef.current?.labels?.[0]?.textContent?.trim() ?? "Amount")}
+        onClick={openCalculator}
         aria-label={named ? `Calculator for ${named}` : "Calculator"}
         className="col-start-1 row-start-1 mr-1 flex h-8 w-8 items-center justify-center self-center justify-self-end rounded-[10px] text-sea-dark hover:bg-sea-tint"
       >
@@ -106,6 +120,8 @@ function CalculatorSheet({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  // Only a tap that starts and ends outside the sheet closes it.
+  const downOnBackdrop = useRef(false);
   const [calc, setCalc] = useState<{ expr: string; error: string | null }>(() => {
     const expr = expressionFromText(start) ?? "";
     const v = evaluate(expr);
@@ -164,8 +180,12 @@ function CalculatorSheet({
         onClose();
       }}
       onKeyDown={keyDown}
+      onPointerDown={(e) => {
+        downOnBackdrop.current = e.target === e.currentTarget;
+      }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget && downOnBackdrop.current) onClose();
+        downOnBackdrop.current = false;
       }}
       className="m-0 mt-auto w-full max-w-none rounded-t-[28px] bg-mint p-0 text-ink backdrop:bg-scrim/50 lg:m-auto lg:max-w-[400px] lg:rounded-[28px] lg:shadow-[0_24px_60px_rgba(18,48,42,0.35)]"
     >

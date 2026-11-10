@@ -94,6 +94,17 @@ function PayeeList({ groups, today }: { groups: PayTo[]; today: string }) {
               <Link href={`/money/${g.lenderId}`} className="flex min-h-12 items-center gap-3 py-2 text-ink">
                 {body}
               </Link>
+            ) : g.editId ? (
+              <div className="flex min-h-12 items-center gap-2 py-2">
+                {body}
+                <Link
+                  href={`/plan/scheduled?edit=${g.editId}`}
+                  aria-label={`Edit ${g.name}`}
+                  className="flex h-9 shrink-0 items-center rounded-full px-2.5 text-[13px] font-extrabold text-sea-dark hover:bg-card"
+                >
+                  Edit
+                </Link>
+              </div>
             ) : (
               <div className="flex min-h-12 items-center gap-3 py-2">{body}</div>
             )}

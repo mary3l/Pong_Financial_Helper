@@ -187,3 +187,38 @@ describe("projection and can I afford this", () => {
     expect(parts.reduce((a, b) => a + b, 0)).toBeCloseTo(1000, 10);
   });
 });
+
+describe("safe to spend with weekly pay", () => {
+  // Paid ₱3,000 every Friday; rent ₱6,000 on the 20th. Nov 2, 2026 is a Monday.
+  const weekly = { ...payday, amount: 3000, frequency: "weekly" as const, day1: 5, day2: null };
+  const bigRent = { ...rent, amount: 6000, day1: 20 };
+  const items = scheduledItems({ recurring: [weekly, bigRent], billPayments: [], planned: [] }, TODAY, "2026-12-02");
+
+  it("holds money back for a bill the next pays can't cover", () => {
+    const sts = safeToSpend({ inWallets: 4000, payday: weekly, items, today: TODAY });
+    expect(sts.nextPayday).toBe("2026-11-06");
+    expect(sts.daysLeft).toBe(4);
+    // Without looking ahead it would be 4,000 ÷ 4 = 1,000 a day. The tightest
+    // day is Nov 26, the eve of the 4th pay: 4,000 + 3 pays − 6,000 rent =
+    // 7,000 for 25 days, so ₱280 a day.
+    expect(sts.perDay).toBe(280);
+    expect(sts.setAsideLater).toBe(4000 - 280 * 4);
+    expect(sts.free).toBe(280 * 4);
+  });
+
+  it("holds nothing back when the pays cover the bills", () => {
+    const sts = safeToSpend({ inWallets: 4000, payday: { ...weekly }, items: scheduledItems({ recurring: [{ ...weekly, amount: 20000 }, bigRent], billPayments: [], planned: [] }, TODAY, "2026-12-02"), today: TODAY });
+    expect(sts.setAsideLater).toBe(0);
+    expect(sts.perDay).toBe(1000);
+  });
+
+  it("never counts pay toward what you can spend before it comes in", () => {
+    const rich = scheduledItems({ recurring: [{ ...weekly, amount: 100000 }], billPayments: [], planned: [] }, TODAY, "2026-12-02");
+    expect(safeToSpend({ inWallets: 400, payday: weekly, items: rich, today: TODAY }).perDay).toBe(100);
+  });
+
+  it("leaves pay twice a month as it was", () => {
+    const sts = safeToSpend({ inWallets: 10000, payday, items: scheduledItems(inputs(), TODAY, "2026-12-02"), today: TODAY });
+    expect(sts.setAsideLater).toBe(0);
+  });
+});

@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import { saveContributionAmounts, saveCutoff, savePayrollSettings, setContributionDay } from "@/app/payroll-actions";
 import { AmountInput } from "@/components/amount-input";
 import { FIELD_CLASS } from "@/components/choice-chip";
+import { FormDialog } from "@/components/form-dialog";
 import { ChevronIcon } from "@/components/icons";
 import { formatLongDay, formatPeriod, formatShortDay, nextPeriod, previousPeriod, type Period } from "@/lib/dates";
 import { formatPeso, parseAmount } from "@/lib/money";
@@ -134,10 +135,9 @@ function Toggle({ checked, onChange, children }: { checked: boolean; onChange: (
 // ---------------------------------------------------------------- Your pay
 
 function SettingsCard({ settings }: { settings: PayrollSettings | null }) {
-  const [editing, setEditing] = useState(settings === null);
-  const s = settings ?? DEFAULT_SETTINGS;
+  const [editing, setEditing] = useState(false);
 
-  if (!editing && settings) {
+  if (settings) {
     const parts = [
       `${formatPeso(settings.dailyRate)} a day`,
       `${settings.hoursPerDay} hours`,
@@ -148,7 +148,12 @@ function SettingsCard({ settings }: { settings: PayrollSettings | null }) {
       <Card
         title="Your pay"
         aside={
-          <button type="button" onClick={() => setEditing(true)} className="h-10 rounded-full px-3 text-sm font-extrabold text-sea-dark hover:bg-mint">
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            onClick={() => setEditing(true)}
+            className="h-10 rounded-full px-3 text-sm font-extrabold text-sea-dark hover:bg-mint"
+          >
             Edit
           </button>
         }
@@ -157,13 +162,19 @@ function SettingsCard({ settings }: { settings: PayrollSettings | null }) {
         <p className="text-[15px] text-muted">
           {formatPeso(hourlyRate(settings))} an hour · late is {formatPeso(hourlyRate(settings) / 60)} a minute
         </p>
+        {editing && (
+          <FormDialog title="Your pay" onClose={() => setEditing(false)}>
+            <SettingsForm initial={settings} isNew={false} onClose={() => setEditing(false)} />
+          </FormDialog>
+        )}
       </Card>
     );
   }
 
+  // First time: nothing else is on the page until it's set up, so it stays on it.
   return (
-    <Card title={settings ? "Your pay" : "Set up your pay"}>
-      <SettingsForm initial={s} isNew={!settings} onClose={() => setEditing(false)} />
+    <Card title="Set up your pay">
+      <SettingsForm initial={DEFAULT_SETTINGS} isNew onClose={() => undefined} />
     </Card>
   );
 }
@@ -287,7 +298,7 @@ function SettingsForm({ initial, isNew, onClose }: { initial: PayrollSettings; i
           {pending ? "Saving…" : isNew ? "Calculate my pay" : "Update pay settings"}
         </button>
         {!isNew && (
-          <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-mint">
+          <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card">
             Cancel
           </button>
         )}
@@ -576,9 +587,13 @@ function SelfPaidCard({
     <Card
       title="What you pay yourself"
       aside={
-        monthly.length > 0 &&
-        !editing && (
-          <button type="button" onClick={() => setEditing(true)} className="h-10 rounded-full px-3 text-sm font-extrabold text-sea-dark hover:bg-mint">
+        monthly.length > 0 && (
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            onClick={() => setEditing(true)}
+            className="h-10 rounded-full px-3 text-sm font-extrabold text-sea-dark hover:bg-mint"
+          >
             Edit amounts
           </button>
         )
@@ -590,37 +605,38 @@ function SelfPaidCard({
         forecast and Safe to spend set the money aside. They update when you save your pay or a cutoff.
       </p>
 
-      {editing ? (
-        <AmountsForm settings={settings} onClose={() => setEditing(false)} />
-      ) : (
-        monthly.length > 0 && (
-          <div className="flex flex-col gap-1.5">
-            <h3 className="text-sm font-extrabold">
-              Each month · {allCustom ? "the amounts you entered" : `based on ${formatPeso(monthlyBase(settings))} a month`}
-            </h3>
-            <dl className="flex flex-col gap-2.5 text-[15px]">
-              {monthly.map((c) => (
-                <div key={c.key} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                  <dt className="min-w-0 flex-1">
-                    {c.name}
-                    {c.custom && !allCustom && <span className="block text-xs text-muted">Your amount</span>}
-                  </dt>
-                  <ContributionDay
-                    contribution={c.key}
-                    name={c.name}
-                    day={days[c.key] ?? RATES.contributionDay}
-                    paydays={[payday.day1, payday.day2 ?? RATES.contributionDay]}
-                  />
-                  <dd className="w-20 text-right font-bold">{formatPeso(c.amount)}</dd>
-                </div>
-              ))}
-              <div className="flex items-baseline justify-between gap-3 border-t-2 border-line-soft pt-1.5">
-                <dt className="font-extrabold">Each month</dt>
-                <dd className="font-extrabold">{formatPeso(monthlyTotal)}</dd>
+      {editing && (
+        <FormDialog title="What you pay yourself" onClose={() => setEditing(false)}>
+          <AmountsForm settings={settings} onClose={() => setEditing(false)} />
+        </FormDialog>
+      )}
+      {monthly.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <h3 className="text-sm font-extrabold">
+            Each month · {allCustom ? "the amounts you entered" : `based on ${formatPeso(monthlyBase(settings))} a month`}
+          </h3>
+          <dl className="flex flex-col gap-2.5 text-[15px]">
+            {monthly.map((c) => (
+              <div key={c.key} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <dt className="min-w-0 flex-1">
+                  {c.name}
+                  {c.custom && !allCustom && <span className="block text-xs text-muted">Your amount</span>}
+                </dt>
+                <ContributionDay
+                  contribution={c.key}
+                  name={c.name}
+                  day={days[c.key] ?? RATES.contributionDay}
+                  paydays={[payday.day1, payday.day2 ?? RATES.contributionDay]}
+                />
+                <dd className="w-20 text-right font-bold">{formatPeso(c.amount)}</dd>
               </div>
-            </dl>
-          </div>
-        )
+            ))}
+            <div className="flex items-baseline justify-between gap-3 border-t-2 border-line-soft pt-1.5">
+              <dt className="font-extrabold">Each month</dt>
+              <dd className="font-extrabold">{formatPeso(monthlyTotal)}</dd>
+            </div>
+          </dl>
+        </div>
       )}
 
       {settings.payTax && (
@@ -780,7 +796,7 @@ function AmountsForm({ settings, onClose }: { settings: PayrollSettings; onClose
         <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
           {pending ? "Saving…" : "Use these amounts"}
         </button>
-        <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-mint">
+        <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card">
           Cancel
         </button>
       </div>

@@ -11,7 +11,7 @@ export function AddToBill({ splitId, wallet, total }: { splitId: string; wallet:
 
   return (
     <>
-      <span className="flex min-w-0 flex-1 flex-col">
+      <span className="flex min-w-[12rem] flex-1 flex-col gap-0.5">
         <span className="text-[13px] font-bold text-muted">Not on your {wallet} bill yet</span>
         <span className="text-sm leading-snug">Add the whole {formatPeso(total)} to the next bill, so it&apos;s in Pay bill and your forecast.</span>
         <span role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</span>
@@ -25,7 +25,7 @@ export function AddToBill({ splitId, wallet, total }: { splitId: string; wallet:
             setError(result.error ?? null);
           })
         }
-        className="h-11 rounded-[14px] bg-sun px-4 text-sm font-extrabold text-ink disabled:opacity-60"
+        className="h-11 w-full rounded-[14px] bg-sun px-4 text-sm font-extrabold text-ink disabled:opacity-60 sm:w-auto"
       >
         {pending ? "Adding…" : `Add to ${wallet} bill`}
       </button>

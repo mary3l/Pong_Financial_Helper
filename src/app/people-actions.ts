@@ -9,7 +9,7 @@ import { checkLoan, exactRate } from "@/lib/loan-edit";
 import { MAX_AMOUNT, formatPeso, isSpendable, roundCents, type AccountType } from "@/lib/money";
 import type { EntryKind } from "@/lib/people";
 import { creditTerms, isMissingColumn, pickWallet, savePlan, type Client } from "@/lib/server-writes";
-import { typedNote } from "@/lib/splits";
+import { newSharesProblem, typedNote } from "@/lib/splits";
 
 // Phase 4: utang, pautang and split bills. Every one of these is a transfer
 // or an expense on the person's account: see 0006_people.sql.
@@ -108,9 +108,20 @@ export type LendInput = {
   dueOn: string | null;
   countInForecast: boolean;
   note: string;
+  /**
+   * Borrowing only: they paid for something of yours directly (a flight they
+   * booked for you), so no money reached your wallets. The category it's
+   * spending under; walletId is ignored. Null: the money came to walletId.
+   */
+  paidForMe?: { category: string } | null;
 };
 
-/** Design canvas 5.2: lending is a transfer to the person, borrowing one from them. */
+/**
+ * Design canvas 5.2: lending is a transfer to the person, borrowing one from
+ * them. Borrowing when they paid for something of yours is your expense,
+ * paid from their account: utang, with no wallet going up (like a split
+ * they paid).
+ */
 export async function lendOrBorrow(input: LendInput): Promise<PeopleResult> {
   const amount = roundCents(Number(input.amount));
   if (!validAmount(amount)) return { error: "Enter an amount above ₱0." };
@@ -118,13 +129,34 @@ export async function lendOrBorrow(input: LendInput): Promise<PeopleResult> {
   if (input.dueOn !== null && !isValidDate(input.dueOn)) return { error: "Check the due date, or leave it blank." };
   if ("name" in input.who && !cleanName(input.who.name)) return { error: "Who is it?" };
 
+  const lend = input.direction === "lend";
+  const paidFor = !lend ? (input.paidForMe ?? null) : null;
+  if (paidFor && !isCategoryFor("expense", paidFor.category)) return { error: "Pick what it was for." };
+
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
-  if (!(await isWallet(supabase, input.walletId))) return { error: "Pick a wallet." };
+  if (!paidFor && !(await isWallet(supabase, input.walletId))) return { error: "Pick a wallet." };
   const personId = await personFor(supabase, input.who);
   if (!personId) return { error: "Check the name (up to 60 characters)." };
 
-  const lend = input.direction === "lend";
+  if (paidFor) {
+    const txnId = await record(
+      supabase,
+      {
+        type: "expense",
+        amount,
+        account_id: personId,
+        category: paidFor.category,
+        note: cleanNote(input.note) ?? "Utang",
+        occurred_on: input.occurredOn,
+      },
+      { personId, kind: "borrow", dueOn: input.dueOn },
+    );
+    if (!txnId) return FAILED;
+    refresh();
+    return { personId };
+  }
+
   const txnId = await record(
     supabase,
     {
@@ -144,6 +176,36 @@ export async function lendOrBorrow(input: LendInput): Promise<PeopleResult> {
   );
   if (!txnId) return FAILED;
 
+  refresh();
+  return { personId };
+}
+
+/**
+ * Fixes a borrow logged as money into a wallet when they really paid for
+ * something of yours directly: the transfer becomes your expense paid from
+ * their account. What you owe them stays the same; the wallet goes back
+ * down by the amount, since that money never reached it.
+ */
+export async function borrowWasPaidForMe(personId: string, txnId: string, category: string): Promise<PeopleResult> {
+  if (!/^[0-9a-f-]{36}$/i.test(personId) || !/^[0-9a-f-]{36}$/i.test(txnId)) return { error: "Couldn't find that." };
+  if (!isCategoryFor("expense", category)) return { error: "Pick what it was for." };
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const { data: entry } = await supabase
+    .from("person_entries")
+    .select("kind")
+    .eq("transaction_id", txnId)
+    .eq("person_id", personId)
+    .maybeSingle();
+  if (entry?.kind !== "borrow") return { error: "Only money you borrowed can be changed this way." };
+  const { data, error } = await supabase
+    .from("transactions")
+    .update({ type: "expense", to_account_id: null, category })
+    .eq("id", txnId)
+    .eq("type", "transfer")
+    .eq("account_id", personId)
+    .select("id");
+  if (error || !data.length) return FAILED;
   refresh();
   return { personId };
 }
@@ -422,34 +484,101 @@ export type SplitEdit = {
   occurredOn: string;
   /** New amount for each record of the split; 0 removes that share. */
   shares: { id: string; amount: number }[];
+  /** People to add to the bill, each with their share: pautang, like the others. */
+  added?: { who: Who; amount: number }[];
 };
 
 /**
- * Edits a whole split bill: the note and date on every record, and each
- * share's amount. The bill total is whatever the shares add up to.
+ * Edits a whole split bill: the note and date on every record, each share's
+ * amount, and anyone added to it. The bill total is whatever the shares add
+ * up to. Only a bill you paid has records to edit (one someone else paid is
+ * a single expense of yours), so each person added is pautang: a transfer
+ * from the same wallet to them, like saveSplit makes.
  */
 export async function updateSplit(splitId: string, input: SplitEdit): Promise<PeopleResult> {
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const result = await editSplit(supabase, splitId, input);
+  if (!result.error) refresh();
+  return result;
+}
+
+async function editSplit(supabase: Client, splitId: string, input: SplitEdit): Promise<PeopleResult> {
   if (!/^[0-9a-f-]{36}$/i.test(splitId)) return { error: "Couldn't find that split." };
   if (!isValidDate(input.occurredOn)) return { error: "Pick a date." };
   const amounts = new Map(input.shares.map((s) => [s.id, roundCents(Number(s.amount))]));
+  const added = (input.added ?? []).map((a) => ({ who: a.who, amount: roundCents(Number(a.amount)) }));
   if ([...amounts.values()].some((a) => !(a >= 0) || a > MAX_AMOUNT)) return { error: "Check the shares." };
-  const total = roundCents([...amounts.values()].reduce((s, a) => s + a, 0));
+  if (added.some((a) => !validAmount(a.amount))) return { error: "Enter a share above ₱0 for each person you add." };
+  const total = roundCents([...amounts.values(), ...added.map((a) => a.amount)].reduce((s, a) => s + a, 0));
   if (!validAmount(total)) return { error: "The shares need to add up to more than ₱0." };
 
-  const supabase = await signedInClient();
-  if (!supabase) return { error: SIGNED_OUT_ERROR };
-  const { data: records, error } = await supabase.from("transactions").select("id, type").eq("split_id", splitId);
+  const { data: records, error } = await supabase
+    .from("transactions")
+    .select("id, type, account_id, to_account_id")
+    .eq("split_id", splitId);
   if (error || !records?.length) return { error: "Couldn't find that split." };
   if (records.length !== amounts.size || records.some((r) => !amounts.has(r.id))) {
     return { error: "This split changed. Reload and try again." };
   }
 
   const note = cleanNote(input.note);
+  const theirNote = note ? `Split: ${note}` : "Split bill";
+
+  // New people first, so if one can't be saved nothing else has changed yet.
+  const created: string[] = [];
+  if (added.length) {
+    const { data: names } = await supabase
+      .from("accounts")
+      .select("id, name")
+      .in("id", records.map((r) => r.to_account_id).filter((id): id is string => Boolean(id)));
+    const onBill = records
+      .filter((r) => r.type === "transfer" && r.to_account_id && amounts.get(r.id))
+      .map((r) => ({ personId: r.to_account_id as string, name: names?.find((n) => n.id === r.to_account_id)?.name ?? "" }));
+    const problem = newSharesProblem(
+      added.map((a) => ("personId" in a.who ? { personId: a.who.personId, name: "", amount: a.amount } : { personId: null, name: a.who.name, amount: a.amount })),
+      onBill,
+    );
+    if (problem) return { error: problem };
+    const undo = async () => {
+      if (created.length) await supabase.from("transactions").delete().in("id", created);
+    };
+    const taken = new Set(onBill.map((p) => p.personId));
+    // Every record of a split is paid from the same wallet or credit line.
+    const walletId = records[0].account_id as string;
+    for (const a of added) {
+      const personId = await personFor(supabase, a.who);
+      if (!personId || taken.has(personId)) {
+        await undo();
+        return { error: personId ? "They're already on this bill." : "Check the name (up to 60 characters)." };
+      }
+      taken.add(personId);
+      const txnId = await record(
+        supabase,
+        {
+          type: "transfer",
+          amount: a.amount,
+          account_id: walletId,
+          to_account_id: personId,
+          note: theirNote,
+          occurred_on: input.occurredOn,
+          split_id: splitId,
+        },
+        { personId, kind: "split", splitTotal: total },
+      );
+      if (!txnId) {
+        await undo();
+        return FAILED;
+      }
+      created.push(txnId);
+    }
+  }
+
   const plan = await splitPlanOf(supabase, records.map((r) => r.id));
   // The plan hangs on one record: move it to one that stays, so taking that share off keeps the plan.
   if (plan && !amounts.get(plan.source_txn_id!)) {
     const kept = records.filter((r) => amounts.get(r.id));
-    const to = (kept.find((r) => r.type === "expense") ?? kept[0]).id;
+    const to = (kept.find((r) => r.type === "expense") ?? kept[0])?.id ?? created[0];
     const { error: moved } = await supabase.from("installment_plans").update({ source_txn_id: to }).eq("id", plan.id);
     if (moved) return FAILED;
     plan.source_txn_id = to;
@@ -462,7 +591,7 @@ export async function updateSplit(splitId: string, input: SplitEdit): Promise<Pe
           .update({
             amount,
             occurred_on: input.occurredOn,
-            note: r.type === "expense" ? (note ? `${note} (my share)` : "My share") : note ? `Split: ${note}` : "Split bill",
+            note: r.type === "expense" ? (note ? `${note} (my share)` : "My share") : theirNote,
           })
           .eq("id", r.id)
       : await supabase.from("transactions").delete().eq("id", r.id);
@@ -500,7 +629,6 @@ export async function updateSplit(splitId: string, input: SplitEdit): Promise<Pe
     }
   }
 
-  refresh();
   return {};
 }
 
@@ -570,6 +698,135 @@ export async function renamePerson(personId: string, name: string, contact: stri
   const { data, error } = await supabase
     .from("accounts")
     .update({ name: clean, contact: cleanName(contact).slice(0, 100) || null })
+    .eq("id", personId)
+    .eq("type", "person")
+    .select("id");
+  if (error || !data.length) return FAILED;
+  refresh();
+  return { personId };
+}
+
+/**
+ * Takes one share off its split bill, as Edit split does with a share of 0:
+ * the bill total goes down and a credit line's bill follows it. The last
+ * record of a bill just goes.
+ */
+async function removeSplitShare(supabase: Client, splitId: string, txnId: string): Promise<PeopleResult> {
+  const { data: records, error } = await supabase.from("transactions").select("id, amount, note, occurred_on").eq("split_id", splitId);
+  if (error) return FAILED;
+  const rest = (records ?? []).filter((r) => r.id !== txnId && Number(r.amount) > 0);
+  if (!rest.length) {
+    const { error: gone } = await supabase.from("transactions").delete().eq("split_id", splitId);
+    return gone ? FAILED : {};
+  }
+  return editSplit(supabase, splitId, {
+    note: typedNote(records ?? []),
+    occurredOn: records![0].occurred_on,
+    shares: records!.map((r) => ({ id: r.id, amount: r.id === txnId ? 0 : Number(r.amount) })),
+  });
+}
+
+/**
+ * Deletes one record from a person's history: a loan, a payment, a share.
+ * A share of a split bill comes off that bill (the total goes down), so the
+ * bill and any credit line bill stay right. Like deleting it in Activity,
+ * a payment of theirs on a plan in your name stops counting as paid.
+ */
+export async function deletePersonEntry(personId: string, txnId: string): Promise<PeopleResult> {
+  if (!/^[0-9a-f-]{36}$/i.test(personId) || !/^[0-9a-f-]{36}$/i.test(txnId)) return { error: "Couldn't find that." };
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const { data: txn } = await supabase
+    .from("transactions")
+    .select("id, account_id, to_account_id, split_id")
+    .eq("id", txnId)
+    .maybeSingle();
+  if (!txn || (txn.account_id !== personId && txn.to_account_id !== personId)) return { error: "Couldn't find that." };
+
+  const result = txn.split_id
+    ? await removeSplitShare(supabase, txn.split_id, txn.id)
+    : await supabase
+        .from("transactions")
+        .delete()
+        .eq("id", txn.id)
+        .then(({ error }) => (error ? { error: "Couldn't delete that. Please try again." } : {}));
+  if (result.error) return result;
+  refresh();
+  return { personId };
+}
+
+/**
+ * Removes someone from Utang & pautang.
+ * - "remove": deleted outright when there's nothing with them yet;
+ *   otherwise archived, like a wallet with history: hidden from your lists,
+ *   with every record kept so Activity and wallet balances stay right.
+ *   Typing their name again brings them back.
+ * - "forever": deletes them and every record with them, as if they were
+ *   never added: lending, borrowing, payments, and their shares come off
+ *   each split bill (your own share stays). Wallets go back to what they'd
+ *   be without them. Not while they pay a loan or credit line in your name:
+ *   that debt would be left with no one paying it.
+ */
+export async function deletePerson(personId: string, how: "remove" | "forever"): Promise<PeopleResult & { archived?: boolean }> {
+  // It goes into a filter string below, so only a plain id.
+  if (!/^[0-9a-f-]{36}$/i.test(personId)) return { error: "Couldn't find them." };
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const { data: person } = await supabase.from("accounts").select("id, name").eq("id", personId).eq("type", "person").maybeSingle();
+  if (!person) return { error: "Couldn't find them." };
+
+  if (how === "forever") {
+    if (await hasPlanPeople(supabase)) {
+      const { data: plans, error } = await supabase.from("installment_plans").select("name").eq("person_id", personId);
+      if (error) return FAILED;
+      if (plans.length) {
+        return {
+          error: `${person.name} pays ${plans.map((p) => p.name).join(", ")} in your name. Remove that from the loan or credit line first, or archive ${person.name} instead.`,
+        };
+      }
+    }
+    const { data: txns, error } = await supabase
+      .from("transactions")
+      .select("id, split_id")
+      .or(`account_id.eq.${personId},to_account_id.eq.${personId}`);
+    if (error) return FAILED;
+    for (const t of txns.filter((x) => x.split_id)) {
+      const result = await removeSplitShare(supabase, t.split_id!, t.id);
+      if (result.error) {
+        refresh();
+        return result;
+      }
+    }
+    const rest = txns.filter((x) => !x.split_id).map((x) => x.id);
+    if (rest.length) {
+      const { error: gone } = await supabase.from("transactions").delete().in("id", rest);
+      if (gone) {
+        refresh();
+        return FAILED;
+      }
+    }
+  }
+
+  const deleted = await supabase.from("accounts").delete().eq("id", personId).select("id");
+  if (!deleted.error && deleted.data.length) {
+    refresh();
+    return {};
+  }
+  // 23503: records still point at them, so keep those and archive instead.
+  if (how === "forever" || deleted.error?.code !== "23503") return { error: "Couldn't delete them. Please try again." };
+  const { error } = await supabase.from("accounts").update({ archived: true }).eq("id", personId);
+  if (error) return FAILED;
+  refresh();
+  return { archived: true };
+}
+
+/** Brings an archived person back to Utang & pautang. */
+export async function restorePerson(personId: string): Promise<PeopleResult> {
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const { data, error } = await supabase
+    .from("accounts")
+    .update({ archived: false })
     .eq("id", personId)
     .eq("type", "person")
     .select("id");

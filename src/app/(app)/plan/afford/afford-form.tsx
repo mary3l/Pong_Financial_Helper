@@ -76,7 +76,8 @@ export function AffordForm({
     startTransition(async () => {
       const result = await addPlannedExpense({ name, amount, category, first: when, months });
       if (result.error) setError(result.error);
-      else router.push("/plan");
+      // Scheduled is where it can be changed or removed.
+      else router.push(`/plan/scheduled?added=${months > 1 ? months : 1}`);
     });
   }
 
@@ -93,7 +94,8 @@ export function AffordForm({
           <label htmlFor="afford-what" className="text-sm font-bold">What is it?</label>
           <input id="afford-what" value={name} onChange={(e) => setName(e.target.value)} maxLength={50} placeholder="e.g. running shoes" className={FIELD_CLASS} />
         </div>
-        <div className="grid grid-cols-2 gap-2.5">
+        {/* Side by side only when there's room: a phone gets the full date. */}
+        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 min-[420px]:gap-2.5">
           <div className="flex flex-col gap-1">
             <label htmlFor="afford-amount" className="text-sm font-bold">Amount</label>
             <div className="relative">
@@ -134,7 +136,7 @@ export function AffordForm({
                   type="button"
                   aria-pressed={selected}
                   onClick={() => setMonths(o.value)}
-                  className={`h-10 rounded-xl text-sm ${selected ? "bg-card font-extrabold text-ink shadow-sm" : "font-bold text-muted"}`}
+                  className={`h-10 rounded-xl text-sm ${selected ? "bg-sea font-extrabold text-white" : "font-bold text-muted hover:text-ink"}`}
                 >
                   {o.label}
                 </button>
@@ -194,6 +196,9 @@ export function AffordForm({
           <Link href="/plan" className="flex h-11 items-center justify-center font-extrabold text-sea-dark">
             Just checking, discard
           </Link>
+          <p className="text-center text-[13px] text-muted">
+            Got it wrong later? Change or remove it any time in Plan › Scheduled.
+          </p>
         </div>
       </div>
     </form>

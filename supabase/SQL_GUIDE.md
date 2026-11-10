@@ -473,6 +473,31 @@ Expect `2`.
 
 ---
 
+## Step 20 · Safe to spend on the home screen widget
+
+File: `migrations/0020_widget_safe_to_spend.sql`
+
+Makes the iPhone widget show what's left of today's Safe to spend instead of Spent today.
+
+- `widget_keys.sts_on`, `sts_per_day`, `sts_next_payday`: each time Home works out Safe to
+  spend, it saves the day's amount here (only if you made a widget key).
+- `widget_safe_to_spend(widget_key)`: the widget takes today's spending off that amount, with
+  the same rule as Home (Spending wallets only; bills and installments you marked paid don't
+  count).
+
+Until you run this, the widget keeps showing Spent today. After running it, open Home once so
+it saves today's amount, and copy the widget script again from Settings › Home screen widget.
+
+**Check**
+
+```sql
+select to_regprocedure('public.widget_safe_to_spend(text)') is not null;
+```
+
+Expect `true`.
+
+---
+
 ## All done?
 
 This one query shows which steps have been run. Every column should be `true`.
@@ -508,7 +533,8 @@ select
   exists (select 1 from information_schema.columns
           where table_name = 'payroll_settings' and column_name = 'sss_amount') as step_18,
   exists (select 1 from information_schema.columns
-          where table_name = 'installment_plans' and column_name = 'person_id') as step_19;
+          where table_name = 'installment_plans' and column_name = 'person_id') as step_19,
+  to_regprocedure('public.widget_safe_to_spend(text)') is not null as step_20;
 ```
 
 The first `false` is the step to run next.

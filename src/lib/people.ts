@@ -1,4 +1,4 @@
-import { formatShortDay } from "@/lib/dates";
+import { formatShortDay, monthContaining } from "@/lib/dates";
 import type { ForecastItem } from "@/lib/forecast";
 import { balanceEffect, formatPeso, roundCents } from "@/lib/money";
 
@@ -212,27 +212,76 @@ export function openRecords(person: Person, history: Txn[]): OpenRecord[] {
   return open.reverse();
 }
 
+/** A loan or purchase in your name that they pay (Tita Flora's MariLoan), with its unpaid payments. */
+export type TheirPlan = {
+  /** "My MariLoan loan", "Phone on my Atome". */
+  label: string;
+  /** Unpaid payments, interest or fees included. */
+  payments: { amount: number; dueOn: string; /** "3 of 6", or null for a single payment. */ which: string | null }[];
+};
+
+export type DuePayment = { label: string; amount: number; dueOn: string; which: string | null; late: boolean };
+
+/** What they pay this calendar month on plans in your name. */
+export type MonthDue = {
+  /** "November". */
+  month: string;
+  /** Late payments and those due by the end of the month, oldest first. */
+  items: DuePayment[];
+  total: number;
+  /** The part of `total` that's already late. */
+  late: number;
+  /** Their first payment after this month. */
+  next: DuePayment | null;
+};
+
 /**
- * A breakdown to send someone: each open item, what's left of it, and the
- * total. Pautang asks them to pay; utang tells them what you'll send.
- * `extra` lines go after the items, like each loan in your name they pay.
- * `theirs`: what they also pay a lender on loans or credit lines in your
- * name (Tita Flora's MariLoan). The interest is theirs, so it's in the
- * total, and their next payment is when it's due.
+ * This month's bill on loans and credit lines in your name: every unpaid
+ * payment due by the end of the month (Philippine time), late ones included,
+ * and the first one after it.
+ */
+export function dueThisMonth(plans: TheirPlan[], today: string): MonthDue {
+  const end = monthContaining(today).end;
+  const all = plans
+    .flatMap((p) => p.payments.map((x) => ({ label: p.label, amount: x.amount, dueOn: x.dueOn, which: x.which, late: x.dueOn < today })))
+    .sort((a, b) => a.dueOn.localeCompare(b.dueOn) || a.label.localeCompare(b.label));
+  const items = all.filter((x) => x.dueOn <= end);
+  return {
+    month: new Intl.DateTimeFormat("en-US", { month: "long", timeZone: "UTC" }).format(Date.parse(`${today}T00:00:00Z`)),
+    items,
+    total: roundCents(items.reduce((sum, x) => sum + x.amount, 0)),
+    late: roundCents(items.filter((x) => x.late).reduce((sum, x) => sum + x.amount, 0)),
+    next: all.find((x) => x.dueOn > end) ?? null,
+  };
+}
+
+/** "₱2,820.83 due Nov 12 (3 of 6)" or "₱500 was due Oct 12, late". */
+export function duePaymentText(p: DuePayment, today: string): string {
+  return `${formatPeso(p.amount)} ${p.late ? "was due" : "due"} ${formatShortDay(p.dueOn, today)}${p.which ? ` (${p.which})` : ""}${p.late ? ", late" : ""}`;
+}
+
+/**
+ * A breakdown to send someone. Someone paying loans or credit lines in your
+ * name (`month`, from dueThisMonth) gets this month's bill first: each
+ * payment due, late ones too, and what to pay this month; then everything
+ * still open, with the interest they pay the lender, as the total in all.
+ * Anyone else gets each open item, what's left of it, and the total.
+ * Pautang asks them to pay; utang tells them what you'll send.
  */
 export function breakdownText({
   person,
   open,
   today,
   myName,
-  extra = [],
+  month = null,
   theirs = NOTHING_IN_YOUR_NAME,
 }: {
   person: Person;
   open: OpenRecord[];
   today: string;
   myName: string | null;
-  extra?: string[];
+  month?: MonthDue | null;
+  /** What they also pay a lender on plans in your name: the interest is theirs, so it's in the total. */
   theirs?: InYourName;
 }): string {
   const owesMe = person.balance > 0;
@@ -243,6 +292,32 @@ export function breakdownText({
   });
   const owed = Math.abs(person.balance);
   const theirInterest = owesMe ? roundCents(theirs.interest) : 0;
+  const thanks = owesMe ? `Salamat!${myName ? ` - ${myName}` : ""}` : `I'll send it soon. Salamat!${myName ? ` - ${myName}` : ""}`;
+
+  if (owesMe && month) {
+    const lead = month.items.length
+      ? [
+          `Hi ${person.name}! Here's what's due this ${month.month}:`,
+          "",
+          ...month.items.map((p) => `• ${p.label}: ${duePaymentText(p, today)}`),
+          "",
+          `To pay this month: ${formatPeso(month.total)}${month.late > 0 ? ` (${formatPeso(month.late)} of it is late)` : ""}`,
+        ]
+      : [
+          `Hi ${person.name}! Nothing more to pay this ${month.month}.`,
+          ...(month.next ? [`Next payment: ${duePaymentText(month.next, today)} · ${month.next.label}`] : []),
+        ];
+    return [
+      ...lead,
+      "",
+      `Still open in all: ${formatPeso(roundCents(owed + theirInterest))}`,
+      ...lines,
+      ...(theirInterest > 0 ? [`• Interest & fees in the payments left: ${formatPeso(theirInterest)}`] : []),
+      "",
+      thanks,
+    ].join("\n");
+  }
+
   const total =
     theirInterest > 0
       ? `${formatPeso(roundCents(owed + theirInterest))} (${formatPeso(owed)} + ${formatPeso(theirInterest)} interest & fees)`
@@ -259,10 +334,9 @@ export function breakdownText({
     owesMe ? `Hi ${person.name}! Here's the breakdown of what's still open:` : `Hi ${person.name}! Here's what I still owe you:`,
     "",
     ...lines,
-    ...(extra.length ? ["", "Monthly payments:", ...extra.map((e) => `• ${e}`)] : []),
     "",
     `Total: ${total}`,
     ...(when ? [when] : []),
-    owesMe ? `Salamat!${myName ? ` - ${myName}` : ""}` : `I'll send it soon. Salamat!${myName ? ` - ${myName}` : ""}`,
+    thanks,
   ].join("\n");
 }

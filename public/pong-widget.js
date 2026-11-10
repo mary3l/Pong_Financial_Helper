@@ -1,5 +1,9 @@
-// Pong Money: Spent today
+// Pong Money: Safe to spend today
 // A home screen widget for Scriptable (free on the App Store).
+//
+// Shows what's left of today's Safe to spend (the daily amount Home works out,
+// minus what you've spent today) and today's expenses. Needs step 20 in
+// supabase/SQL_GUIDE.md; before that it shows Spent today.
 //
 // Setup: in Pong Money open Settings › Home screen widget, make a widget key
 // and copy the setup code. Run this script once in Scriptable and paste it.
@@ -99,18 +103,27 @@ function todayInManila() {
   }).format(new Date());
 }
 
-/** { date, total, count, items: [{ amount, category, note, wallet }] }, or null for a bad key. */
-async function fetchSpent(setup) {
-  const req = new Request(`${setup.url}/rest/v1/rpc/widget_spent_today`);
+async function rpc(setup, name) {
+  const req = new Request(`${setup.url}/rest/v1/rpc/${name}`);
   req.method = "POST";
   req.headers = { apikey: setup.key, "Content-Type": "application/json" };
   req.body = JSON.stringify({ widget_key: setup.widget });
   req.timeoutInterval = 15;
   const body = await req.loadString();
-  const status = req.response.statusCode;
-  if (status === 404) throw new Error("Run step 9 in SQL_GUIDE.md");
-  if (status !== 200) throw new Error(`Supabase said ${status}`);
-  return JSON.parse(body);
+  return { status: req.response.statusCode, body };
+}
+
+/**
+ * { date, perDay, left, asOf, nextPayday, daysLeft, total, count, items: [{ amount, category, note, wallet }] },
+ * or null for a bad key. perDay and left are null until Home has worked out Safe to spend (or after payday).
+ */
+async function fetchSpent(setup) {
+  let res = await rpc(setup, "widget_safe_to_spend");
+  // Before step 20: Spent today only.
+  if (res.status === 404) res = await rpc(setup, "widget_spent_today");
+  if (res.status === 404) throw new Error("Run step 9 in SQL_GUIDE.md");
+  if (res.status !== 200) throw new Error(`Supabase said ${res.status}`);
+  return JSON.parse(res.body);
 }
 
 function readCache() {
@@ -185,15 +198,45 @@ function text(stack, value, f, color, { lines = 1, scale = 1 } = {}) {
   return t;
 }
 
-/** The green block: SPENT TODAY, the total, and how many expenses. */
+function hasSafeToSpend(data) {
+  return data.perDay !== null && data.perDay !== undefined && data.left !== null && data.left !== undefined;
+}
+
+function paydayLabel(data) {
+  if (data.daysLeft === 1) return "Payday tomorrow";
+  return `Payday ${shortDay(data.nextPayday)} · ${data.daysLeft} days`;
+}
+
+function shortDay(date) {
+  return new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric" }).format(new Date(`${date}T12:00:00`));
+}
+
+/**
+ * The green block: SAFE TO SPEND TODAY, what's left of today's amount, and
+ * what you've spent. Falls back to SPENT TODAY until Home has worked it out.
+ */
 function addTotal(stack, result, big) {
   const { data, stale } = result;
-  text(stack, "SPENT TODAY", font.label, SEA_TEXT);
+  const when = stale ? `Offline · as of ${timeLabel(stale)}` : dayLabel(data.date);
+  if (!hasSafeToSpend(data)) {
+    text(stack, "SPENT TODAY", font.label, SEA_TEXT);
+    stack.addSpacer(big ? 6 : null);
+    text(stack, peso(data.total), big ? font.huge : font.big, Color.white(), { scale: 0.5 });
+    stack.addSpacer(3);
+    text(stack, countLabel(data.count), font.sub, SEA_TEXT);
+    // perDay is in the answer once step 20 is run: Home just hasn't saved one (or payday passed).
+    text(stack, "perDay" in data ? "Open Pong Money to update" : when, font.small, SEA_TEXT, { lines: 2 });
+    return;
+  }
+  const over = data.left < 0;
+  text(stack, over ? "OVER TODAY BY" : "SAFE TO SPEND TODAY", font.label, SEA_TEXT);
   stack.addSpacer(big ? 6 : null);
-  text(stack, peso(data.total), big ? font.huge : font.big, Color.white(), { scale: 0.5 });
+  text(stack, peso(Math.abs(data.left)), big ? font.huge : font.big, over ? new Color("#ffd2c6") : Color.white(), { scale: 0.5 });
   stack.addSpacer(3);
-  text(stack, countLabel(data.count), font.sub, SEA_TEXT);
-  text(stack, stale ? `Offline · as of ${timeLabel(stale)}` : dayLabel(data.date), font.small, SEA_TEXT);
+  text(stack, data.total > 0 ? `Spent ${peso(data.total)} of ${peso(data.perDay)}` : `${peso(data.perDay)} a day`, font.sub, SEA_TEXT, { scale: 0.7 });
+  text(stack, paydayLabel(data), font.small, SEA_TEXT, { scale: 0.7 });
+  // The daily amount is from the last time Home was opened.
+  if (stale || data.asOf !== data.date) text(stack, stale ? when : `As of ${shortDay(data.asOf)}`, font.small, SEA_TEXT);
 }
 
 function addItems(stack, data, max, withWallet) {

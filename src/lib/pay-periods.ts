@@ -92,6 +92,11 @@ export type PayTo = {
   lastDue: string;
   /** One of them is past its date. */
   late: boolean;
+  /**
+   * A bill, income or planned item of yours, one id throughout: what Edit
+   * opens in Plan › Scheduled. Null for installments and utang.
+   */
+  editId: string | null;
 };
 
 /**
@@ -105,7 +110,12 @@ export function groupByPayee(items: ForecastItem[], lenderName: (id: string) => 
     const lender = i.kind === "installment" && i.lenderId ? i.lenderId : null;
     const key = lender ? `lender|${lender}` : i.kind === "utang" ? `utang|${i.id}` : `item|${i.name}`;
     const name = (lender && lenderName(lender)) || i.name;
-    const g = groups.get(key) ?? { key, name, lenderId: lender, total: 0, count: 0, firstDue: i.dueOn, lastDue: i.dueOn, late: false };
+    const editable = i.kind === "bill" || i.kind === "planned" || i.kind === "income";
+    const g =
+      groups.get(key) ??
+      { key, name, lenderId: lender, total: 0, count: 0, firstDue: i.dueOn, lastDue: i.dueOn, late: false, editId: editable ? i.id : null };
+    // Two planned items with the same name are two rows in Scheduled: nothing single to edit.
+    if (!editable || g.editId !== i.id) g.editId = null;
     g.total = roundCents(g.total + (i.amount ?? 0));
     g.count += 1;
     if (i.dueOn < g.firstDue) g.firstDue = i.dueOn;

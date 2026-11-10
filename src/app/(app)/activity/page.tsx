@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { ChevronIcon } from "@/components/icons";
 import { Pong } from "@/components/pong";
-import { TransactionList } from "@/components/transaction-list";
+import { ListPages, TransactionList } from "@/components/transaction-list";
 import { getAccounts, getTransactions, withoutArchived } from "@/lib/data";
 import {
   formatPeriod,
@@ -15,10 +15,13 @@ import {
   today as getToday,
 } from "@/lib/dates";
 import { cashflow, formatPeso, inPesos } from "@/lib/money";
+import { groupSplits, pageOfItems, readPage } from "@/lib/splits";
 
 export const metadata = { title: "Activity · Pong Money" };
 
-// Design canvas 2.3: everything logged, one kinsenas at a time.
+// Design canvas 2.3: everything logged, one kinsenas at a time, in pages of
+// about 30 rows (?page=, days kept whole where they fit). In, Out and Net are
+// always for the whole kinsenas.
 export default function ActivityPage({ searchParams }: PageProps<"/activity">) {
   return (
     <div className="flex flex-col gap-4 lg:max-w-3xl">
@@ -46,10 +49,13 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
   ]);
   // Interest on a dollar wallet counts in pesos.
   const totals = cashflow(inPesos(transactions, accounts));
+  const shown = pageOfItems(groupSplits(transactions), readPage(params.page));
 
-  const href = (start: string) => {
+  // Another kinsenas starts on its first page.
+  const href = (start: string, page = 1) => {
     const query = new URLSearchParams({ p: start });
     if (q) query.set("q", q);
+    if (page > 1) query.set("page", String(page));
     return `/activity?${query}`;
   };
   const next = nextPeriod(period);
@@ -111,9 +117,12 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
       </Form>
 
       {transactions.length ? (
-        <div className="rounded-[20px] bg-card px-4 pb-2">
-          <TransactionList transactions={transactions} accounts={accounts} today={today} />
-        </div>
+        <>
+          <div className="rounded-[20px] bg-card px-4 pb-2">
+            <TransactionList transactions={transactions} items={shown.items} accounts={accounts} today={today} />
+          </div>
+          <ListPages page={shown.page} pages={shown.pages} href={(page) => href(period.start, page)} />
+        </>
       ) : (
         <div className="flex flex-col items-center gap-3 rounded-3xl bg-card px-6 py-10 text-center">
           <Pong mood="sleepy" size={100} decorative />

@@ -75,51 +75,7 @@ export function Pong({
         <circle cx="98" cy="60" r="18" fill="#A9D69B" />
         <ellipse cx="98" cy="68" rx="11" ry="6.5" fill="#BEE2B1" />
 
-        <g opacity={on("peek", "ask", "listen", "worried")}>
-          <ellipse cx="91" cy="57" rx="3.6" ry="4.4" fill="#22301F" />
-          <ellipse cx="105" cy="57" rx="3.6" ry="4.4" fill="#22301F" />
-          <circle cx="92.2" cy="55.4" r="1.3" fill="#FFFFFF" />
-          <circle cx="106.2" cy="55.4" r="1.3" fill="#FFFFFF" />
-        </g>
-        <g opacity={on("shocked")}>
-          <ellipse cx="91" cy="56.5" rx="4.6" ry="5.6" fill="#FFFFFF" stroke="#22301F" strokeWidth="1.6" />
-          <ellipse cx="105" cy="56.5" rx="4.6" ry="5.6" fill="#FFFFFF" stroke="#22301F" strokeWidth="1.6" />
-          <circle cx="91" cy="57" r="2.2" fill="#22301F" />
-          <circle cx="105" cy="57" r="2.2" fill="#22301F" />
-        </g>
-        <g opacity={on("sleep")} stroke="#22301F" strokeWidth="2.3" fill="none" strokeLinecap="round">
-          <path d="M87 57 Q91 61 95 57" />
-          <path d="M101 57 Q105 61 109 57" />
-        </g>
-        <g opacity={on("happy", "proud")} stroke="#22301F" strokeWidth="2.5" fill="none" strokeLinecap="round">
-          <path d="M87 59 Q91 53 95 59" />
-          <path d="M101 59 Q105 53 109 59" />
-        </g>
-        <g opacity={on("sleepy")}>
-          <ellipse cx="91" cy="58.5" rx="3.6" ry="1.9" fill="#22301F" />
-          <ellipse cx="105" cy="58.5" rx="3.6" ry="1.9" fill="#22301F" />
-          <path d="M86.5 56.6 H95.5 M100.5 56.6 H109.5" stroke="#6E9E62" strokeWidth="2.3" strokeLinecap="round" />
-        </g>
-        <path
-          d={
-            mood === "shocked"
-              ? "M86 47.5 Q91 44.5 95 47 M101 47 Q105 44.5 110 47.5"
-              : "M87 50.5 L95 52.5 M109 50.5 L101 52.5"
-          }
-          stroke="#22301F"
-          strokeWidth="2.2"
-          fill="none"
-          strokeLinecap="round"
-          opacity={on("worried", "shocked")}
-        />
-        <ellipse cx="85.5" cy="65" rx="5" ry="3.2" fill="#F09A8A" opacity="0.6" />
-        <ellipse cx="110.5" cy="65" rx="5" ry="3.2" fill="#F09A8A" opacity="0.6" />
-        <path d="M94 68 Q98 72.5 102 68" stroke="#22301F" strokeWidth="2.1" fill="none" strokeLinecap="round" opacity={on("sleep", "peek", "listen", "happy", "sleepy")} />
-        <path d="M92.5 69.5 Q98 76 103.5 69.5 Z" fill="#4A2A24" stroke="#22301F" strokeWidth="1.6" strokeLinejoin="round" opacity={on("proud")} />
-        <path d="M93 70 q2.5 -2.2 5 0 q2.5 2.2 5 0" stroke="#22301F" strokeWidth="2.1" fill="none" strokeLinecap="round" opacity={on("worried")} />
-        <ellipse cx="98" cy="69.5" rx="3.6" ry="3" fill="#4A2A24" opacity={on("ask")} />
-        <ellipse cx="98" cy="70" rx="3.2" ry="4.2" fill="#4A2A24" opacity={on("shocked")} />
-        <path d="M115 41 Q119.5 47.5 115 51 Q110.5 47.5 115 41 Z" fill="#8FD0F2" stroke="#2F7F7A" strokeWidth="1.2" opacity={on("worried", "shocked")} />
+        <Face mood={mood} />
       </g>
 
       <path d="M6 90 C6 58 27 40 50 40 C73 40 94 58 94 90 Z" fill="#5E9E6E" />
@@ -162,5 +118,59 @@ export function Pong({
         <circle cx="118" cy="24" r="2.5" />
       </g>
     </svg>
+  );
+}
+
+/** Eyes, brows, cheeks and mouth for each mood, around the head at (98, 60). */
+function Face({ mood }: { mood: PongMood }) {
+  const on = (...moods: PongMood[]) => (moods.includes(mood) ? 1 : 0);
+  return (
+    <>
+      <g opacity={on("peek", "ask", "listen", "worried")}>
+        <ellipse cx="91" cy="57" rx="3.6" ry="4.4" fill="#22301F" />
+        <ellipse cx="105" cy="57" rx="3.6" ry="4.4" fill="#22301F" />
+        <circle cx="92.2" cy="55.4" r="1.3" fill="#FFFFFF" />
+        <circle cx="106.2" cy="55.4" r="1.3" fill="#FFFFFF" />
+      </g>
+      <g opacity={on("shocked")}>
+        <ellipse cx="91" cy="56.5" rx="4.6" ry="5.6" fill="#FFFFFF" stroke="#22301F" strokeWidth="1.6" />
+        <ellipse cx="105" cy="56.5" rx="4.6" ry="5.6" fill="#FFFFFF" stroke="#22301F" strokeWidth="1.6" />
+        <circle cx="91" cy="57" r="2.2" fill="#22301F" />
+        <circle cx="105" cy="57" r="2.2" fill="#22301F" />
+      </g>
+      <g opacity={on("sleep")} stroke="#22301F" strokeWidth="2.3" fill="none" strokeLinecap="round">
+        <path d="M87 57 Q91 61 95 57" />
+        <path d="M101 57 Q105 61 109 57" />
+      </g>
+      <g opacity={on("happy", "proud")} stroke="#22301F" strokeWidth="2.5" fill="none" strokeLinecap="round">
+        <path d="M87 59 Q91 53 95 59" />
+        <path d="M101 59 Q105 53 109 59" />
+      </g>
+      <g opacity={on("sleepy")}>
+        <ellipse cx="91" cy="58.5" rx="3.6" ry="1.9" fill="#22301F" />
+        <ellipse cx="105" cy="58.5" rx="3.6" ry="1.9" fill="#22301F" />
+        <path d="M86.5 56.6 H95.5 M100.5 56.6 H109.5" stroke="#6E9E62" strokeWidth="2.3" strokeLinecap="round" />
+      </g>
+      <path
+        d={
+          mood === "shocked"
+            ? "M86 47.5 Q91 44.5 95 47 M101 47 Q105 44.5 110 47.5"
+            : "M87 50.5 L95 52.5 M109 50.5 L101 52.5"
+        }
+        stroke="#22301F"
+        strokeWidth="2.2"
+        fill="none"
+        strokeLinecap="round"
+        opacity={on("worried", "shocked")}
+      />
+      <ellipse cx="85.5" cy="65" rx="5" ry="3.2" fill="#F09A8A" opacity="0.6" />
+      <ellipse cx="110.5" cy="65" rx="5" ry="3.2" fill="#F09A8A" opacity="0.6" />
+      <path d="M94 68 Q98 72.5 102 68" stroke="#22301F" strokeWidth="2.1" fill="none" strokeLinecap="round" opacity={on("sleep", "peek", "listen", "happy", "sleepy")} />
+      <path d="M92.5 69.5 Q98 76 103.5 69.5 Z" fill="#4A2A24" stroke="#22301F" strokeWidth="1.6" strokeLinejoin="round" opacity={on("proud")} />
+      <path d="M93 70 q2.5 -2.2 5 0 q2.5 2.2 5 0" stroke="#22301F" strokeWidth="2.1" fill="none" strokeLinecap="round" opacity={on("worried")} />
+      <ellipse cx="98" cy="69.5" rx="3.6" ry="3" fill="#4A2A24" opacity={on("ask")} />
+      <ellipse cx="98" cy="70" rx="3.2" ry="4.2" fill="#4A2A24" opacity={on("shocked")} />
+      <path d="M115 41 Q119.5 47.5 115 51 Q110.5 47.5 115 41 Z" fill="#8FD0F2" stroke="#2F7F7A" strokeWidth="1.2" opacity={on("worried", "shocked")} />
+    </>
   );
 }
