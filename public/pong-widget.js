@@ -203,8 +203,8 @@ function hasSafeToSpend(data) {
 }
 
 function paydayLabel(data) {
-  if (data.daysLeft === 1) return "Payday tomorrow";
-  return `Payday ${shortDay(data.nextPayday)} · ${data.daysLeft} days`;
+  if (data.daysLeft === 1) return "payday tomorrow";
+  return `payday ${shortDay(data.nextPayday)}`;
 }
 
 function shortDay(date) {
@@ -233,8 +233,9 @@ function addTotal(stack, result, big) {
   stack.addSpacer(big ? 6 : null);
   text(stack, peso(Math.abs(data.left)), big ? font.huge : font.big, over ? new Color("#ffd2c6") : Color.white(), { scale: 0.5 });
   stack.addSpacer(3);
-  text(stack, data.total > 0 ? `Spent ${peso(data.total)} of ${peso(data.perDay)}` : `${peso(data.perDay)} a day`, font.sub, SEA_TEXT, { scale: 0.7 });
-  text(stack, paydayLabel(data), font.small, SEA_TEXT, { scale: 0.7 });
+  // Smaller, under the big number: what you've spent today, then the daily amount and payday.
+  text(stack, `Spent today ${peso(data.total)}`, font.sub, SEA_TEXT, { scale: 0.7 });
+  text(stack, `${peso(data.perDay)} a day · ${paydayLabel(data)}`, font.small, SEA_TEXT, { lines: 2, scale: 0.7 });
   // The daily amount is from the last time Home was opened.
   if (stale || data.asOf !== data.date) text(stack, stale ? when : `As of ${shortDay(data.asOf)}`, font.small, SEA_TEXT);
 }
