@@ -5,6 +5,7 @@ import { ChevronIcon } from "@/components/icons";
 import { creditRoom } from "@/lib/bnpl";
 import { getBnplCap, getPlanInputs } from "@/lib/data";
 import { today as getToday } from "@/lib/dates";
+import { countsAsSpending, paysInPesos } from "@/lib/money";
 import { nextOccurrence } from "@/lib/schedule";
 import { AffordForm } from "./afford-form";
 
@@ -50,6 +51,10 @@ async function Afford() {
       payday={payday ? { frequency: payday.frequency, day1: payday.day1, day2: payday.day2 } : null}
       credit={credit}
       cap={cap}
+      // Your spending money: what the forecast counts.
+      wallets={accounts
+        .filter((a) => countsAsSpending(a) && paysInPesos(a) && !a.archived)
+        .map((a) => ({ id: a.id, name: a.name, balance: a.balance }))}
     />
   );
 }

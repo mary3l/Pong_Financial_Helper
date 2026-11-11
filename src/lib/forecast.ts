@@ -33,8 +33,10 @@ export type ForecastItem = {
   transactionId: string | null;
   /** The day that transaction happened, when known: before `dueOn` means it was paid in advance. */
   paidOn?: string | null;
-  /** Installments: the credit line or loan it pays. */
+  /** Installments, and bills or planned expenses bought on a credit line: the line it's billed on. */
   lenderId?: string | null;
+  /** Bought on a credit line: the day you buy it. `dueOn` is then the card bill it lands on. */
+  boughtOn?: string | null;
   /** Installments: the plan's last payment. */
   lastPayment?: boolean;
 };
@@ -424,6 +426,47 @@ export function purchaseItems(p: Purchase): ForecastItem[] {
     estimate: false,
     transactionId: null,
   }));
+}
+
+export type WalletCheck = {
+  /** The payment date where the wallet is lowest after paying. */
+  date: string;
+  /** About what's in the wallet that day before paying, and after. */
+  before: number;
+  after: number;
+};
+
+/**
+ * Whether one wallet has enough for a purchase: its balance now, plus the
+ * pay and bills set to go through it, on each payment date. Returns the
+ * tightest date. Bills with no wallet set aren't counted against it.
+ */
+export function walletCheck({
+  balance,
+  walletId,
+  items,
+  purchase,
+  today,
+}: {
+  balance: number;
+  walletId: string;
+  items: ForecastItem[];
+  purchase: Purchase;
+  today: string;
+}): WalletCheck {
+  const own = items.filter((i) => i.accountId === walletId);
+  const payments = purchaseItems(purchase);
+  let worst: WalletCheck | null = null;
+  for (const p of payments) {
+    const before = roundCents(
+      balance +
+        own.filter((i) => (i.dueOn < today ? today : i.dueOn) <= p.dueOn).reduce((sum, i) => sum + itemEffect(i), 0) -
+        payments.filter((x) => x.dueOn < p.dueOn).reduce((sum, x) => sum + (x.amount ?? 0), 0),
+    );
+    const after = roundCents(before - (p.amount ?? 0));
+    if (!worst || after < worst.after) worst = { date: p.dueOn, before, after };
+  }
+  return worst!;
 }
 
 export type Verdict = {

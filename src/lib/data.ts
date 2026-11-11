@@ -6,6 +6,7 @@ import { subcategoryOptions } from "@/lib/categories";
 import { addDays, dateInMonth, daysBetween, monthContaining } from "@/lib/dates";
 import { scheduledItems, sortItems, type ForecastItem, type ScheduleInputs } from "@/lib/forecast";
 import { getUsdRate, type UsdRate } from "@/lib/fx";
+import { onCardBills } from "@/lib/installments";
 import type { PriceMemory } from "@/lib/grocery";
 import {
   countsAsSpending,
@@ -831,8 +832,10 @@ export async function getPlanInputs(today: string, days: number): Promise<PlanIn
   const installments = installmentInputs(plans.filter((p) => !p.personId));
   const until = addDays(today, days);
   const paydayAmounts = await payrollAmounts(recurring, today, until);
+  // Bought on Atome: due when its bill is, not the day you buy.
+  const lines = accounts.filter((a) => a.type === "credit_line");
   const items = sortItems([
-    ...scheduledItems({ recurring, billPayments, planned, installments, paydayAmounts }, today, until),
+    ...onCardBills(scheduledItems({ recurring, billPayments, planned, installments, paydayAmounts }, today, until), lines),
     ...personItems(people, today, until),
   ]);
   return {
@@ -846,6 +849,16 @@ export async function getPlanInputs(today: string, days: number): Promise<PlanIn
     people,
     items: await withPaidDates(items),
   };
+}
+
+/**
+ * What's scheduled to go through one account in the next `days`: pay landing
+ * in it, bills and planned expenses paid from it, installments it pays, and
+ * on a credit line, what you'll buy on it (at the bill it lands on).
+ */
+export async function getScheduledFor(accountId: string, today: string, days = 60): Promise<ForecastItem[]> {
+  const { items } = await getPlanInputs(today, days);
+  return items.filter((i) => i.accountId === accountId);
 }
 
 /**

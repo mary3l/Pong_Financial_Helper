@@ -137,6 +137,8 @@ export type PlannedInput = {
   first: string;
   /** 1 for one-time; more splits it into monthly payments. */
   months: number;
+  /** The wallet it'll be paid from; null or missing for any. Mark paid starts on it. */
+  accountId?: string | null;
 };
 
 /** "Add as planned expense" from Can I afford this?. */
@@ -154,12 +156,17 @@ export async function addPlannedExpense(input: PlannedInput): Promise<PlanResult
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
+  // Only a peso wallet of yours: pickWallet says null for anything else.
+  const accountId = input.accountId ? await pickWallet(supabase, null, input.accountId) : null;
+  if (input.accountId && !accountId) return { error: "Pick one of your wallets." };
+
   const amounts = splitAmount(amount, input.months);
   const rows = monthlyDates(input.first, input.months).map((date, i) => ({
     name: input.months > 1 ? `${name} (${i + 1} of ${input.months})` : name,
     amount: amounts[i],
     category: input.category,
     due_on: date,
+    account_id: accountId,
   }));
   const { error } = await supabase.from("planned_expenses").insert(rows);
   if (error) return FAILED;

@@ -1,5 +1,5 @@
 import { addDays, daysBetween } from "@/lib/dates";
-import { monthlyDates, splitAmount } from "@/lib/forecast";
+import { monthlyDates, splitAmount, type ForecastItem } from "@/lib/forecast";
 import { roundCents, roundHalfUp } from "@/lib/money";
 import { nextOccurrence } from "@/lib/schedule";
 
@@ -72,6 +72,25 @@ export function catchUpDue(purchasedOn: string, dueDay: number | null, today: st
   const afterPurchase = bnplFirstDue(purchasedOn, dueDay, cutoffDay);
   const nextBill = dueDay ? nextOccurrence({ frequency: "monthly", day1: dueDay, day2: null }, addDays(today, -1)) : today;
   return afterPurchase < nextBill ? nextBill : afterPurchase;
+}
+
+/**
+ * Bills and planned expenses paid from a credit line (Atome): you buy on the
+ * day you set, but your wallets only pay when the card's bill is due. Each
+ * moves to that bill (the statement cutoff decides which), keeps the day you
+ * buy as `boughtOn`, and goes with the line's other payments. A line with
+ * no due day saved stays on the day you set.
+ */
+export function onCardBills(
+  items: ForecastItem[],
+  lines: { id: string; dueDay: number | null; cutoffDay: number | null }[],
+): ForecastItem[] {
+  return items.map((i) => {
+    if (i.flow !== "out" || (i.kind !== "planned" && i.kind !== "bill") || i.transactionId) return i;
+    const line = lines.find((l) => l.id === i.accountId);
+    if (!line?.dueDay) return i;
+    return { ...i, boughtOn: i.dueOn, dueOn: bnplFirstDue(i.dueOn, line.dueDay, line.cutoffDay), lenderId: line.id };
+  });
 }
 
 export type LoanTerms = {

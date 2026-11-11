@@ -107,7 +107,8 @@ export type PayTo = {
 export function groupByPayee(items: ForecastItem[], lenderName: (id: string) => string | undefined, today: string): PayTo[] {
   const groups = new Map<string, PayTo>();
   for (const i of items) {
-    const lender = i.kind === "installment" && i.lenderId ? i.lenderId : null;
+    // Installments and anything bought on a credit line go with that line's bill.
+    const lender = (i.kind === "installment" || i.boughtOn) && i.lenderId ? i.lenderId : null;
     const key = lender ? `lender|${lender}` : i.kind === "utang" ? `utang|${i.id}` : `item|${i.name}`;
     const name = (lender && lenderName(lender)) || i.name;
     const editable = i.kind === "bill" || i.kind === "planned" || i.kind === "income";

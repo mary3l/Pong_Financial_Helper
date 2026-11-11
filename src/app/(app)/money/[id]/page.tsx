@@ -3,9 +3,9 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LogButton } from "@/components/log-button";
-import { getAccounts, getInstallmentPlans, getPeople, getSplitsPaidWith, installmentInputs } from "@/lib/data";
+import { getAccounts, getInstallmentPlans, getPeople, getScheduledFor, getSplitsPaidWith, installmentInputs } from "@/lib/data";
 import { addDays, formatShortDay, isValidDate, today as getToday } from "@/lib/dates";
-import { scheduledItems } from "@/lib/forecast";
+import { scheduledItems, sortItems } from "@/lib/forecast";
 import { bnplFirstDue, catchUpDue, dueText, statementFor } from "@/lib/installments";
 import { formatPeso, isDebt, isSpendable, paysInPesos, roundCents } from "@/lib/money";
 import { nextOccurrence } from "@/lib/schedule";
@@ -70,21 +70,28 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
     return personId ? { id: personId, name: personName.get(personId) ?? "Someone" } : null;
   };
   // Unpaid installments, late ones first, as forecast items for Mark paid.
-  const upcoming = scheduledItems(
-    { recurring: [], billPayments: [], planned: [], installments: installmentInputs(plans).filter((p) => !p.transactionId) },
-    today,
-    "9999-12-31",
-  );
+  // On a credit line, also what you plan to buy on it (Plan › Scheduled), on the bill it lands on.
+  const planned = account.type === "credit_line" ? (await getScheduledFor(account.id, today, 90)).filter((i) => i.boughtOn && !i.transactionId) : [];
+  const upcoming = sortItems([
+    ...scheduledItems(
+      { recurring: [], billPayments: [], planned: [], installments: installmentInputs(plans).filter((p) => !p.transactionId) },
+      today,
+      "9999-12-31",
+    ),
+    ...planned,
+  ]);
   // One bill per due date: everything due that day, like the provider's monthly statement.
   const bills = [...new Set(upcoming.map((p) => p.dueOn))].map((dueOn) => {
     const items = upcoming.filter((p) => p.dueOn === dueOn);
     return { dueOn, items, total: roundCents(items.reduce((sum, p) => sum + (p.amount ?? 0), 0)) };
   });
-  const next = upcoming[0];
-  const nextBill = bills[0]?.items ?? [];
-  const nextTotal = bills[0]?.total ?? 0;
-  // Pay bill is your part; each person pays theirs.
-  const nextMine = nextBill.filter((p) => !payerOf(p.id));
+  const next = upcoming.find((p) => !p.boughtOn);
+  // The bill with the next real payment (one with only planned purchases waits until you buy them).
+  const nextDue = bills.find((b) => b.dueOn === next?.dueOn);
+  const nextBill = nextDue?.items ?? [];
+  const nextTotal = nextDue?.total ?? 0;
+  // Pay bill is your part; each person pays theirs. Something you haven't bought yet isn't on it.
+  const nextMine = nextBill.filter((p) => !payerOf(p.id) && !p.boughtOn);
   const nextMineTotal = roundCents(nextMine.reduce((sum, p) => sum + (p.amount ?? 0), 0));
   const nextTheirs = [...new Map(nextBill.flatMap((p) => {
     const payer = payerOf(p.id);
@@ -332,9 +339,28 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
                           <span className="truncate font-bold">{item.name}</span>
                           {split && <span className="text-[13px] text-muted">Split bill · {split.others.length + (split.mine ? 1 : 0)} people</span>}
                           {payer && <span className="text-[13px] font-bold text-sea-dark">{payer.name} pays this</span>}
+                          {item.boughtOn && (
+                            <span className="text-[13px] text-muted">
+                              {item.kind === "planned" ? "Planned" : "Repeating bill"} · {item.boughtOn < today ? "bought" : "buying"}{" "}
+                              {formatShortDay(item.boughtOn, today)}
+                            </span>
+                          )}
                         </span>
                         <span className="font-display text-[17px] font-semibold">{formatPeso(item.amount ?? 0)}</span>
-                        {payer ? <TheyPaidButton ids={[item.id]} label="They paid" /> : <LogButton item={item} accounts={accounts} />}
+                        {item.boughtOn ? (
+                          // Not bought yet: once you do, log it with + on this line and remove the plan.
+                          <Link
+                            href={`/plan/scheduled?edit=${item.id}`}
+                            aria-label={`Edit ${item.name}`}
+                            className="flex h-10 shrink-0 items-center rounded-full px-3 text-[13px] font-extrabold text-sea-dark hover:bg-mint"
+                          >
+                            Edit
+                          </Link>
+                        ) : payer ? (
+                          <TheyPaidButton ids={[item.id]} label="They paid" />
+                        ) : (
+                          <LogButton item={item} accounts={accounts} />
+                        )}
                       </div>
                       {split && <SplitBreakdown split={split} />}
                     </li>
@@ -345,7 +371,7 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
           ))}
           <p className="text-xs text-muted">
             {credit
-              ? `A purchase you log with + lands on the bill it's due with, and that bill's total goes up. All of these are in your forecast and Safe to spend${plans.some((p) => p.personId) ? ", except what someone else pays: their money goes straight to the bill" : ""}.`
+              ? `A purchase you log with + lands on the bill it's due with, and that bill's total goes up. So does one you plan in Plan › Scheduled with Paid from ${account.name}, by its statement cutoff. All of these are in your forecast and Safe to spend${plans.some((p) => p.personId) ? ", except what someone else pays: their money goes straight to the bill" : ""}.`
               : "All of these are in your forecast and Safe to spend."}
           </p>
         </section>

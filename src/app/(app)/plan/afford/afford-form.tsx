@@ -11,7 +11,7 @@ import { Pong, type PongMood } from "@/components/pong";
 import { affordWithCredit, type BnplCap, type CreditOption, type CreditRoom } from "@/lib/bnpl";
 import { EXPENSE_CATEGORIES } from "@/lib/categories";
 import { formatShortDay, isValidDate } from "@/lib/dates";
-import { affordVerdict, splitAmount, type ForecastItem, type Verdict } from "@/lib/forecast";
+import { affordVerdict, splitAmount, walletCheck, type ForecastItem, type Verdict, type WalletCheck } from "@/lib/forecast";
 import { MAX_AMOUNT, formatPeso, parseAmount } from "@/lib/money";
 import type { Schedule } from "@/lib/schedule";
 
@@ -33,6 +33,7 @@ export function AffordForm({
   payday,
   credit,
   cap,
+  wallets,
 }: {
   /** Money in cash, bank and e-wallets now. */
   start: number;
@@ -46,6 +47,8 @@ export function AffordForm({
   credit: CreditRoom[];
   /** Pong's monthly BNPL cap; null without credit lines. */
   cap: BnplCap | null;
+  /** Cash, bank and e-wallets for spending, to pay it from. */
+  wallets: { id: string; name: string; balance: number }[];
 }) {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -53,6 +56,9 @@ export function AffordForm({
   const [when, setWhen] = useState(today);
   const [category, setCategory] = useState("shopping");
   const [months, setMonths] = useState(1);
+  // "" is any wallet: the check is on all your spending money together.
+  const [walletId, setWalletId] = useState("");
+  const wallet = wallets.find((w) => w.id === walletId) ?? null;
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -60,6 +66,7 @@ export function AffordForm({
   const valid = amount > 0 && amount <= MAX_AMOUNT && isValidDate(when) && when >= today;
   const purchase = { name: name.trim() || "This", amount, first: when, months };
   const verdict = valid ? affordVerdict({ start, items, purchase, today, nextPayday }) : null;
+  const inWallet = valid && wallet ? walletCheck({ balance: wallet.balance, walletId: wallet.id, items, purchase, today }) : null;
   // Only when your own money falls short or it's tight.
   const creditOptions =
     cap && verdict && verdict.tone !== "comfortable"
@@ -74,7 +81,7 @@ export function AffordForm({
     }
     setError(null);
     startTransition(async () => {
-      const result = await addPlannedExpense({ name, amount, category, first: when, months });
+      const result = await addPlannedExpense({ name, amount, category, first: when, months, accountId: wallet?.id ?? null });
       if (result.error) setError(result.error);
       // Scheduled is where it can be changed or removed.
       else router.push(`/plan/scheduled?added=${months > 1 ? months : 1}`);
@@ -122,6 +129,17 @@ export function AffordForm({
             ))}
           </select>
         </div>
+        {wallets.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="afford-wallet" className="text-sm font-bold">Pay from</label>
+            <select id="afford-wallet" value={walletId} onChange={(e) => setWalletId(e.target.value)} className={FIELD_CLASS}>
+              <option value="">Any wallet</option>
+              {wallets.map((w) => (
+                <option key={w.id} value={w.id}>{`${w.name} · ${formatPeso(w.balance)}`}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <fieldset className="flex flex-col gap-1.5">
           <legend className="pb-1 text-sm font-bold">Pay as</legend>
           <div className="grid grid-cols-2 gap-1 rounded-2xl bg-mint p-1">
@@ -170,7 +188,10 @@ export function AffordForm({
         <section aria-live="polite" className="flex flex-col gap-3 rounded-[20px] bg-card p-4">
           <h2 className="text-[13px] font-extrabold text-muted">RESULT</h2>
           {verdict ? (
-            <Result verdict={verdict} today={today} onWait={setWhen} />
+            <>
+              <Result verdict={verdict} today={today} onWait={setWhen} />
+              {wallet && inWallet && <InWallet name={wallet.name} check={inWallet} installments={months > 1} today={today} />}
+            </>
           ) : (
             <div className="flex items-center gap-2">
               <Pong mood="ask" size={64} decorative />
@@ -258,6 +279,25 @@ function Result({
         <p className="text-[13px] text-muted">Your forecast already dips below ₱0 without this.</p>
       )}
     </>
+  );
+}
+
+/** Whether the wallet you picked has enough on the day: the forecast above counts all your spending money. */
+function InWallet({ name, check, installments, today }: { name: string; check: WalletCheck; installments: boolean; today: string }) {
+  const when = check.date === today ? "now" : `on ${formatShortDay(check.date, today)}`;
+  if (check.after < 0) {
+    return (
+      <p className="rounded-[14px] bg-coral-tint px-3 py-2 text-[15px]">
+        <strong className="text-coral-text">Not enough in {name}</strong>: about {formatPeso(check.before)} there {when}
+        {installments ? " for that payment" : ""}. Move {formatPeso(-check.after)} in first, or pay from another wallet.
+      </p>
+    );
+  }
+  return (
+    <p className="rounded-[14px] bg-sea-tint px-3 py-2 text-[15px]">
+      <strong>{name}</strong>: about {formatPeso(check.before)} {when}, {formatPeso(check.after)} after paying
+      {installments ? " (its tightest payment)" : ""}.
+    </p>
   );
 }
 

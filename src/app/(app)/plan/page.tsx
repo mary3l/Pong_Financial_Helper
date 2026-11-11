@@ -172,6 +172,8 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
                     <span className="text-[13px] text-muted">
                       {itemLabel(item)}
                       {item.category && item.kind !== "payday" && ` · ${categoryInfo(item.flow === "in" ? "income" : "expense", item.category).label}`}
+                      {item.boughtOn &&
+                        ` · bought ${formatShortDay(item.boughtOn, today)} on ${accounts.find((a) => a.id === item.lenderId)?.name ?? "your card"}, paid with its bill`}
                       {" · "}balance after{" "}
                       <span className={balanceAfter < 0 ? "font-bold text-coral-text" : ""}>{formatPeso(balanceAfter)}</span>
                     </span>

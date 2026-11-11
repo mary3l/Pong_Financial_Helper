@@ -141,6 +141,7 @@ function ItemList({ label, items, today }: { label: string; items: ForecastItem[
                 {item.lastPayment && (
                   <span className="rounded-full bg-sea-tint px-2 text-xs font-extrabold text-sea-dark">Last payment</span>
                 )}
+                {item.boughtOn && <span className="text-xs text-muted">bought {formatShortDay(item.boughtOn, today)}</span>}
               </span>
               <span className="text-right font-display text-[17px] font-semibold">{formatPeso(item.amount ?? 0)}</span>
             </li>
