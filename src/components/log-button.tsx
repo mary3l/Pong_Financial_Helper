@@ -33,13 +33,22 @@ export function prefillHref(item: ForecastItem): string {
 // logs the real transaction at the scheduled amount; undo deletes it, which
 // un-marks the item. An installment logs a transfer plus its fee; utang and
 // pautang settle the whole balance (a transfer, never spending).
-export function LogButton({ item, accounts }: { item: ForecastItem; accounts: Account[] }) {
+export function LogButton({
+  item,
+  accounts,
+  early = false,
+}: {
+  item: ForecastItem;
+  accounts: Account[];
+  /** Due a while from now: "Pay early" instead of "Mark paid". */
+  early?: boolean;
+}) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const paid = Boolean(item.transactionId);
   const incoming = item.flow === "in";
-  const label = incoming ? "Add income" : "Mark paid";
+  const label = incoming ? "Add income" : early ? "Pay early" : "Mark paid";
   // Scheduled items are in pesos, so dollar wallets aren't offered.
   const wallets = accounts.filter((a) => paysInPesos(a) && !a.archived);
 

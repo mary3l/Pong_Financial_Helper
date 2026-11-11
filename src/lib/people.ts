@@ -1,5 +1,6 @@
-import { formatShortDay, monthContaining } from "@/lib/dates";
+import { addDays, formatShortDay, monthContaining } from "@/lib/dates";
 import type { ForecastItem } from "@/lib/forecast";
+import { catchUpDue } from "@/lib/installments";
 import { balanceEffect, formatPeso, roundCents } from "@/lib/money";
 
 // Utang and pautang (design canvas row 5). A person's balance is what they
@@ -162,7 +163,80 @@ export type OpenRecord = {
   left: number;
   /** A split: the whole bill it was a share of. */
   splitTotal: number | null;
+  /** Bought on your credit line (Atome): the bill it's on, and when to ask them to pay. */
+  card: CardBill | null;
 };
+
+/** Ask to be paid this many days before the card's due date, so the money's in before the bill. */
+export const PAY_AHEAD_DAYS = 2;
+
+/** A record bought on your credit line: which line, its bill's due date, and when you expect their payment. */
+export type CardBill = { line: string; dueOn: string; expectedOn: string };
+
+type CreditLine = { id: string; name: string; dueDay: number | null; cutoffDay: number | null };
+
+type PlanOnLine = {
+  sourceTxnId: string | null;
+  personId: string | null;
+  months: number;
+  payments: { dueOn: string; transactionId: string | null }[];
+};
+
+/**
+ * The card bill each record bought on your credit line is on, by record id.
+ * Added to a bill (Add to bill): that bill's due date. Not yet: the bill the
+ * statement cutoff puts it on (bought on or before the cutoff, this
+ * statement; after it, the next), or the next bill if that one's passed,
+ * like the credit line's page. Plans they pay in your name (Tita Flora's) and
+ * installments are left out: their own payments show their dates. `splits`
+ * is each split's record ids, to find the plan a split bill made.
+ */
+export function cardBills({
+  records,
+  lines,
+  plans,
+  splits,
+  today,
+}: {
+  records: { id: string; accountId: string; occurredOn: string; splitId: string | null }[];
+  lines: CreditLine[];
+  plans: PlanOnLine[];
+  splits: Map<string, string[]>;
+  today: string;
+}): Map<string, CardBill> {
+  const out = new Map<string, CardBill>();
+  for (const t of records) {
+    const line = lines.find((l) => l.id === t.accountId);
+    if (!line?.dueDay) continue;
+    const ids = new Set([t.id, ...(t.splitId ? (splits.get(t.splitId) ?? []) : [])]);
+    const plan = plans.find((p) => p.sourceTxnId && ids.has(p.sourceTxnId));
+    if (plan && (plan.personId || plan.months > 1)) continue;
+    const dueOn = plan
+      ? plan.payments.find((x) => !x.transactionId)?.dueOn
+      : catchUpDue(t.occurredOn, line.dueDay, today, line.cutoffDay);
+    // A bill already paid: nothing more to ask by.
+    if (!dueOn) continue;
+    out.set(t.id, { line: line.name, dueOn, expectedOn: addDays(dueOn, -PAY_AHEAD_DAYS) });
+  }
+  return out;
+}
+
+/** "expected on Nov 14", "expected today", "was expected on Oct 14". Never the card's due date. */
+export function expectedText(card: CardBill, today: string): string {
+  if (card.dueOn < today) return `was expected on ${formatShortDay(card.expectedOn, today)}`;
+  if (card.expectedOn <= today) return "expected today";
+  return `expected on ${formatShortDay(card.expectedOn, today)}`;
+}
+
+/** The earliest card date among open records, to lead with; null if none is on a card. */
+export function firstExpected(open: OpenRecord[]): CardBill | null {
+  return open.reduce<CardBill | null>((first, r) => (r.card && (!first || r.card.expectedOn < first.expectedOn) ? r.card : first), null);
+}
+
+/** True when the open records are on cards with more than one date, so each row needs its own. */
+export function datesDiffer(open: OpenRecord[]): boolean {
+  return new Set(open.flatMap((r) => (r.card ? [r.card.expectedOn] : []))).size > 1;
+}
 
 type Txn = {
   id: string;
@@ -187,7 +261,7 @@ function recordLabel(t: Txn, entry: PersonEntry | undefined): string {
  * records first, so what's left of their balance sits on the newest ones
  * (like unpaidByRecord). `history` must be newest first.
  */
-export function openRecords(person: Person, history: Txn[]): OpenRecord[] {
+export function openRecords(person: Person, history: Txn[], cards: Map<string, CardBill> = new Map()): OpenRecord[] {
   const sign = Math.sign(person.balance);
   if (!sign) return [];
   const entries = new Map(person.entries.map((e) => [e.transactionId, e]));
@@ -207,6 +281,8 @@ export function openRecords(person: Person, history: Txn[]): OpenRecord[] {
       amount: t.amount,
       left: unpaid,
       splitTotal: entry?.splitTotal ?? null,
+      // Only what they owe you: your card, their part of the bill.
+      card: sign > 0 ? (cards.get(t.id) ?? null) : null,
     });
   }
   return open.reverse();
@@ -285,11 +361,18 @@ export function breakdownText({
   theirs?: InYourName;
 }): string {
   const owesMe = person.balance > 0;
+  // The card date closes the message only when nothing else does (this month's
+  // bill, a loan's next payment, the date they promised); otherwise each row has it.
+  const cardCloses = owesMe && !month && !theirs.next && !dueDate(person);
+  const eachDate = !cardCloses || datesDiffer(open);
   const lines = open.map((r) => {
     const part = r.left < r.amount ? `${formatPeso(r.left)} left of ${formatPeso(r.amount)}` : formatPeso(r.left);
     const share = r.splitTotal ? ` (${owesMe ? "your" : "my"} share of ${formatPeso(r.splitTotal)})` : "";
-    return `• ${formatShortDay(r.date, today)} · ${r.label}: ${part}${share}`;
+    const card = r.card ? ` · on my ${r.card.line}${eachDate ? `, ${expectedText(r.card, today)}` : ""}` : "";
+    return `• ${formatShortDay(r.date, today)} · ${r.label}: ${part}${share}${card}`;
   });
+  const onCard = firstExpected(open);
+  const cardWhen = onCard ? capitalize(expectedText(onCard, today)) : null;
   const owed = Math.abs(person.balance);
   const theirInterest = owesMe ? roundCents(theirs.interest) : 0;
   const thanks = owesMe ? `Salamat!${myName ? ` - ${myName}` : ""}` : `I'll send it soon. Salamat!${myName ? ` - ${myName}` : ""}`;
@@ -324,12 +407,12 @@ export function breakdownText({
       : formatPeso(owed);
   const due = dueDate(person);
   const next = owesMe ? theirs.next : null;
-  // A loan in your name: its next payment. Otherwise the date they promised.
+  // A loan in your name: its next payment. Otherwise the date they promised, or when your card needs it.
   const when = next
     ? `Next payment: ${formatPeso(next.amount)} ${next.dueOn < today ? "was due" : "due"} ${formatShortDay(next.dueOn, today)}`
     : owesMe && due
       ? `${due < today ? "Was due" : "Due"} ${formatShortDay(due, today)}`
-      : null;
+      : cardWhen;
   return [
     owesMe ? `Hi ${person.name}! Here's the breakdown of what's still open:` : `Hi ${person.name}! Here's what I still owe you:`,
     "",
@@ -339,4 +422,8 @@ export function breakdownText({
     ...(when ? [when] : []),
     thanks,
   ].join("\n");
+}
+
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

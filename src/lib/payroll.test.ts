@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  KINSENA,
+  changeFor,
   contributions,
+  cutoffContaining,
+  cutoffDaysText,
+  formatCutoff,
+  isCutoffDays,
+  nextCutoff,
+  previousCutoff,
   cutoffFor,
   cutoffPay,
   daysFor,
@@ -11,6 +19,9 @@ import {
   paydayFor,
   payForCutoff,
   philhealthContribution,
+  rateOf,
+  sameRate,
+  settingsFor,
   sssContribution,
   sssSalaryCredit,
   taxOnGross,
@@ -186,5 +197,101 @@ describe("8% income tax", () => {
       "2027-05-15",
       "2027-08-15",
     ]);
+  });
+});
+
+describe("pay that changes from a cutoff", () => {
+  // ₱800 a day until a raise to ₱1,000 from the Nov 16 cutoff.
+  const records: PayrollRecords = {
+    settings,
+    days: [],
+    overtime: [],
+    changes: [{ from: "2026-11-16", dailyRate: 1000, hoursPerDay: 8, startTime: "08:30", overtimeRate: 1.25 }],
+  };
+
+  it("uses the old pay before the change and the new one from it", () => {
+    expect(settingsFor(records, "2026-11-15").dailyRate).toBe(800);
+    expect(settingsFor(records, "2026-11-16")).toMatchObject({ dailyRate: 1000, startTime: "08:30", overtimeRate: 1.25 });
+    expect(settingsFor(records, "2027-03-02").dailyRate).toBe(1000);
+    // The rest is the same for every cutoff.
+    expect(settingsFor(records, "2026-11-20").paySss).toBe(true);
+  });
+
+  it("works out each cutoff with its own pay", () => {
+    // Nov 1–15 and Nov 16–30, 2026: 10 and 11 weekdays.
+    expect(payForCutoff(records, NOV_1, "2026-12-01").total).toBe(8000);
+    expect(payForCutoff(records, { start: "2026-11-16", end: "2026-11-30" }, "2026-12-01").total).toBe(11000);
+  });
+
+  it("takes the latest change on or before the cutoff", () => {
+    const two: PayrollRecords = {
+      ...records,
+      changes: [
+        { from: "2027-01-01", dailyRate: 1200, hoursPerDay: 8, startTime: "08:00", overtimeRate: 1 },
+        ...records.changes!,
+      ],
+    };
+    expect(changeFor(two, "2026-12-31")?.from).toBe("2026-11-16");
+    expect(changeFor(two, "2027-01-15")?.dailyRate).toBe(1200);
+    expect(changeFor(two, "2026-11-01")).toBeNull();
+  });
+
+  it("tells when two rates are the same", () => {
+    const noSss: PayrollSettings = { ...settings, paySss: false };
+    expect(sameRate(rateOf(settings), rateOf(noSss))).toBe(true);
+    expect(sameRate(rateOf(settings), records.changes![0])).toBe(false);
+  });
+});
+
+describe("your own cutoff days: 3–17 and 18–2", () => {
+  const days = [3, 18] as const;
+  const paydays = { frequency: "twice_monthly" as const, day1: 15, day2: 30 };
+
+  it("finds the cutoff a day is in, across months", () => {
+    expect(cutoffContaining("2026-11-11", days)).toEqual({ start: "2026-11-03", end: "2026-11-17" });
+    expect(cutoffContaining("2026-11-18", days)).toEqual({ start: "2026-11-18", end: "2026-12-02" });
+    expect(cutoffContaining("2026-11-02", days)).toEqual({ start: "2026-10-18", end: "2026-11-02" });
+    expect(cutoffContaining("2027-01-01", days)).toEqual({ start: "2026-12-18", end: "2027-01-02" });
+    expect(cutoffContaining("2027-02-20", days)).toEqual({ start: "2027-02-18", end: "2027-03-02" });
+  });
+
+  it("keeps 1–15 and 16–end by default", () => {
+    expect(cutoffContaining("2026-11-20")).toEqual({ start: "2026-11-16", end: "2026-11-30" });
+    expect(cutoffContaining("2027-02-03")).toEqual({ start: "2027-02-01", end: "2027-02-15" });
+    expect(cutoffFor("2026-11-30")).toEqual(NOV_1);
+  });
+
+  it("pays each on the first payday after it ends", () => {
+    expect(paydayFor({ start: "2026-11-03", end: "2026-11-17" }, paydays)).toBe("2026-11-30");
+    expect(paydayFor({ start: "2026-11-18", end: "2026-12-02" }, paydays)).toBe("2026-12-15");
+    expect(cutoffFor("2026-11-30", days)).toEqual({ start: "2026-11-03", end: "2026-11-17" });
+    expect(cutoffFor("2026-12-15", days)).toEqual({ start: "2026-11-18", end: "2026-12-02" });
+  });
+
+  it("steps and labels cutoffs", () => {
+    const nov18 = { start: "2026-11-18", end: "2026-12-02" };
+    expect(nextCutoff(nov18, days).start).toBe("2026-12-03");
+    expect(previousCutoff(nov18, days).start).toBe("2026-11-03");
+    expect(formatCutoff(nov18, "2026-11-11")).toBe("Nov 18 – Dec 2");
+    expect(formatCutoff({ start: "2026-11-03", end: "2026-11-17" }, "2026-11-11")).toBe("Nov 3 – 17");
+    expect(cutoffDaysText(days)).toBe("3–17 and 18–2");
+    expect(cutoffDaysText(KINSENA)).toBe("1–15 and 16–end");
+  });
+
+  it("works out a payday from its own cutoff", () => {
+    const records: PayrollRecords = { settings: { ...settings, cutoffDays: days }, days: [], overtime: [] };
+    // Nov 3–17, 2026: 11 weekdays at ₱800.
+    expect(paydayAmounts(records, paydays, "2026-11-30", "2026-12-01", "2026-11-11")["2026-11-30"].amount).toBe(8800);
+    // Pay changes start with your cutoffs too.
+    const raised = { ...records, changes: [{ from: "2026-11-18", dailyRate: 1000, hoursPerDay: 8, startTime: "08:00", overtimeRate: 1 }] };
+    expect(settingsFor(raised, "2026-11-17").dailyRate).toBe(800);
+    expect(settingsFor(raised, "2026-12-01").dailyRate).toBe(1000);
+  });
+
+  it("only accepts two different days from 1 to 28", () => {
+    expect(isCutoffDays([3, 18])).toBe(true);
+    expect(isCutoffDays([18, 3])).toBe(false);
+    expect(isCutoffDays([3, 30])).toBe(false);
+    expect(isCutoffDays([5, 5])).toBe(false);
   });
 });

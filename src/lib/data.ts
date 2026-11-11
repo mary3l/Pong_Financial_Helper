@@ -437,7 +437,7 @@ export async function readPayroll(
   today: string,
 ): Promise<PayrollRecords | null | "missing"> {
   const from = `${Number(today.slice(0, 4)) - 1}-01-01`;
-  const [s, d, o] = await Promise.all([
+  const [s, d, o, c] = await Promise.all([
     supabase.from("payroll_settings").select("*").maybeSingle(),
     supabase
       .from("payroll_days")
@@ -450,11 +450,17 @@ export async function readPayroll(
       .gte("work_date", from)
       .order("work_date")
       .order("starts_at"),
+    supabase
+      .from("payroll_pay_changes")
+      .select("starts_on, daily_rate, hours_per_day, start_time, overtime_rate")
+      .order("starts_on"),
   ]);
   if (s.error?.code === "PGRST205") return "missing";
   if (s.error) throw dbError(s.error);
   if (d.error) throw dbError(d.error);
   if (o.error) throw dbError(o.error);
+  // PGRST205 until migration 0021 is run: one rate for every cutoff.
+  if (c.error && c.error.code !== "PGRST205") throw dbError(c.error);
   if (!s.data) return null;
   const row = s.data;
   return {
@@ -473,6 +479,10 @@ export async function readPayroll(
       sssAmount: row.sss_amount == null ? null : Number(row.sss_amount),
       philhealthAmount: row.philhealth_amount == null ? null : Number(row.philhealth_amount),
       pagibigAmount: row.pagibig_amount == null ? null : Number(row.pagibig_amount),
+      // Undefined until migration 0021 is run: the 1st and 16th.
+      ...(row.cutoff_day1 != null && row.cutoff_day2 != null
+        ? { cutoffDays: [Number(row.cutoff_day1), Number(row.cutoff_day2)] as const }
+        : {}),
     },
     days: d.data.map((day) => ({
       date: day.work_date,
@@ -485,6 +495,13 @@ export async function readPayroll(
       date: ot.work_date,
       start: String(ot.starts_at).slice(0, 5),
       end: String(ot.ends_at).slice(0, 5),
+    })),
+    changes: (c.data ?? []).map((ch) => ({
+      from: ch.starts_on,
+      dailyRate: Number(ch.daily_rate),
+      hoursPerDay: Number(ch.hours_per_day),
+      startTime: String(ch.start_time).slice(0, 5),
+      overtimeRate: Number(ch.overtime_rate),
     })),
   };
 }
@@ -814,6 +831,10 @@ export async function getPlanInputs(today: string, days: number): Promise<PlanIn
   const installments = installmentInputs(plans.filter((p) => !p.personId));
   const until = addDays(today, days);
   const paydayAmounts = await payrollAmounts(recurring, today, until);
+  const items = sortItems([
+    ...scheduledItems({ recurring, billPayments, planned, installments, paydayAmounts }, today, until),
+    ...personItems(people, today, until),
+  ]);
   return {
     accounts,
     inWallets: roundCents(
@@ -823,11 +844,24 @@ export async function getPlanInputs(today: string, days: number): Promise<PlanIn
     setAside: pesoTotal(accounts.filter((a) => isSpendable(a.type) && !countsAsSpending(a))),
     payday: recurring.find((r) => r.kind === "payday") ?? null,
     people,
-    items: sortItems([
-      ...scheduledItems({ recurring, billPayments, planned, installments, paydayAmounts }, today, until),
-      ...personItems(people, today, until),
-    ]),
+    items: await withPaidDates(items),
   };
+}
+
+/**
+ * Adds the day each paid item's transaction happened (paidOn), so lists can
+ * tell what was paid in advance. Only money going out that's paid and not
+ * yet due needs it.
+ */
+async function withPaidDates(items: ForecastItem[]): Promise<ForecastItem[]> {
+  const ids = [...new Set(items.filter((i) => i.flow === "out" && i.transactionId).map((i) => i.transactionId!))];
+  if (!ids.length) return items;
+  const supabase = await db();
+  const { data, error } = await supabase.from("transactions").select("id, occurred_on").in("id", ids);
+  // The dates are only for a tag: without them, everything still works.
+  if (error) return items;
+  const paidOn = new Map(data.map((t) => [t.id as string, t.occurred_on as string]));
+  return items.map((i) => (i.transactionId && paidOn.has(i.transactionId) ? { ...i, paidOn: paidOn.get(i.transactionId) } : i));
 }
 
 /** Plan › Scheduled: every recurring and planned item, and what's coming. */

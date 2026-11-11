@@ -6,7 +6,7 @@ import { Pong, type PongMood } from "@/components/pong";
 import { categoryInfo } from "@/lib/categories";
 import { getPayroll, getPlanInputs } from "@/lib/data";
 import { addDays, formatShortDay, today as getToday } from "@/lib/dates";
-import { itemEffect, itemLabel, lowestBetween, project, type DayBalance } from "@/lib/forecast";
+import { itemEffect, itemLabel, lowestBetween, paidInAdvance, project, type DayBalance } from "@/lib/forecast";
 import { formatPeso } from "@/lib/money";
 import { billsByPayday } from "@/lib/office-days";
 import { PERIOD_DAYS, paymentsByPeriod } from "@/lib/pay-periods";
@@ -14,6 +14,7 @@ import { nextOccurrence } from "@/lib/schedule";
 import { BillsByPayday, PaymentsByPeriod } from "./payment-sections";
 import { PlanTabs, SegmentLinks } from "./plan-tabs";
 import { LogButton } from "@/components/log-button";
+import { PaidInAdvanceTag } from "@/components/paid-in-advance-tag";
 
 export const metadata = { title: "Plan · Pong Money" };
 
@@ -135,7 +136,7 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
           Can I afford this?
         </Link>
 
-        {byPayday.some((p) => p.bills.length) && <BillsByPayday periods={byPayday} accounts={accounts} today={today} />}
+        {byPayday.some((p) => p.bills.length || p.paidEarly.length) && <BillsByPayday periods={byPayday} accounts={accounts} today={today} />}
 
         {periods.some((p) => p.payments.length) && (
           <PaymentsByPeriod periods={periods} accounts={accounts} today={today} />
@@ -150,14 +151,20 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
               {forecast.rows.map(({ item, date, balanceAfter }) => {
                 const change = itemEffect(item);
                 const late = item.dueOn < today;
+                // A week out, only money going out gets a button: pay it early, from what you have now.
+                const soon = date < weekOut;
+                const payEarly = !soon && item.flow === "out" && item.amount !== null;
                 return (
                   <li key={item.key} className="grid grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-b border-line-soft py-2.5 last:border-0">
                     <span className={`row-span-2 text-xs font-extrabold uppercase ${late ? "text-coral-text" : "text-muted"}`}>
                       {late ? "Late" : formatShortDay(date, today)}
                     </span>
-                    <span className={`truncate ${item.kind === "payday" ? "font-extrabold" : "font-bold"}`}>
-                      {item.name}
-                      {item.estimate && <span className="font-normal text-muted"> (est.)</span>}
+                    <span className="flex min-w-0 flex-wrap items-center gap-x-2">
+                      <span className={`truncate ${item.kind === "payday" ? "font-extrabold" : "font-bold"}`}>
+                        {item.name}
+                        {item.estimate && <span className="font-normal text-muted"> (est.)</span>}
+                      </span>
+                      {paidInAdvance(item) && <PaidInAdvanceTag paidOn={item.paidOn!} today={today} />}
                     </span>
                     <span className={`text-right font-display text-[17px] font-semibold ${change > 0 ? "text-sea" : ""}`}>
                       {item.amount === null ? "amount not set" : `${change > 0 ? "+" : "−"}${formatPeso(item.amount)}`}
@@ -178,7 +185,7 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
                           Edit
                         </Link>
                       )}
-                      {date < weekOut && <LogButton item={item} accounts={accounts} />}
+                      {(soon || payEarly || item.transactionId) && <LogButton item={item} accounts={accounts} early={payEarly} />}
                     </span>
                   </li>
                 );

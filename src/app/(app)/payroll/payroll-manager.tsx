@@ -2,18 +2,25 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
-import { saveContributionAmounts, saveCutoff, savePayrollSettings, setContributionDay } from "@/app/payroll-actions";
+import { removePayChange, saveContributionAmounts, saveCutoff, savePayrollSettings, setContributionDay } from "@/app/payroll-actions";
 import { AmountInput } from "@/components/amount-input";
-import { FIELD_CLASS } from "@/components/choice-chip";
+import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import { FormDialog } from "@/components/form-dialog";
 import { ChevronIcon } from "@/components/icons";
-import { formatLongDay, formatPeriod, formatShortDay, nextPeriod, previousPeriod, type Period } from "@/lib/dates";
+import { addDays, formatLongDay, formatShortDay, isValidDate, type Period } from "@/lib/dates";
 import { formatPeso, parseAmount } from "@/lib/money";
 import {
   LEAVE_TYPES,
   RATES,
   calculatedContributions,
+  changeFor,
   contributions,
+  cutoffContaining,
+  cutoffDaysOf,
+  cutoffDaysText,
+  formatCutoff,
+  nextCutoff,
+  previousCutoff,
   cutoffPay,
   daysFor,
   formatMinutes,
@@ -23,10 +30,12 @@ import {
   monthlyBase,
   overtimeMinutes,
   paydayFor,
+  settingsFor,
   upcomingTaxPayments,
   type ContributionKey,
   type DayStatus,
   type OvertimeEntry,
+  type PayChange,
   type PayrollDay,
   type PayrollRecords,
   type PayrollSettings,
@@ -96,7 +105,7 @@ export function PayrollManager({
 
   return (
     <div className="flex flex-col gap-6">
-      <SettingsCard settings={records?.settings ?? null} />
+      <SettingsCard records={records} period={period} today={today} />
       {records && (
         <>
           <CutoffCard records={records} period={period} payday={payday} today={today} />
@@ -134,16 +143,22 @@ function Toggle({ checked, onChange, children }: { checked: boolean; onChange: (
 
 // ---------------------------------------------------------------- Your pay
 
-function SettingsCard({ settings }: { settings: PayrollSettings | null }) {
+function rateText(s: Pick<PayrollSettings, "dailyRate" | "hoursPerDay" | "startTime" | "overtimeRate">): string {
+  return [
+    `${formatPeso(s.dailyRate)} a day`,
+    `${s.hoursPerDay} hours`,
+    `starts ${formatTime(s.startTime)}`,
+    `overtime ${s.overtimeRate}×`,
+  ].join(" · ");
+}
+
+function SettingsCard({ records, period, today }: { records: PayrollRecords | null; period: Period; today: string }) {
   const [editing, setEditing] = useState(false);
 
-  if (settings) {
-    const parts = [
-      `${formatPeso(settings.dailyRate)} a day`,
-      `${settings.hoursPerDay} hours`,
-      `starts ${formatTime(settings.startTime)}`,
-      `overtime ${settings.overtimeRate}×`,
-    ];
+  if (records) {
+    // The pay for the cutoff on screen: a change from a later cutoff leaves this one as it was.
+    const settings = settingsFor(records, period.start);
+    const changes = records.changes ?? [];
     return (
       <Card
         title="Your pay"
@@ -158,13 +173,24 @@ function SettingsCard({ settings }: { settings: PayrollSettings | null }) {
           </button>
         }
       >
-        <p className="text-[15px] text-muted">{parts.join(" · ")}</p>
+        <p className="text-[15px] text-muted">
+          {changes.length > 0 && <strong className="text-ink">{formatCutoff(period, today)} cutoff: </strong>}
+          {rateText(settings)}
+        </p>
         <p className="text-[15px] text-muted">
           {formatPeso(hourlyRate(settings))} an hour · late is {formatPeso(hourlyRate(settings) / 60)} a minute
         </p>
+        {changes.length > 0 && <PayByCutoff records={records} changes={changes} period={period} today={today} />}
         {editing && (
           <FormDialog title="Your pay" onClose={() => setEditing(false)}>
-            <SettingsForm initial={settings} isNew={false} onClose={() => setEditing(false)} />
+            <SettingsForm
+              initial={settings}
+              isNew={false}
+              period={period}
+              hasChanges={changes.length > 0}
+              today={today}
+              onClose={() => setEditing(false)}
+            />
           </FormDialog>
         )}
       </Card>
@@ -174,18 +200,110 @@ function SettingsCard({ settings }: { settings: PayrollSettings | null }) {
   // First time: nothing else is on the page until it's set up, so it stays on it.
   return (
     <Card title="Set up your pay">
-      <SettingsForm initial={DEFAULT_SETTINGS} isNew onClose={() => undefined} />
+      <SettingsForm initial={DEFAULT_SETTINGS} isNew period={period} hasChanges={false} today={today} onClose={() => undefined} />
     </Card>
   );
 }
 
-function SettingsForm({ initial, isNew, onClose }: { initial: PayrollSettings; isNew: boolean; onClose: () => void }) {
+/** Each pay and the cutoffs it covers: the first from your settings, then each change. */
+function PayByCutoff({
+  records,
+  changes,
+  period,
+  today,
+}: {
+  records: PayrollRecords;
+  changes: PayChange[];
+  period: Period;
+  today: string;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const sorted = [...changes].sort((a, b) => a.from.localeCompare(b.from));
+  const onScreen = changeFor(records, period.start);
+  const rows = [
+    { key: "base", when: `Until ${formatShortDay(addDays(sorted[0].from, -1), today)}`, rate: records.settings, from: null, on: onScreen === null },
+    ...sorted.map((c, i) => ({
+      key: c.from,
+      when: sorted[i + 1]
+        ? `${formatShortDay(c.from, today)} – ${formatShortDay(addDays(sorted[i + 1].from, -1), today)}`
+        : `From ${formatShortDay(c.from, today)}`,
+      rate: c,
+      from: c.from,
+      on: onScreen?.from === c.from,
+    })),
+  ];
+
+  function remove(from: string) {
+    setError(null);
+    startTransition(async () => {
+      const result = await removePayChange(from);
+      if (result.error) setError(result.error);
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <h3 className="text-sm font-extrabold">Pay by cutoff</h3>
+      <ul className="flex flex-col rounded-2xl bg-mint px-3 py-1">
+        {rows.map((r) => (
+          <li key={r.key} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line-soft py-2 last:border-0">
+            <span className="flex min-w-0 flex-col">
+              <span className="text-sm font-extrabold">
+                {r.when}
+                {r.on && <span className="ml-1.5 text-xs text-sea">Shown below</span>}
+              </span>
+              <span className="text-[13px] text-muted">{rateText(r.rate)}</span>
+            </span>
+            {r.from && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => remove(r.from!)}
+                aria-label={`Remove the pay change from ${formatShortDay(r.from, today)}`}
+                className="h-9 rounded-full px-3 text-[13px] font-extrabold text-coral-text hover:bg-coral-tint disabled:opacity-60"
+              >
+                Remove
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+    </div>
+  );
+}
+
+function SettingsForm({
+  initial,
+  isNew,
+  period,
+  hasChanges,
+  today,
+  onClose,
+}: {
+  initial: PayrollSettings;
+  isNew: boolean;
+  /** The cutoff on screen: a new pay starts with it unless you pick another. */
+  period: Period;
+  hasChanges: boolean;
+  today: string;
+  onClose: () => void;
+}) {
   const [rate, setRate] = useState(initial.dailyRate ? String(initial.dailyRate) : "");
   const [hours, setHours] = useState(String(initial.hoursPerDay));
   const [start, setStart] = useState(initial.startTime);
   const [otRate, setOtRate] = useState(String(initial.overtimeRate));
   const [base, setBase] = useState(initial.monthlyBase ? String(initial.monthlyBase) : "");
   const [startedOn, setStartedOn] = useState(initial.startedOn ?? "");
+  // The days your two cutoffs start: 3 and 18 is 3–17 and 18–2.
+  const [cutoffStarts, setCutoffStarts] = useState(() => cutoffDaysOf(initial).map(String));
+  const days = [Number(cutoffStarts[0]), Number(cutoffStarts[1])].sort((a, b) => a - b) as [number, number];
+  const daysOk = days[0] !== days[1];
+  // Every cutoff, or from the cutoff that has the date you pick (a raise on Nov 20 starts with Nov 18 – Dec 2).
+  const [every, setEvery] = useState(false);
+  const [fromDate, setFromDate] = useState(period.start);
+  const from = every || !daysOk || !isValidDate(fromDate) ? null : cutoffContaining(fromDate, days).start;
   const [pays, setPays] = useState({
     paySss: initial.paySss,
     payPhilhealth: initial.payPhilhealth,
@@ -222,9 +340,18 @@ function SettingsForm({ initial, isNew, onClose }: { initial: PayrollSettings; i
       sssAmount: initial.sssAmount,
       philhealthAmount: initial.philhealthAmount,
       pagibigAmount: initial.pagibigAmount,
+      cutoffDays: days,
     };
+    if (!daysOk) {
+      setError("Pick two different days for your cutoffs.");
+      return;
+    }
+    if (!isNew && !every && !from) {
+      setError("Pick the day the new pay starts.");
+      return;
+    }
     startTransition(async () => {
-      const result = await savePayrollSettings(input);
+      const result = await savePayrollSettings(input, isNew ? null : from);
       if (result.error) setError(result.error);
       else onClose();
     });
@@ -259,6 +386,31 @@ function SettingsForm({ initial, isNew, onClose }: { initial: PayrollSettings; i
             <option value="2">2×</option>
           </select>
         </div>
+        <fieldset className="flex flex-col gap-1 sm:col-span-2">
+          <legend className="mb-1 text-sm font-bold">Your cutoffs start on the</legend>
+          <div className="flex flex-wrap items-center gap-2">
+            {[0, 1].map((i) => (
+              <span key={i} className="contents">
+                {i === 1 && <span className="font-bold text-muted">and the</span>}
+                <select
+                  aria-label={i === 0 ? "First cutoff starts on" : "Second cutoff starts on"}
+                  value={cutoffStarts[i]}
+                  onChange={(e) => setCutoffStarts((c) => (i === 0 ? [e.target.value, c[1]] : [c[0], e.target.value]))}
+                  className={`${FIELD_CLASS} w-24`}
+                >
+                  {Array.from({ length: 28 }, (_, d) => d + 1).map((d) => (
+                    <option key={d} value={d}>{ordinal(d)}</option>
+                  ))}
+                </select>
+              </span>
+            ))}
+          </div>
+          <span className="text-xs text-muted">
+            {daysOk
+              ? `Cutoffs ${cutoffDaysText(days)}. Each is paid on the first payday after it ends.`
+              : "Pick two different days."}
+          </span>
+        </fieldset>
         <div className="flex flex-col gap-1">
           <label htmlFor="pay-started" className="text-sm font-bold">
             Started working on <span className="font-semibold text-muted">(optional)</span>
@@ -283,6 +435,38 @@ function SettingsForm({ initial, isNew, onClose }: { initial: PayrollSettings; i
           <span className="text-xs text-muted">Blank: daily rate × {RATES.workDaysPerMonth} days.</span>
         </div>
       </div>
+
+      {!isNew && (
+        <div className="flex flex-col gap-1">
+          <span id="pay-from-label" className="text-sm font-bold">Use this pay for</span>
+          <div role="group" aria-labelledby="pay-from-label" className="flex flex-wrap gap-2">
+            <ChoiceChip selected={!every} onClick={() => setEvery(false)}>From a date on</ChoiceChip>
+            <ChoiceChip selected={every} onClick={() => setEvery(true)}>Every cutoff</ChoiceChip>
+          </div>
+          {!every && (
+            <>
+              <label htmlFor="pay-from" className="sr-only">The pay starts on</label>
+              <input
+                id="pay-from"
+                type="date"
+                value={fromDate}
+                required
+                onChange={(e) => setFromDate(e.target.value)}
+                className={`${FIELD_CLASS} mt-1 sm:w-64`}
+              />
+            </>
+          )}
+          <span className="text-xs text-muted">
+            {from
+              ? `Starts with the ${formatCutoff(cutoffContaining(from, days), today)} cutoff${from === cutoffContaining(today, days).start ? " (this one)" : ""}. Cutoffs before ${formatShortDay(from, today)} keep their pay, so their paydays and tax stay the same. Contributions follow the pay of the cutoff you're in now.`
+              : !every
+                ? "Pick the day the new pay starts."
+                : hasChanges
+                ? "Replaces your pay by cutoff: every cutoff, past ones too, uses this rate."
+                : "Every cutoff, past ones too, uses this rate. Got a raise? Pick the cutoff it starts with."}
+          </span>
+        </div>
+      )}
 
       <fieldset className="flex flex-col gap-0.5">
         <legend className="mb-1 text-sm font-bold">You pay these yourself</legend>
@@ -314,7 +498,9 @@ type OvertimeRow = OvertimeEntry & { key: number };
 let nextKey = 0;
 
 function CutoffCard({ records, period, payday, today }: { records: PayrollRecords; period: Period; payday: Schedule; today: string }) {
-  const { settings } = records;
+  // This cutoff's own pay: a raise from a later cutoff doesn't touch it.
+  const settings = settingsFor(records, period.start);
+  const cutoffDays = cutoffDaysOf(records.settings);
   const savedDays = useMemo(() => new Map(records.days.map((d) => [d.date, d])), [records.days]);
   const saved = records.days.some((d) => d.date >= period.start && d.date <= period.end);
   const [days, setDays] = useState<PayrollDay[]>(() => daysFor(period, savedDays, settings.startedOn));
@@ -368,7 +554,7 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
       aside={
         <nav aria-label="Cutoffs" className="flex items-center gap-1">
           <Link
-            href={`/payroll?cutoff=${previousPeriod(period).start}`}
+            href={`/payroll?cutoff=${previousCutoff(period, cutoffDays).start}`}
             replace
             scroll={false}
             aria-label="Previous cutoff"
@@ -376,9 +562,9 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
           >
             <ChevronIcon direction="left" size={20} />
           </Link>
-          <span className="min-w-28 text-center text-[15px] font-extrabold">{formatPeriod(period, today)}</span>
+          <span className="min-w-28 text-center text-[15px] font-extrabold">{formatCutoff(period, today)}</span>
           <Link
-            href={`/payroll?cutoff=${nextPeriod(period).start}`}
+            href={`/payroll?cutoff=${nextCutoff(period, cutoffDays).start}`}
             replace
             scroll={false}
             aria-label="Next cutoff"
@@ -576,7 +762,8 @@ function SelfPaidCard({
   payday: Schedule;
   days: Record<string, number>;
 }) {
-  const { settings } = records;
+  // Contributions follow the pay of the cutoff you're in now.
+  const settings = settingsFor(records, today);
   const [editing, setEditing] = useState(false);
   const monthly = contributions(settings);
   const taxes = settings.payTax ? upcomingTaxPayments(records, today) : [];

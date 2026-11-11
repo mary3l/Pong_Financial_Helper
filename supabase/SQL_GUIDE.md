@@ -498,6 +498,32 @@ Expect `true`.
 
 ---
 
+## Step 21 · Your cutoff days, and pay that changes from a cutoff
+
+File: `migrations/0021_payroll_pay_changes.sql`
+
+Lets the payroll calculator use your company's cutoffs (like 3–17 and 18–2) and change your
+daily rate, hours, start time or overtime rate from one cutoff on (a raise, say), without
+changing the cutoffs before it.
+
+- `payroll_settings.cutoff_day1`, `cutoff_day2`: the days your two cutoffs start. Blank: the
+  1st and 16th.
+- `payroll_pay_changes`: one row per change, starting on a cutoff's first day. Cutoffs before
+  the first change use the rate in `payroll_settings`.
+
+Until you run this, cutoffs are 1–15 and 16–end, and editing your pay changes it for every
+cutoff, like before.
+
+**Check**
+
+```sql
+select to_regclass('public.payroll_pay_changes') is not null;
+```
+
+Expect `true`.
+
+---
+
 ## All done?
 
 This one query shows which steps have been run. Every column should be `true`.
@@ -534,7 +560,8 @@ select
           where table_name = 'payroll_settings' and column_name = 'sss_amount') as step_18,
   exists (select 1 from information_schema.columns
           where table_name = 'installment_plans' and column_name = 'person_id') as step_19,
-  to_regprocedure('public.widget_safe_to_spend(text)') is not null as step_20;
+  to_regprocedure('public.widget_safe_to_spend(text)') is not null as step_20,
+  to_regclass('public.payroll_pay_changes') is not null     as step_21;
 ```
 
 The first `false` is the step to run next.

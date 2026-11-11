@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { PaidInAdvanceTag } from "@/components/paid-in-advance-tag";
 import { DEBT_SHARE } from "@/lib/bnpl";
 import type { Account } from "@/lib/data";
-import { formatPeriod, formatShortDay } from "@/lib/dates";
+import { formatShortDay } from "@/lib/dates";
+import { formatCutoff } from "@/lib/payroll";
 import type { ForecastItem } from "@/lib/forecast";
 import { formatPeso } from "@/lib/money";
 import type { PaydayBills } from "@/lib/office-days";
@@ -217,7 +219,7 @@ function PaydayCard({
               {office.daysLeft} {office.daysLeft === 1 ? "day" : "days"} left
             </>
           ) : office.needed === 0 ? (
-            <><strong>Covered</strong> by what you&apos;ve earned in its cutoff{p.cutoff && <span className="text-muted"> · {formatPeriod(p.cutoff, today)}</span>}</>
+            <><strong>Covered</strong> by what you&apos;ve earned in its cutoff{p.cutoff && <span className="text-muted"> · {formatCutoff(p.cutoff, today)}</span>}</>
           ) : (
             <>
               Go in <strong>{office.needed} of {office.daysLeft}</strong> {office.daysLeft === 1 ? "day" : "days"} left
@@ -238,6 +240,28 @@ function PaydayCard({
       )}
 
       {groups.length > 0 && <PayeeList groups={groups} today={today} />}
+
+      {p.paidEarly.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <h4 className="text-[13px] font-extrabold text-muted">Already paid in advance · not counted</h4>
+          <ul className="flex flex-col">
+            {p.paidEarly.map((item) => (
+              <li key={item.key} className="flex items-center justify-between gap-3 py-1 text-[15px]">
+                <span className="flex min-w-0 flex-col">
+                  <span className="flex min-w-0 flex-wrap items-center gap-x-2">
+                    <span className="truncate font-bold">{item.name}</span>
+                    <PaidInAdvanceTag paidOn={item.paidOn!} today={today} />
+                  </span>
+                  <span className="text-xs text-muted">
+                    Due {formatShortDay(item.dueOn, today)} · paid {formatShortDay(item.paidOn!, today)}
+                  </span>
+                </span>
+                <span className="shrink-0 font-bold text-muted line-through decoration-1">{formatPeso(item.amount ?? 0)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <dl className="flex flex-col gap-1 text-[13px]">
         {p.carriedIn > 0 && (
@@ -260,7 +284,7 @@ function PaydayCard({
           <>
             {office.earned > 0 && (
               <div className="flex justify-between gap-3">
-                <dt className="text-muted">Earned in its cutoff{p.cutoff ? ` (${formatPeriod(p.cutoff, today)})` : ""}{office.daysLeft ? " so far" : ""}</dt>
+                <dt className="text-muted">Earned in its cutoff{p.cutoff ? ` (${formatCutoff(p.cutoff, today)})` : ""}{office.daysLeft ? " so far" : ""}</dt>
                 <dd>{formatPeso(office.earned)}</dd>
               </div>
             )}

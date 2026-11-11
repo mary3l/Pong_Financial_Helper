@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ForecastItem } from "@/lib/forecast";
+import { paidInAdvance, type ForecastItem } from "@/lib/forecast";
 import { billsByPayday, officeDays } from "@/lib/office-days";
 import type { PayrollRecords, PayrollSettings } from "@/lib/payroll";
 
@@ -131,6 +131,26 @@ describe("bills by payday", () => {
     const later = items.filter((i) => i.dueOn >= "2026-11-15");
     const periods = billsByPayday({ items: later, today: "2026-11-09", payday: PAYDAY, inWallets: 0, payroll: null, count: 2 });
     expect(periods[0].payday).toBe("2026-11-15");
+  });
+
+  it("lists bills paid in advance under their pay without counting them", () => {
+    // The Dec 5 bill, paid on Nov 9 from what you had then.
+    const early = { ...item("bill", "2026-12-05", 2000), transactionId: "t1", paidOn: "2026-11-09" };
+    const paid = items.map((i) => (i.dueOn === "2026-12-05" ? early : i));
+    const periods = billsByPayday({ items: paid, today: "2026-11-09", payday: PAYDAY, inWallets: 5000, payroll: records, count: 2 });
+    expect(periods[2].paidEarly.map((i) => i.dueOn)).toEqual(["2026-12-05"]);
+    expect(periods[2].bills.some((i) => i.dueOn === "2026-12-05")).toBe(false);
+    // ₱1,100 less the ₱2,000 bill, with the ₱900 pautang still counted: nothing left to cover.
+    expect(periods[2].need).toBe(0);
+    expect(periods[1].paidEarly).toEqual([]);
+  });
+
+  it("only tags what was paid before its due date", () => {
+    const bill = item("bill", "2026-12-05", 2000);
+    expect(paidInAdvance({ ...bill, transactionId: "t", paidOn: "2026-11-09" })).toBe(true);
+    expect(paidInAdvance({ ...bill, transactionId: "t", paidOn: "2026-12-05" })).toBe(false);
+    expect(paidInAdvance({ ...bill, transactionId: null, paidOn: null })).toBe(false);
+    expect(paidInAdvance({ ...item("income", "2026-12-05", 500, "in"), transactionId: "t", paidOn: "2026-11-09" })).toBe(false);
   });
 });
 

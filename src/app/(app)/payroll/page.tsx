@@ -1,14 +1,15 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { getPayroll, getRecurringItems } from "@/lib/data";
-import { isValidDate, periodContaining, today as getToday } from "@/lib/dates";
+import { isValidDate, today as getToday } from "@/lib/dates";
+import { cutoffContaining, cutoffDaysOf } from "@/lib/payroll";
 import { PayrollManager } from "./payroll-manager";
 
 export const metadata = { title: "Payroll calculator · Pong Money" };
 
 // Works out each payday from a daily rate, the days you worked, late minutes
 // and overtime, and keeps SSS, PhilHealth, Pag-IBIG and the 8% income tax in
-// Money going out. ?cutoff=2026-11-16 opens that cutoff.
+// Money going out. ?cutoff=2026-11-18 opens the cutoff with that day.
 export default function PayrollPage({ searchParams }: PageProps<"/payroll">) {
   return (
     <div className="flex flex-col gap-4 lg:max-w-4xl">
@@ -32,15 +33,17 @@ async function Payroll({ searchParams }: Pick<PageProps<"/payroll">, "searchPara
   const today = getToday();
   const [{ cutoff }, payroll, recurring] = await Promise.all([searchParams, getPayroll(today), getRecurringItems()]);
   const picked = typeof cutoff === "string" && isValidDate(cutoff) ? cutoff : today;
+  // Your own cutoffs (3–17 and 18–2), or 1–15 and 16–end.
+  const period = cutoffContaining(picked, payroll && payroll !== "missing" ? cutoffDaysOf(payroll.settings) : undefined);
   const payday = recurring.find((r) => r.kind === "payday") ?? null;
   // The day each SSS, PhilHealth and Pag-IBIG bill is due: which pay it comes out of.
   const contributionDays = Object.fromEntries(recurring.filter((r) => r.payrollKey).map((r) => [r.payrollKey!, r.day1]));
 
   return (
     <PayrollManager
-      key={periodContaining(picked).start}
+      key={period.start}
       today={today}
-      period={periodContaining(picked)}
+      period={period}
       records={payroll === "missing" ? null : payroll}
       missing={payroll === "missing"}
       contributionDays={contributionDays}

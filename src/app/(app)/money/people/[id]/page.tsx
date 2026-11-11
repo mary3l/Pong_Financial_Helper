@@ -4,11 +4,22 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { getCurrentUser } from "@/lib/auth";
 import { ShareText } from "@/components/share-text";
-import { getAccounts, getInstallmentPlans, getPeople, getTransactions } from "@/lib/data";
+import { getAccounts, getInstallmentPlans, getPeople, getSplitsPaidWith, getTransactions } from "@/lib/data";
 import { formatShortDay, today as getToday } from "@/lib/dates";
 import { dueText } from "@/lib/installments";
 import { balanceEffect, formatPeso, paysInPesos, roundCents } from "@/lib/money";
-import { breakdownText, dueDate, dueThisMonth, inYourName, isLate, openRecords, type PersonEntry, type TheirPlan } from "@/lib/people";
+import {
+  breakdownText,
+  cardBills,
+  dueDate,
+  dueThisMonth,
+  firstExpected,
+  inYourName,
+  isLate,
+  openRecords,
+  type PersonEntry,
+  type TheirPlan,
+} from "@/lib/people";
 import { personReceipt } from "@/lib/receipt";
 import { TheyPaidButton } from "../../[id]/account-actions";
 import { Avatar } from "../avatar";
@@ -78,7 +89,16 @@ async function PersonDetail({ params }: Pick<PageProps<"/money/people/[id]">, "p
     .filter((p) => p.next);
   // They pay the lender this on top of what they owe you: theirs, never your expense.
   const interestLeft = roundCents(onYourLines.reduce((sum, p) => sum + p.interest, 0));
-  const open = openRecords(person, history);
+  // What they owe you that you bought on your credit line (their share on your Atome): the bill it's on.
+  const lines = accounts.filter((a) => a.type === "credit_line" && a.dueDay);
+  const onLines = history.filter((t) => t.toAccountId === person.id && lines.some((l) => l.id === t.accountId));
+  const splitIds = new Map<string, string[]>();
+  for (const lineId of new Set(onLines.filter((t) => t.splitId).map((t) => t.accountId))) {
+    for (const [splitId, records] of await getSplitsPaidWith(lineId)) splitIds.set(splitId, records.map((r) => r.id));
+  }
+  const cards = cardBills({ records: onLines, lines, plans: allPlans, splits: splitIds, today });
+  const open = openRecords(person, history, cards);
+  const onCard = owesYou ? firstExpected(open) : null;
   const theirPlans: TheirPlan[] = onYourLines.map(({ plan, unpaid }) => {
     const lender = names.get(plan.accountId) ?? (plan.kind === "loan" ? "loan" : "credit line");
     return {
@@ -137,11 +157,16 @@ async function PersonDetail({ params }: Pick<PageProps<"/money/people/[id]">, "p
               ? `Payment late · ${formatPeso(theirs.next.amount)} was due ${formatShortDay(theirs.next.dueOn, today)}`
               : `Next payment ${formatPeso(theirs.next.amount)} due ${formatShortDay(theirs.next.dueOn, today)}`}
           </span>
+        ) : due && person.balance !== 0 ? (
+          <span className="text-[15px] font-bold opacity-90">
+            {late ? `Overdue · was due ${formatShortDay(due, today)}` : `Due ${formatShortDay(due, today)}`}
+          </span>
         ) : (
-          due &&
-          person.balance !== 0 && (
+          onCard && (
+            // Just for you: the breakdown asks for it a couple of days early and never says the due date.
             <span className="text-[15px] font-bold opacity-90">
-              {late ? `Overdue · was due ${formatShortDay(due, today)}` : `Due ${formatShortDay(due, today)}`}
+              On your {onCard.line} bill due {formatShortDay(onCard.dueOn, today)} · the breakdown asks for it by{" "}
+              {formatShortDay(onCard.expectedOn, today)}
             </span>
           )
         )}

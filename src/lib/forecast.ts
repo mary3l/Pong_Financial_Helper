@@ -31,6 +31,8 @@ export type ForecastItem = {
   estimate: boolean;
   /** Set once it was logged as a real transaction. */
   transactionId: string | null;
+  /** The day that transaction happened, when known: before `dueOn` means it was paid in advance. */
+  paidOn?: string | null;
   /** Installments: the credit line or loan it pays. */
   lenderId?: string | null;
   /** Installments: the plan's last payment. */
@@ -171,6 +173,11 @@ export function sortItems(items: ForecastItem[]): ForecastItem[] {
 export function itemEffect(item: ForecastItem): number {
   if (item.amount === null || item.transactionId) return 0;
   return item.flow === "in" ? item.amount : -item.amount;
+}
+
+/** Money going out that you paid before its due date. */
+export function paidInAdvance(item: Pick<ForecastItem, "flow" | "transactionId" | "paidOn" | "dueOn">): boolean {
+  return item.flow === "out" && Boolean(item.transactionId) && Boolean(item.paidOn) && item.paidOn! < item.dueOn;
 }
 
 /** Unlogged money going out: what you still owe. */

@@ -1,7 +1,7 @@
 import type { PongMood } from "@/components/pong";
 import { formatShortDay } from "@/lib/dates";
 import { formatPeso, roundCents } from "@/lib/money";
-import { dueDate, type InYourName, type MonthDue, type OpenRecord, type Person } from "@/lib/people";
+import { datesDiffer, dueDate, expectedText, firstExpected, type InYourName, type MonthDue, type OpenRecord, type Person } from "@/lib/people";
 import type { SplitBill } from "@/lib/splits";
 
 // The breakdown as a receipt card: what Send image draws as a PNG, next to
@@ -43,8 +43,13 @@ export type Receipt = {
 
 const signOff = (text: string, myName: string | null) => `${text}${myName ? ` — ${myName}` : ""}`;
 
-/** One open record as a row: when, what it was a share of, and how much is paid. */
-function openRow(r: OpenRecord, owesMe: boolean, today: string): ReceiptRow {
+/**
+ * One open record as a row: when, what it was a share of, how much is paid,
+ * and the card it's on (with its date when `eachDate`: rows differ, or
+ * nothing else on the card says it).
+ */
+function openRow(r: OpenRecord, owesMe: boolean, today: string, eachDate: boolean): ReceiptRow {
+  const card = r.card ? `On my ${r.card.line}${eachDate ? ` · ${expectedText(r.card, today)}` : ""}` : null;
   return {
     label: r.label,
     details: [
@@ -52,6 +57,7 @@ function openRow(r: OpenRecord, owesMe: boolean, today: string): ReceiptRow {
         .filter(Boolean)
         .join(" · "),
       ...(r.left < r.amount ? [`${formatPeso(r.amount - r.left)} of ${formatPeso(r.amount)} paid`] : []),
+      ...(card ? [card] : []),
     ],
     amount: formatPeso(r.left),
     tone: r.left < r.amount ? "part" : undefined,
@@ -90,7 +96,7 @@ export function personReceipt({
     const late = month.late > 0;
     const lastDue = month.items.at(-1)?.dueOn;
     const stillOpen: ReceiptRow[] = [
-      ...open.map((r) => openRow(r, true, today)),
+      ...open.map((r) => openRow(r, true, today, true)),
       ...(interest > 0 ? [{ label: "Interest & fees", details: ["In the payments left, paid to the lender"], amount: formatPeso(interest) }] : []),
     ];
     return {
@@ -146,7 +152,10 @@ export function personReceipt({
   }
 
   const next = owesMe ? theirs.next : null;
-  const late = Boolean((next && next.dueOn < today) || (owesMe && !next && due && due < today));
+  // Bought on your card: when you expect their payment, a couple of days before the bill.
+  const onCard = owesMe && !next && !due ? firstExpected(open) : null;
+  const cardLate = Boolean(onCard && onCard.dueOn < today);
+  const late = Boolean((next && next.dueOn < today) || (owesMe && !next && due && due < today) || cardLate);
   return {
     mood: !owesMe ? "listen" : late ? "worried" : "ask",
     bubble: !owesMe ? "Babayaran ko po!" : late ? "Paalala lang po!" : "Pa-remind lang po!",
@@ -155,7 +164,7 @@ export function personReceipt({
     subtitle: `As of ${formatShortDay(today, today)}`,
     lead: null,
     // No heading: the kicker already says what these are.
-    sections: [{ heading: "", rows: open.map((r) => openRow(r, owesMe, today)) }],
+    sections: [{ heading: "", rows: open.map((r) => openRow(r, owesMe, today, !onCard || datesDiffer(open))) }],
     total: {
       label: "Total",
       amount: formatPeso(roundCents(owed + interest)),
@@ -165,7 +174,9 @@ export function personReceipt({
       ? { text: `Next payment ${formatPeso(next.amount)} ${next.dueOn < today ? "was due" : "due"} ${formatShortDay(next.dueOn, today)}`, late: next.dueOn < today }
       : owesMe && due
         ? { text: `${due < today ? "Was due" : "Due"} ${formatShortDay(due, today)}`, late: due < today }
-        : null,
+        : onCard
+          ? { text: capitalize(expectedText(onCard, today)), late: cardLate }
+          : null,
     footer,
   };
 }
@@ -215,4 +226,8 @@ export function billReceipt({
     note: null,
     footer: signOff("Salamat!", myName),
   };
+}
+
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

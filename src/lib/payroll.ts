@@ -1,4 +1,4 @@
-import { addDays, dateInMonth, nextPeriod, periodContaining, previousPeriod, weekdayOf, type Period } from "@/lib/dates";
+import { addDays, dateInMonth, formatShortDay, weekdayOf, type Period } from "@/lib/dates";
 import { roundCents } from "@/lib/money";
 import { occurrences, type Schedule } from "@/lib/schedule";
 
@@ -7,8 +7,11 @@ import { occurrences, type Schedule } from "@/lib/schedule";
 // deducts anything from it: SSS, PhilHealth, Pag-IBIG and the 8% income tax
 // are bills you pay yourself, so they live in Money going out.
 //
-// A cutoff is a kinsena, paid one cutoff late: the 16th–end of month is paid
-// on the next month's 15th, the 1st–15th on the 30th (or the month's last day).
+// Two cutoffs a month, starting on the days you set: the 1st and 16th (a
+// kinsena) unless your company uses others, like the 3rd and 18th (3–17 and
+// 18–2). Each is paid on the first payday after it ends: with paydays on the
+// 15th and 30th, 1–15 is paid on the 30th and 16–31 on the next 15th; 3–17
+// on the 30th and 18–2 on the 15th.
 //
 // Pure, so the server and the browser share it.
 
@@ -53,7 +56,66 @@ export type PayrollSettings = {
   sssAmount: number | null;
   philhealthAmount: number | null;
   pagibigAmount: number | null;
+  /** The days your two cutoffs start (migration 0021). Missing: the 1st and 16th. */
+  cutoffDays?: CutoffDays;
 };
+
+/** The two days of the month a cutoff starts, smaller first: [3, 18] is 3–17 and 18–2. */
+export type CutoffDays = readonly [number, number];
+
+/** A kinsena: 1–15 and 16–end of month. */
+export const KINSENA: CutoffDays = [1, 16];
+
+/** Cutoff start days can be 1 to 28, so every month has them. */
+export function isCutoffDays(value: unknown): value is CutoffDays {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    value.every((d) => Number.isInteger(d) && d >= 1 && d <= 28) &&
+    value[0] < value[1]
+  );
+}
+
+export function cutoffDaysOf(s: Pick<PayrollSettings, "cutoffDays">): CutoffDays {
+  return s.cutoffDays && isCutoffDays(s.cutoffDays) ? s.cutoffDays : KINSENA;
+}
+
+/** The cutoff `date` is in. With [3, 18]: Nov 3–17, Nov 18–Dec 2, or Oct 18–Nov 2 for Nov 1. */
+export function cutoffContaining(date: string, days: CutoffDays = KINSENA): Period {
+  const [y, m, d] = date.split("-").map(Number);
+  const [a, b] = days;
+  const month = (offset: number) => {
+    const n = y * 12 + (m - 1) + offset;
+    return [Math.floor(n / 12), (n % 12) + 1] as const;
+  };
+  const on = (offset: number, day: number) => {
+    const [yy, mm] = month(offset);
+    return dateInMonth(yy, mm, day);
+  };
+  if (d >= b) return { start: on(0, b), end: addDays(on(1, a), -1) };
+  if (d >= a) return { start: on(0, a), end: addDays(on(0, b), -1) };
+  return { start: on(-1, b), end: addDays(on(0, a), -1) };
+}
+
+export function previousCutoff(cutoff: Period, days: CutoffDays = KINSENA): Period {
+  return cutoffContaining(addDays(cutoff.start, -1), days);
+}
+
+export function nextCutoff(cutoff: Period, days: CutoffDays = KINSENA): Period {
+  return cutoffContaining(addDays(cutoff.end, 1), days);
+}
+
+/** "Nov 3 – 17", or "Nov 18 – Dec 2" across months. */
+export function formatCutoff(cutoff: Period, today: string): string {
+  const end = cutoff.end.slice(0, 7) === cutoff.start.slice(0, 7) ? String(Number(cutoff.end.slice(8))) : formatShortDay(cutoff.end, today);
+  return `${formatShortDay(cutoff.start, today)} – ${end}`;
+}
+
+/** "1–15 and 16–end", "3–17 and 18–2". */
+export function cutoffDaysText(days: CutoffDays): string {
+  const [a, b] = days;
+  return `${a}–${b - 1} and ${b}–${a === 1 ? "end" : a - 1}`;
+}
 
 export type DayStatus = "worked" | "leave" | "off";
 export type LeaveType = "sick" | "personal";
@@ -178,12 +240,49 @@ export function cutoffPay(s: PayrollSettings, days: PayrollDay[], overtime: Over
   };
 }
 
+/** The parts of your pay that can change from one cutoff on. */
+export type CutoffRate = Pick<PayrollSettings, "dailyRate" | "hoursPerDay" | "startTime" | "overtimeRate">;
+
+/**
+ * Your pay from one cutoff on (a raise, new hours, a new start time), until
+ * the next change. Cutoffs before the first change use the rate in your
+ * settings. See 0021_payroll_pay_changes.sql.
+ */
+export type PayChange = CutoffRate & {
+  /** The first day of the cutoff it starts with: the 1st or the 16th. */
+  from: string;
+};
+
 /** Saved days and overtime, ready to look up by date. */
 export type PayrollRecords = {
   settings: PayrollSettings;
   days: PayrollDay[];
   overtime: OvertimeEntry[];
+  /** Oldest first. Missing or empty: one rate for every cutoff. */
+  changes?: PayChange[];
 };
+
+export function rateOf(s: CutoffRate): CutoffRate {
+  return { dailyRate: s.dailyRate, hoursPerDay: s.hoursPerDay, startTime: s.startTime, overtimeRate: s.overtimeRate };
+}
+
+export function sameRate(a: CutoffRate, b: CutoffRate): boolean {
+  return a.dailyRate === b.dailyRate && a.hoursPerDay === b.hoursPerDay && a.startTime === b.startTime && a.overtimeRate === b.overtimeRate;
+}
+
+/** The change in effect for the cutoff that has `date`, or null for the rate in your settings. */
+export function changeFor(records: Pick<PayrollRecords, "settings" | "changes">, date: string): PayChange | null {
+  const start = cutoffContaining(date, cutoffDaysOf(records.settings)).start;
+  let found: PayChange | null = null;
+  for (const c of records.changes ?? []) if (c.from <= start && (!found || c.from > found.from)) found = c;
+  return found;
+}
+
+/** Your settings with the pay for the cutoff that has `date`. */
+export function settingsFor(records: Pick<PayrollRecords, "settings" | "changes">, date: string): PayrollSettings {
+  const change = changeFor(records, date);
+  return change ? { ...records.settings, ...rateOf(change) } : records.settings;
+}
 
 export type CutoffResult = CutoffPay & {
   period: Period;
@@ -198,7 +297,7 @@ export function payForCutoff(records: PayrollRecords, period: Period, today: str
   const overtime = records.overtime.filter((o) => o.date >= period.start && o.date <= period.end);
   const isSaved = cutoffDates(period).some((d) => saved.has(d));
   return {
-    ...cutoffPay(records.settings, days, overtime),
+    ...cutoffPay(settingsFor(records, period.start), days, overtime),
     period,
     estimate: !isSaved || period.end >= today,
   };
@@ -213,15 +312,17 @@ function indexRecords(records: PayrollRecords): RecordIndex {
   };
 }
 
-/** The cutoff a payday pays for: the kinsena before the one it falls in. */
-export function cutoffFor(payday: string): Period {
-  return previousPeriod(periodContaining(payday));
+/** The cutoff a payday pays for: the last one that ended before it. */
+export function cutoffFor(payday: string, days: CutoffDays = KINSENA): Period {
+  let cutoff = cutoffContaining(payday, days);
+  while (cutoff.end >= payday) cutoff = previousCutoff(cutoff, days);
+  return cutoff;
 }
 
-/** The payday that pays for `cutoff`: the first one in the kinsena after it. */
+/** The payday that pays for `cutoff`: the first one after it ends. */
 export function paydayFor(cutoff: Period, schedule: Schedule): string {
-  const next = nextPeriod(cutoff);
-  return occurrences(schedule, next.start, addDays(next.end, 1))[0] ?? next.end;
+  const after = addDays(cutoff.end, 1);
+  return occurrences(schedule, after, addDays(after, 40))[0] ?? nextCutoff(cutoff).end;
 }
 
 /** Payday amounts by date, for the forecast, from `from` up to but not including `until`. */
@@ -235,7 +336,7 @@ export function paydayAmounts(
   const index = indexRecords(records);
   const out: Record<string, { amount: number; estimate: boolean }> = {};
   for (const date of occurrences(schedule, from, until)) {
-    const pay = payForCutoff(records, cutoffFor(date), today, index);
+    const pay = payForCutoff(records, cutoffFor(date, cutoffDaysOf(records.settings)), today, index);
     out[date] = { amount: pay.total, estimate: pay.estimate };
   }
   return out;
@@ -328,12 +429,11 @@ const QUARTERS = [
   { q: 4, months: 12, due: (y: number) => `${y + 1}-04-15`, label: "annual" },
 ];
 
-/** Both cutoffs of every month from January through `months`. */
-function cutoffsThrough(year: number, months: number): Period[] {
-  return Array.from({ length: months }, (_, i) => i + 1).flatMap((m) => [
-    { start: dateInMonth(year, m, 1), end: dateInMonth(year, m, 15) },
-    { start: dateInMonth(year, m, 16), end: dateInMonth(year, m, 31) },
-  ]);
+/** Both cutoffs that start in each month from January through `months`. */
+function cutoffsThrough(year: number, months: number, days: CutoffDays): Period[] {
+  return Array.from({ length: months }, (_, i) => i + 1).flatMap((m) =>
+    days.map((d) => cutoffContaining(dateInMonth(year, m, d), days)),
+  );
 }
 
 /**
@@ -343,13 +443,14 @@ function cutoffsThrough(year: number, months: number): Period[] {
  */
 export function taxPayments(records: PayrollRecords, year: number, today: string): TaxPayment[] {
   const index = indexRecords(records);
+  const days = cutoffDaysOf(records.settings);
   const pay = new Map(
-    cutoffsThrough(year, 12).map((p) => [p.start, payForCutoff(records, p, today, index).total]),
+    cutoffsThrough(year, 12, days).map((p) => [p.start, payForCutoff(records, p, today, index).total]),
   );
   let coveredTax = 0;
   return QUARTERS.map(({ q, months, due, label }) => {
     const grossToDate = roundCents(
-      cutoffsThrough(year, months).reduce((sum, p) => sum + (pay.get(p.start) ?? 0), 0),
+      cutoffsThrough(year, months, days).reduce((sum, p) => sum + (pay.get(p.start) ?? 0), 0),
     );
     const tax = taxOnGross(grossToDate);
     const amount = roundCents(tax - coveredTax);

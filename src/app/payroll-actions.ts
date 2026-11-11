@@ -3,16 +3,25 @@
 import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
 import { readPayroll } from "@/lib/data";
-import { isValidDate, periodContaining, today as getToday } from "@/lib/dates";
+import { addDays, isValidDate, today as getToday } from "@/lib/dates";
 import { MAX_AMOUNT, roundCents } from "@/lib/money";
 import {
+  KINSENA,
   RATES,
   contributions,
+  cutoffContaining,
   cutoffDates,
+  cutoffDaysOf,
+  isCutoffDays,
   isTime,
+  rateOf,
+  sameRate,
+  settingsFor,
   typicalCutoffPay,
   upcomingTaxPayments,
   type ContributionKey,
+  type CutoffDays,
+  type CutoffRate,
   type OvertimeEntry,
   type PayrollDay,
   type PayrollSettings,
@@ -38,21 +47,68 @@ function validateSettings(s: PayrollSettings): string | null {
     return "Check the monthly pay for contributions, or leave it blank.";
   }
   if (s.startedOn !== null && !isValidDate(s.startedOn)) return "Check the date you started, or leave it blank.";
+  if (s.cutoffDays !== undefined && !isCutoffDays(s.cutoffDays)) return "Pick two different days, 1 to 28, for your cutoffs.";
   return null;
 }
 
-export async function savePayrollSettings(input: PayrollSettings): Promise<PayrollResult> {
+/** Your cutoff days as saved: null for the 1st and 16th. */
+function cutoffColumns(days: CutoffDays) {
+  const kinsena = days[0] === KINSENA[0] && days[1] === KINSENA[1];
+  return { cutoff_day1: kinsena ? null : days[0], cutoff_day2: kinsena ? null : days[1] };
+}
+
+/**
+ * Writes `row` with your cutoff days. Before migration 0021 the columns
+ * aren't there: fine for the 1st and 16th (written without them), an error
+ * for any other days.
+ */
+async function writeWithCutoffDays(
+  days: CutoffDays,
+  row: Record<string, unknown>,
+  write: (row: Record<string, unknown>) => PromiseLike<{ error: { code?: string } | null }>,
+): Promise<PayrollResult | null> {
+  const cols = cutoffColumns(days);
+  const first = await write({ ...row, ...cols });
+  if (first.error?.code !== "PGRST204" && first.error?.code !== "42703") return first.error ? FAILED : null;
+  if (cols.cutoff_day1 !== null) return { error: "To use your own cutoff days, run step 21 in supabase/SQL_GUIDE.md first." };
+  const second = await write(row);
+  return second.error ? FAILED : null;
+}
+
+/** Your cutoff days, from your settings. */
+async function savedCutoffDays(supabase: Client): Promise<CutoffDays> {
+  const { data } = await supabase.from("payroll_settings").select("*").maybeSingle();
+  return data?.cutoff_day1 != null && data?.cutoff_day2 != null ? [Number(data.cutoff_day1), Number(data.cutoff_day2)] : KINSENA;
+}
+
+const CHANGES_MISSING = { error: "To change your pay from one cutoff on, run step 21 in supabase/SQL_GUIDE.md first." };
+
+/** The rate columns, rounded like the database keeps them. */
+function rateRow(r: CutoffRate) {
+  return {
+    daily_rate: roundCents(r.dailyRate),
+    hours_per_day: Math.round(r.hoursPerDay * 100) / 100,
+    start_time: r.startTime,
+    overtime_rate: Math.round(r.overtimeRate * 100) / 100,
+  };
+}
+
+/**
+ * Saves your pay. `from` null: this rate is your pay for every cutoff, and
+ * any pay changes go. `from` a cutoff's first day: the rate is your pay from
+ * that cutoff on (until a later change); the cutoffs before it keep theirs.
+ * The rest (contributions, the day you started) is the same for every cutoff.
+ */
+export async function savePayrollSettings(input: PayrollSettings, from: string | null = null): Promise<PayrollResult> {
   const problem = validateSettings(input);
   if (problem) return { error: problem };
+  const cutoffDays = cutoffDaysOf(input);
+  if (from !== null && (!isValidDate(from) || cutoffContaining(from, cutoffDays).start !== from)) return { error: "Pick a cutoff." };
 
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
-  const row = {
-    daily_rate: roundCents(input.dailyRate),
-    hours_per_day: Math.round(input.hoursPerDay * 100) / 100,
-    start_time: input.startTime,
-    overtime_rate: Math.round(input.overtimeRate * 100) / 100,
+  const shared = {
     monthly_base: input.monthlyBase === null ? null : roundCents(input.monthlyBase),
     started_on: input.startedOn,
     pay_sss: Boolean(input.paySss),
@@ -64,11 +120,50 @@ export async function savePayrollSettings(input: PayrollSettings): Promise<Payro
   const existing = await supabase.from("payroll_settings").select("user_id").maybeSingle();
   if (existing.error?.code === "PGRST205") return MISSING;
   if (existing.error) return FAILED;
-  const { error } = existing.data
-    ? await supabase.from("payroll_settings").update(row).eq("user_id", existing.data.user_id)
-    : await supabase.from("payroll_settings").insert(row);
+
+  // First time, or for every cutoff: the rate goes on your settings.
+  if (!existing.data || from === null) {
+    const userId = existing.data?.user_id;
+    const failed = await writeWithCutoffDays(cutoffDays, { ...rateRow(input), ...shared }, (row) =>
+      userId ? supabase.from("payroll_settings").update(row).eq("user_id", userId) : supabase.from("payroll_settings").insert(row),
+    );
+    if (failed) return failed;
+    if (existing.data) {
+      const cleared = await supabase.from("payroll_pay_changes").delete().not("starts_on", "is", null);
+      if (cleared.error && cleared.error.code !== "PGRST205") return FAILED;
+    }
+    return sync(supabase);
+  }
+
+  const before = await readPayroll(supabase, getToday()).catch(() => null);
+  if (!before || before === "missing") return FAILED;
+  const userId = existing.data.user_id;
+  const failed = await writeWithCutoffDays(cutoffDays, shared, (row) =>
+    supabase.from("payroll_settings").update(row).eq("user_id", userId),
+  );
+  if (failed) return failed;
+  // Days just changed: pay before `from` is read with the new cutoffs.
+  before.settings = { ...before.settings, cutoffDays };
+
+  // The same as the cutoff before it already gets: no change to keep.
+  const unchanged = sameRate(rateOf(input), settingsFor(before, addDays(from, -1)));
+  const { error } = unchanged
+    ? await supabase.from("payroll_pay_changes").delete().eq("starts_on", from)
+    : await supabase.from("payroll_pay_changes").upsert({ starts_on: from, ...rateRow(input) }, { onConflict: "user_id,starts_on" });
+  if (error?.code === "PGRST205") return CHANGES_MISSING;
   if (error) return FAILED;
 
+  return sync(supabase);
+}
+
+/** Drops a pay change: its cutoffs go back to the pay before it. */
+export async function removePayChange(from: string): Promise<PayrollResult> {
+  if (!isValidDate(from)) return { error: "Pick a pay change." };
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const { error } = await supabase.from("payroll_pay_changes").delete().eq("starts_on", from);
+  if (error?.code === "PGRST205") return CHANGES_MISSING;
+  if (error) return FAILED;
   return sync(supabase);
 }
 
@@ -110,15 +205,15 @@ export async function saveContributionAmounts(input: ContributionAmounts): Promi
 }
 
 export type CutoffInput = {
-  /** The cutoff's first day: the 1st or the 16th. */
+  /** The cutoff's first day. */
   start: string;
   days: PayrollDay[];
   overtime: OvertimeEntry[];
 };
 
-function validateCutoff(input: CutoffInput): string | null {
+function validateCutoff(input: CutoffInput, cutoffDays: CutoffDays): string | null {
   if (!isValidDate(input.start)) return "Pick a cutoff.";
-  const period = periodContaining(input.start);
+  const period = cutoffContaining(input.start, cutoffDays);
   if (period.start !== input.start) return "Pick a cutoff.";
   const dates = cutoffDates(period);
   if (input.days.length !== dates.length || input.days.some((d, i) => d.date !== dates[i])) {
@@ -143,13 +238,13 @@ function validateCutoff(input: CutoffInput): string | null {
 
 /** Saves every day of one cutoff and its overtime. */
 export async function saveCutoff(input: CutoffInput): Promise<PayrollResult> {
-  const problem = validateCutoff(input);
-  if (problem) return { error: problem };
-
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
-  const period = periodContaining(input.start);
+  const cutoffDays = await savedCutoffDays(supabase);
+  const problem = validateCutoff(input, cutoffDays);
+  if (problem) return { error: problem };
+  const period = cutoffContaining(input.start, cutoffDays);
   const days = input.days.map((d) => {
     const leave = d.status === "leave";
     const note = leave ? d.note?.replace(/\s+/g, " ").trim() || null : null;
@@ -216,7 +311,8 @@ async function sync(supabase: Client): Promise<PayrollResult> {
   const payroll = await readPayroll(supabase, today).catch(() => null);
   if (payroll === "missing") return MISSING;
   if (!payroll) return FAILED;
-  const { settings } = payroll;
+  // Contributions and the typical payday follow the pay of the cutoff you're in now.
+  const settings = settingsFor(payroll, today);
 
   // The payday's own amount: what Money and Settings show as a typical payday.
   // The forecast works out each payday from its cutoff.
