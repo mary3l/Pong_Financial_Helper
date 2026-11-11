@@ -486,6 +486,8 @@ export type SplitEdit = {
   shares: { id: string; amount: number }[];
   /** People to add to the bill, each with their share: pautang, like the others. */
   added?: { who: Who; amount: number }[];
+  /** Move the whole bill to this wallet or credit line. Missing: where it is. */
+  walletId?: string;
 };
 
 /**
@@ -522,6 +524,20 @@ async function editSplit(supabase: Client, splitId: string, input: SplitEdit): P
     return { error: "This split changed. Reload and try again." };
   }
 
+  // Paid with another wallet or credit line: every record moves, since a split is paid from one.
+  const fromWallet = records[0].account_id as string;
+  const moveTo = input.walletId && input.walletId !== fromWallet ? input.walletId : null;
+  let toCredit = false;
+  if (moveTo) {
+    if (!/^[0-9a-f-]{36}$/i.test(moveTo)) return { error: "Pick a wallet." };
+    const { data: target } = await supabase.from("accounts").select("*").eq("id", moveTo).eq("archived", false).maybeSingle();
+    const type = target?.type as AccountType | undefined;
+    if (!target || !type || !(type === "credit_line" || (isSpendable(type) && target.currency !== "USD"))) {
+      return { error: "Pick a cash, bank or e-wallet account, or a credit line." };
+    }
+    toCredit = type === "credit_line";
+  }
+
   const note = cleanNote(input.note);
   const theirNote = note ? `Split: ${note}` : "Split bill";
 
@@ -545,7 +561,7 @@ async function editSplit(supabase: Client, splitId: string, input: SplitEdit): P
     };
     const taken = new Set(onBill.map((p) => p.personId));
     // Every record of a split is paid from the same wallet or credit line.
-    const walletId = records[0].account_id as string;
+    const walletId = moveTo ?? fromWallet;
     for (const a of added) {
       const personId = await personFor(supabase, a.who);
       if (!personId || taken.has(personId)) {
@@ -575,6 +591,11 @@ async function editSplit(supabase: Client, splitId: string, input: SplitEdit): P
   }
 
   const plan = await splitPlanOf(supabase, records.map((r) => r.id));
+  // Moving it off a credit line takes it off that bill; part of it already paid can't move.
+  if (moveTo && plan?.paid) {
+    if (created.length) await supabase.from("transactions").delete().in("id", created);
+    return { error: "Part of this bill is already paid on its credit line, so it can't move. Undo that payment first." };
+  }
   // The plan hangs on one record: move it to one that stays, so taking that share off keeps the plan.
   if (plan && !amounts.get(plan.source_txn_id!)) {
     const kept = records.filter((r) => amounts.get(r.id));
@@ -592,6 +613,7 @@ async function editSplit(supabase: Client, splitId: string, input: SplitEdit): P
             amount,
             occurred_on: input.occurredOn,
             note: r.type === "expense" ? (note ? `${note} (my share)` : "My share") : theirNote,
+            ...(moveTo ? { account_id: moveTo } : {}),
           })
           .eq("id", r.id)
       : await supabase.from("transactions").delete().eq("id", r.id);
@@ -603,7 +625,17 @@ async function editSplit(supabase: Client, splitId: string, input: SplitEdit): P
     if (entries) return FAILED;
   }
 
-  if (plan) {
+  if (moveTo) {
+    // Off the old line's bill, and onto the new line's (by its statement cutoff), like Add to bill.
+    if (plan) {
+      const { error: dropped } = await supabase.from("installment_plans").delete().eq("id", plan.id);
+      if (dropped) return { error: "The split moved, but its old credit line bill didn't update. Please try again." };
+    }
+    if (toCredit) {
+      const onBill = await addSplitsToBill([splitId]);
+      if (onBill.error) return { error: `The split moved, but it isn't on the new bill yet: ${onBill.error}` };
+    }
+  } else if (plan) {
     const principal = Number(plan.principal);
     if (total !== principal && plan.paid === 0) {
       // Nothing paid yet: the bill follows the new total, on the same due dates.

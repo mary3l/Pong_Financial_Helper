@@ -9,7 +9,7 @@ import { categoryInfo } from "@/lib/categories";
 import { getAccounts, getInstallmentPlans, getPeople, getSplit, getTransactions } from "@/lib/data";
 import { formatRelativeDay, formatShortDay, today as getToday, transactionTime } from "@/lib/dates";
 import { dueText } from "@/lib/installments";
-import { formatPeso, roundCents } from "@/lib/money";
+import { formatPeso, paysInPesos, roundCents } from "@/lib/money";
 import { billReceipt } from "@/lib/receipt";
 import { billBreakdownText, toSplitBill, typedNote, unpaidByRecord } from "@/lib/splits";
 import { AddToBill } from "./add-to-bill";
@@ -174,6 +174,11 @@ async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/
         date={split.occurredOn}
         shares={rows.map((r) => ({ id: r.id, personId: r.personId, name: r.name, amount: r.amount }))}
         people={people.filter((p) => !archivedIds.has(p.id)).map((p) => ({ id: p.id, name: p.name }))}
+        walletId={split.accountId}
+        // Peso wallets and credit lines you still use, and whatever it's on now.
+        wallets={accounts
+          .filter((a) => a.id === split.accountId || (!a.archived && (a.type === "credit_line" || paysInPesos(a))))
+          .map((a) => ({ id: a.id, name: a.name, credit: a.type === "credit_line" }))}
       />
 
       <p className="text-xs text-muted">

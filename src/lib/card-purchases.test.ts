@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ForecastItem } from "@/lib/forecast";
-import { onCardBills } from "@/lib/installments";
+import { misdatedPlans, onCardBills } from "@/lib/installments";
 import { groupByPayee } from "@/lib/pay-periods";
 
 // A card whose statement cuts off on the 10th, with the bill due on the 16th.
@@ -47,5 +47,39 @@ describe("bought on a credit line", () => {
     const groups = groupByPayee(items, (id) => (id === "atome" ? "Atome" : undefined), "2026-11-11");
     expect(groups).toHaveLength(1);
     expect(groups[0]).toMatchObject({ name: "Atome", lenderId: "atome", count: 2, total: 8806.24, firstDue: "2026-12-16" });
+  });
+});
+
+describe("purchases on the wrong bill for the cutoff", () => {
+  // Atome: cuts off on the 6th, due on the 16th. Today Nov 11.
+  const line = { dueDay: 16, cutoffDay: 6 };
+  const bought = new Map([
+    ["mat", "2026-11-10"],
+    ["shoes", "2026-11-03"],
+    ["paid", "2026-11-10"],
+  ]);
+  const plan = (id: string, first: string, paid = false) => ({
+    id,
+    name: id,
+    sourceTxnId: id,
+    payments: [{ seq: 1, dueOn: first, transactionId: paid ? "t" : null }],
+  });
+
+  it("moves a purchase after the cutoff to the next bill", () => {
+    // Nov 10 is after the Nov 6 cutoff: the Dec 6 statement, due Dec 16 (Pong had guessed Nov 16).
+    expect(misdatedPlans([plan("mat", "2026-11-16")], bought, line, "2026-11-11")).toEqual([
+      { planId: "mat", name: "mat", purchasedOn: "2026-11-10", from: "2026-11-16", to: "2026-12-16" },
+    ]);
+  });
+
+  it("leaves ones already right, paid, by hand, or without a cutoff", () => {
+    expect(misdatedPlans([plan("shoes", "2026-11-16")], bought, line, "2026-11-11")).toEqual([]);
+    expect(misdatedPlans([plan("paid", "2026-11-16", true)], bought, line, "2026-11-11")).toEqual([]);
+    expect(misdatedPlans([{ ...plan("mat", "2026-11-16"), sourceTxnId: null }], bought, line, "2026-11-11")).toEqual([]);
+    expect(misdatedPlans([plan("mat", "2026-11-16")], bought, { dueDay: 16, cutoffDay: null }, "2026-11-11")).toEqual([]);
+  });
+
+  it("doesn't move a bill that's already past", () => {
+    expect(misdatedPlans([plan("mat", "2026-11-16")], bought, line, "2026-11-17")).toEqual([]);
   });
 });

@@ -3,10 +3,11 @@
 import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
 import { isValidDate, today } from "@/lib/dates";
-import { loanSchedule, upcomingSchedule } from "@/lib/installments";
+import { monthlyDates } from "@/lib/forecast";
+import { loanSchedule, misdatedPlans, upcomingSchedule } from "@/lib/installments";
 import { checkLoan, editLoan, exactRate } from "@/lib/loan-edit";
 import { MAX_AMOUNT, isSpendable, roundCents, type AccountType } from "@/lib/money";
-import { isMissingColumn, pickWallet, savePlan } from "@/lib/server-writes";
+import { creditTerms, isMissingColumn, pickWallet, savePlan, type Client } from "@/lib/server-writes";
 
 // Phase 3: credit lines (SPayLater, Atome), loans (SLoan, MariLoan) and
 // paying their installments. See 0005_installments_loans.sql for how each
@@ -122,6 +123,67 @@ export async function updateCreditLine(id: string, input: CreditLineInput): Prom
   if (error?.code === "missing") return { error: CUTOFF_MISSING };
   if (error) return FAILED;
 
+  // A new cutoff or due day: purchases logged before it move to the bill it puts them on.
+  await redatePlans(supabase, id);
+
+  refresh();
+  return {};
+}
+
+/**
+ * Moves unpaid purchases on a credit line to the bill its statement cutoff
+ * puts them on (misdatedPlans): every payment keeps its place in the plan,
+ * a month apart from the new first one. How many moved, or null if it failed.
+ */
+async function redatePlans(supabase: Client, lineId: string): Promise<number | null> {
+  const [line] = await creditTerms(supabase, [lineId]);
+  if (line?.type !== "credit_line") return null;
+  const { data: plans, error } = await supabase
+    .from("installment_plans")
+    .select("id, name, months, source_txn_id")
+    .eq("account_id", lineId)
+    .not("source_txn_id", "is", null);
+  if (error) return null;
+  if (!plans.length) return 0;
+  const [payments, purchases] = await Promise.all([
+    supabase.from("scheduled_payments").select("id, plan_id, seq, due_on, transfer_txn_id, fee_txn_id").in("plan_id", plans.map((p) => p.id)),
+    supabase.from("transactions").select("id, occurred_on").in("id", plans.map((p) => p.source_txn_id as string)),
+  ]);
+  if (payments.error || purchases.error) return null;
+  const moves = misdatedPlans(
+    plans.map((p) => ({
+      id: p.id,
+      name: p.name,
+      sourceTxnId: p.source_txn_id,
+      payments: payments.data
+        .filter((x) => x.plan_id === p.id)
+        .map((x) => ({ seq: x.seq, dueOn: x.due_on, transactionId: x.transfer_txn_id ?? x.fee_txn_id })),
+    })),
+    new Map(purchases.data.map((t) => [t.id as string, t.occurred_on as string])),
+    line,
+    today(),
+  );
+  for (const move of moves) {
+    const plan = plans.find((p) => p.id === move.planId)!;
+    const dates = monthlyDates(move.to, plan.months);
+    for (const x of payments.data.filter((x) => x.plan_id === plan.id)) {
+      const dueOn = dates[x.seq - 1];
+      if (!dueOn) continue;
+      const { error: moved } = await supabase.from("scheduled_payments").update({ due_on: dueOn }).eq("id", x.id);
+      if (moved) return null;
+    }
+    await supabase.from("installment_plans").update({ first_due: move.to }).eq("id", plan.id);
+  }
+  return moves.length;
+}
+
+/** "Move to the right bill" on a credit line: purchases on the wrong bill for its cutoff. */
+export async function fixBillDates(lineId: string): Promise<CreditResult> {
+  if (!/^[0-9a-f-]{36}$/i.test(lineId)) return { error: "Couldn't find that credit line." };
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const moved = await redatePlans(supabase, lineId);
+  if (moved === null) return FAILED;
   refresh();
   return {};
 }

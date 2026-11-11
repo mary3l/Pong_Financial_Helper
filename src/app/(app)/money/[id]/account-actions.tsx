@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { addUpcomingPayments, deleteLoanForGood, payInstallments, removePlan } from "@/app/credit-actions";
+import { addUpcomingPayments, deleteLoanForGood, fixBillDates, payInstallments, removePlan } from "@/app/credit-actions";
 import { assignPlanToPerson, theyPaidInstallments } from "@/app/people-actions";
 import { removeWallet, restoreWallet } from "@/app/wallet-actions";
 import { AmountInput } from "@/components/amount-input";
@@ -230,7 +230,6 @@ export function AccountActions({
   const router = useRouter();
   const [editing, setEditing] = useState(startEditing);
   const [confirm, setConfirm] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const editable = account.type === "credit_line" || (account.type === "loan" && loan);
@@ -242,7 +241,8 @@ export function AccountActions({
   }
 
   return (
-    <div id="edit" className="flex scroll-mt-4 flex-col gap-2 pt-2">
+    // Next to the name at the top of the page.
+    <div id="edit" className="flex scroll-mt-4 flex-col items-end gap-1">
       {editing && editable && (
         <FormDialog title={`Edit ${account.name}`} onClose={stopEditing}>
           {loan ? (
@@ -255,15 +255,16 @@ export function AccountActions({
           )}
         </FormDialog>
       )}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap justify-end gap-1.5">
         {editable && (
           <button
             type="button"
             aria-haspopup="dialog"
+            aria-label={`Edit ${account.name}`}
             onClick={() => setEditing(true)}
-            className="h-11 rounded-[14px] bg-card px-4 font-extrabold text-ink hover:bg-sea-tint"
+            className="h-10 rounded-[14px] bg-card px-4 text-sm font-extrabold text-ink hover:bg-sea-tint"
           >
-            Edit {account.name}
+            Edit
           </button>
         )}
         <button
@@ -281,16 +282,31 @@ export function AccountActions({
               else if (!account.archived && !result.archived) router.push("/money");
             });
           }}
-          className={`h-11 rounded-[14px] px-4 font-extrabold disabled:opacity-60 ${
+          className={`h-10 rounded-[14px] px-4 text-sm font-extrabold disabled:opacity-60 ${
             account.archived ? "bg-card text-ink" : confirm ? "bg-coral text-white" : "text-coral-text hover:bg-coral-tint"
           }`}
         >
           {account.archived ? "Restore" : confirm ? "Tap again to remove" : "Remove"}
         </button>
       </div>
-      <p className="text-xs text-muted">
-        Removing one with history archives it instead, so your past transactions stay right.
-      </p>
+      {confirm && (
+        <p className="max-w-60 text-right text-xs text-muted">
+          With history, it&apos;s archived instead, so your past transactions stay right.
+        </p>
+      )}
+      <p role="alert" className="max-w-60 text-right text-sm font-bold text-coral-text empty:hidden">{error}</p>
+    </div>
+  );
+}
+
+/** A loan added by mistake or twice: removes it and everything it logged. At the bottom of its page. */
+export function DeleteLoanForGood({ account }: { account: Account }) {
+  const router = useRouter();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  return (
+    <div className="flex flex-col gap-2">
       {account.type === "loan" && (
         <div className="mt-2 flex flex-col gap-2 rounded-[20px] bg-coral-tint p-4">
           <p className="text-sm leading-snug">
@@ -321,6 +337,31 @@ export function AccountActions({
           </button>
         </div>
       )}
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+    </div>
+  );
+}
+
+/** Moves purchases on the wrong bill for the cutoff to the right one. */
+export function FixBillDatesButton({ lineId, count }: { lineId: string; count: number }) {
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => {
+          setError(null);
+          startTransition(async () => {
+            const result = await fixBillDates(lineId);
+            if (result.error) setError(result.error);
+          });
+        }}
+        className="h-11 self-start rounded-[14px] bg-sun px-4 font-extrabold text-ink disabled:opacity-60"
+      >
+        {pending ? "Moving…" : count === 1 ? "Move it to the right bill" : `Move all ${count} to the right bills`}
+      </button>
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
     </div>
   );

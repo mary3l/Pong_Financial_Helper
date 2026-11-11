@@ -851,6 +851,16 @@ export async function getPlanInputs(today: string, days: number): Promise<PlanIn
   };
 }
 
+/** The day each of these transactions happened, by id. */
+export async function getTransactionDates(ids: string[]): Promise<Map<string, string>> {
+  const valid = ids.filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+  if (!valid.length) return new Map();
+  const supabase = await db();
+  const { data, error } = await supabase.from("transactions").select("id, occurred_on").in("id", valid);
+  if (error) throw dbError(error);
+  return new Map(data.map((t) => [t.id as string, t.occurred_on as string]));
+}
+
 /**
  * What's scheduled to go through one account in the next `days`: pay landing
  * in it, bills and planned expenses paid from it, installments it pays, and

@@ -3,14 +3,14 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LogButton } from "@/components/log-button";
-import { getAccounts, getInstallmentPlans, getPeople, getScheduledFor, getSplitsPaidWith, installmentInputs } from "@/lib/data";
+import { getAccounts, getInstallmentPlans, getPeople, getScheduledFor, getSplitsPaidWith, getTransactionDates, installmentInputs } from "@/lib/data";
 import { addDays, formatShortDay, isValidDate, today as getToday } from "@/lib/dates";
 import { scheduledItems, sortItems } from "@/lib/forecast";
-import { bnplFirstDue, catchUpDue, dueText, statementFor } from "@/lib/installments";
+import { bnplFirstDue, catchUpDue, dueText, misdatedPlans, statementFor } from "@/lib/installments";
 import { formatPeso, isDebt, isSpendable, paysInPesos, roundCents } from "@/lib/money";
 import { nextOccurrence } from "@/lib/schedule";
 import { readPage, toSplitBill, type SplitBill } from "@/lib/splits";
-import { AccountActions, AssignPlanButton, PayBillButton, RemovePlanButton, TheyPaidButton, UpcomingPayments } from "./account-actions";
+import { AccountActions, AssignPlanButton, DeleteLoanForGood, FixBillDatesButton, PayBillButton, RemovePlanButton, TheyPaidButton, UpcomingPayments } from "./account-actions";
 import { AddSplitsButton } from "./add-splits";
 import { WalletActivity } from "./wallet-activity";
 
@@ -113,6 +113,11 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
   const defaultDue = account.dueDay
     ? nextOccurrence({ frequency: "monthly", day1: account.dueDay, day2: null }, today)
     : addDays(today, 30);
+  // Purchases on the wrong bill for the cutoff: logged before it was saved, when Pong had to guess.
+  const misdated =
+    credit && account.cutoffDay && account.dueDay
+      ? misdatedPlans(plans, await getTransactionDates(plans.flatMap((p) => (p.sourceTxnId ? [p.sourceTxnId] : []))), account, today)
+      : [];
   // With a cutoff day: when this statement closes, and which bill a purchase today lands on.
   const cutoff =
     credit && account.cutoffDay && account.dueDay
@@ -121,14 +126,34 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
 
   return (
     <>
-      <div className="flex flex-col gap-0.5">
-        <h1 className="font-display text-3xl font-semibold">{account.name}</h1>
-        <span className="text-[15px] text-muted">
-          {credit
-            ? `Buy now, pay later${account.dueDay ? ` · bill due every ${ordinal(account.dueDay)}` : ""}${account.cutoffDay ? ` · cuts off every ${ordinal(account.cutoffDay)}` : ""}`
-            : "Loan"}
-          {account.archived && " · archived"}
-        </span>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <h1 className="font-display text-3xl font-semibold break-words">{account.name}</h1>
+          <span className="text-[15px] text-muted">
+            {credit
+              ? `Buy now, pay later${account.dueDay ? ` · bill due every ${ordinal(account.dueDay)}` : ""}${account.cutoffDay ? ` · cuts off every ${ordinal(account.cutoffDay)}` : ""}`
+              : "Loan"}
+            {account.archived && " · archived"}
+          </span>
+        </div>
+        <AccountActions
+          account={account}
+          loan={
+            credit
+              ? undefined
+              : {
+                  // Someone else's too: what they owe you follows its new terms.
+                  plan: plans.find((p) => p.kind === "loan") ?? null,
+                  paidBy: (() => {
+                    const theirs = plans.find((p) => p.kind === "loan")?.personId;
+                    return theirs ? (personName.get(theirs) ?? "They") : null;
+                  })(),
+                  wallets: accounts.filter((a) => paysInPesos(a) && !a.archived),
+                  today,
+                }
+          }
+          startEditing={query.edit === "1"}
+        />
       </div>
 
       {cutoff && (
@@ -137,6 +162,24 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
           Buy now and you pay on <strong>{formatShortDay(cutoff.due, today)}</strong>; after the cutoff, it waits for
           the {formatShortDay(bnplFirstDue(addDays(cutoff.closes, 1), account.dueDay!, account.cutoffDay!), today)} bill.
         </p>
+      )}
+
+      {misdated.length > 0 && (
+        <section aria-label="On the wrong bill" className="flex flex-col gap-2 rounded-[20px] bg-sun-tint px-4 py-3.5">
+          <p className="text-[15px] leading-snug">
+            <strong>{misdated.length === 1 ? "This is" : `These ${misdated.length} are`} on the wrong bill</strong> for your
+            cutoff on the {ordinal(account.cutoffDay!)}. Logged before the cutoff was saved, I had to guess.
+          </p>
+          <ul className="flex flex-col gap-1 text-[15px]">
+            {misdated.map((m) => (
+              <li key={m.planId}>
+                <strong>{m.name}</strong>, bought {formatShortDay(m.purchasedOn, today)}: the{" "}
+                {formatShortDay(m.to, today)} bill, not {formatShortDay(m.from, today)}
+              </li>
+            ))}
+          </ul>
+          <FixBillDatesButton lineId={account.id} count={misdated.length} />
+        </section>
       )}
 
       <section className="flex flex-col gap-2 rounded-[28px] bg-sea p-6 text-white">
@@ -377,24 +420,7 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
         </section>
       )}
 
-      <AccountActions
-        account={account}
-        loan={
-          credit
-            ? undefined
-            : {
-                // Someone else's too: what they owe you follows its new terms.
-                plan: plans.find((p) => p.kind === "loan") ?? null,
-                paidBy: (() => {
-                  const theirs = plans.find((p) => p.kind === "loan")?.personId;
-                  return theirs ? (personName.get(theirs) ?? "They") : null;
-                })(),
-                wallets: accounts.filter((a) => paysInPesos(a) && !a.archived),
-                today,
-              }
-        }
-        startEditing={query.edit === "1"}
-      />
+      {!credit && <DeleteLoanForGood account={account} />}
     </>
   );
 }

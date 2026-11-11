@@ -39,6 +39,8 @@ export function EditSplit({
   date,
   shares,
   people,
+  walletId,
+  wallets,
 }: {
   splitId: string;
   note: string;
@@ -46,12 +48,19 @@ export function EditSplit({
   shares: Share[];
   /** Everyone you could add (getPeople). */
   people: { id: string; name: string }[];
+  /** What the bill was paid with now. */
+  walletId: string;
+  /** Wallets and credit lines it could be paid with instead. */
+  wallets: { id: string; name: string; credit: boolean }[];
 }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [draftNote, setDraftNote] = useState(note);
   const [draftDate, setDraftDate] = useState(date);
+  const [draftWallet, setDraftWallet] = useState(walletId);
+  const fromName = wallets.find((w) => w.id === walletId)?.name ?? "the old one";
+  const toWallet = wallets.find((w) => w.id === draftWallet);
   const [amounts, setAmounts] = useState<Record<string, string>>(() => start(shares));
   const [added, setAdded] = useState<Added[]>([]);
   const [nextKey, setNextKey] = useState(1);
@@ -70,6 +79,7 @@ export function EditSplit({
   function reset() {
     setDraftNote(note);
     setDraftDate(date);
+    setDraftWallet(walletId);
     setAmounts(start(shares));
     setAdded([]);
     setError(null);
@@ -112,6 +122,7 @@ export function EditSplit({
         note: draftNote,
         occurredOn: draftDate,
         shares: shares.map((s, i) => ({ id: s.id, amount: values[i] })),
+        walletId: draftWallet,
         added: added.map((a, i) => ({
           who: (a.personId ? { personId: a.personId } : { name: a.name }) satisfies Who,
           amount: addedValues[i],
@@ -168,6 +179,23 @@ export function EditSplit({
                 />
               </div>
             </div>
+
+            {wallets.length > 1 && (
+              <div className="flex flex-col gap-1">
+                <label htmlFor="split-wallet" className="text-[13px] font-extrabold">Paid with</label>
+                <select id="split-wallet" value={draftWallet} onChange={(e) => setDraftWallet(e.target.value)} className={FIELD}>
+                  {wallets.map((w) => (
+                    <option key={w.id} value={w.id}>{w.credit ? `${w.name} (credit line)` : w.name}</option>
+                  ))}
+                </select>
+                {draftWallet !== walletId && toWallet && (
+                  <span className="text-xs text-muted">
+                    The whole {total === null ? "bill" : formatPeso(total)} moves from {fromName} to {toWallet.name}
+                    {toWallet.credit ? `, onto its bill by the statement cutoff` : ""}. What each person owes you stays the same.
+                  </span>
+                )}
+              </div>
+            )}
 
             <span className="text-[13px] font-extrabold text-muted">SHARES</span>
             <ul className="flex flex-col gap-1.5">
@@ -274,7 +302,7 @@ export function EditSplit({
             </ul>
             <p className="text-xs text-muted">
               Set a share to 0 to take that person off the bill. Anyone you add owes you their share (pautang),
-              paid from the same wallet as the rest of the bill.
+              paid with the same wallet as the rest of the bill.
             </p>
 
             <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>

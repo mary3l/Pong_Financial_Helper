@@ -74,6 +74,36 @@ export function catchUpDue(purchasedOn: string, dueDay: number | null, today: st
   return afterPurchase < nextBill ? nextBill : afterPurchase;
 }
 
+export type Redate = { planId: string; name: string; purchasedOn: string; from: string; to: string };
+
+/**
+ * Purchases logged on a credit line that sit on the wrong bill for its
+ * statement cutoff: logged before the cutoff day was saved, say, when Pong
+ * had to guess. Each plan made from a purchase (`sourceTxnId`, bought on
+ * `purchasedOn`) should first be due on the bill its cutoff puts it on.
+ * Only plans with nothing paid, and only moves between bills still ahead,
+ * so nothing you've settled or that's already late changes.
+ */
+export function misdatedPlans(
+  plans: { id: string; name: string; sourceTxnId: string | null; payments: { seq: number; dueOn: string; transactionId: string | null }[] }[],
+  purchasedOn: Map<string, string>,
+  line: { dueDay: number | null; cutoffDay: number | null },
+  today: string,
+): Redate[] {
+  if (!line.dueDay || !line.cutoffDay) return [];
+  const out: Redate[] = [];
+  for (const plan of plans) {
+    const bought = plan.sourceTxnId ? purchasedOn.get(plan.sourceTxnId) : undefined;
+    const first = plan.payments.find((p) => p.seq === 1);
+    if (!bought || !first || plan.payments.some((p) => p.transactionId)) continue;
+    const to = bnplFirstDue(bought, line.dueDay, line.cutoffDay);
+    if (to !== first.dueOn && first.dueOn >= today && to >= today) {
+      out.push({ planId: plan.id, name: plan.name, purchasedOn: bought, from: first.dueOn, to });
+    }
+  }
+  return out;
+}
+
 /**
  * Bills and planned expenses paid from a credit line (Atome): you buy on the
  * day you set, but your wallets only pay when the card's bill is due. Each
