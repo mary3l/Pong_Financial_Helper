@@ -145,8 +145,8 @@ export function TransactionForm({
   mode: "modal" | "page";
   closeHref?: string;
   prefill?: Prefill;
-  /** People you have utang or pautang with, for Split. */
-  people?: { id: string; name: string }[];
+  /** People you have utang or pautang with, for Split. Balance above 0: they owe you. */
+  people?: { id: string; name: string; balance?: number }[];
   /** Open with Split on (from "Split a bill"). */
   startSplit?: boolean;
   /** Subcategories typed before, by category key, most used first. */
@@ -199,6 +199,7 @@ export function TransactionForm({
   const [splitOn, setSplitOn] = useState(startSplit && !transaction);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [newName, setNewName] = useState("");
+  // Who paid the bill: "me", a participant's key, or null until you pick.
   const [paidBy, setPaidBy] = useState<string | null>(null);
   const [splitMethod, setSplitMethod] = useState<"equal" | "exact">("equal");
   const [exact, setExact] = useState<Record<string, string>>({});
@@ -224,8 +225,8 @@ export function TransactionForm({
   const splitting = splitOn && type === "expense" && !editing;
   const fromList = usableFor(type, accounts, keep);
   // A split you paid with a credit line goes on its bill too, for the whole amount.
-  const someonePaid = splitting && participants.some((p) => p.key === paidBy);
-  const withPlan = !editing && !someonePaid && type === "expense" && account?.type === "credit_line";
+  const iPaid = !splitting || paidBy === "me";
+  const withPlan = !editing && iPaid && type === "expense" && account?.type === "credit_line";
   const shares = splitting ? splitShares(amount, participants, splitMethod, exact) : null;
   // Exact amounts: what's still to be shared out, counting down to ₱0.
   const leftToSplit =
@@ -374,6 +375,10 @@ export function TransactionForm({
         setSaveError(shares?.problem ?? "Check the shares.");
         return;
       }
+      if (paidBy === null) {
+        setSaveError("Pick who paid the bill.");
+        return;
+      }
       if (withPlan && !(rate >= 0 && rate <= 10)) {
         setSaveError("Check the monthly fee (0 to 10%).");
         return;
@@ -499,10 +504,12 @@ export function TransactionForm({
     );
   }
 
-  const pong = splitting
-    ? splitPong(amount, shares, participants, paidBy)
-    : pongSays({ type, amount, error: calc.error, account, toAccount, toAmount, transaction, planRows });
   const payer = splitting ? participants.find((p) => p.key === paidBy) : undefined;
+  // They paid and already owe you: your share comes off what they owe.
+  const payerOwes = payer?.personId ? Math.max(0, people.find((x) => x.id === payer.personId)?.balance ?? 0) : 0;
+  const pong = splitting
+    ? splitPong(amount, shares, participants, paidBy, payerOwes)
+    : pongSays({ type, amount, error: calc.error, account, toAccount, toAmount, transaction, planRows });
 
   function toggleSplit(on: boolean) {
     setSplitOn(on);
@@ -850,9 +857,9 @@ export function TransactionForm({
                   <>
                     <span id="split-paid-label" className="text-[13px] font-extrabold text-muted">WHO PAID?</span>
                     <div role="group" aria-labelledby="split-paid-label" className="flex flex-wrap gap-2">
-                      {[{ key: null, name: "Me" }, ...participants].map((p) => (
+                      {[{ key: "me", name: "Me" }, ...participants].map((p) => (
                         <button
-                          key={p.key ?? "me"}
+                          key={p.key}
                           type="button"
                           aria-pressed={paidBy === p.key}
                           onClick={() => setPaidBy(p.key)}
@@ -914,10 +921,14 @@ export function TransactionForm({
                         </li>
                       )}
                     </ul>
-                    <p className="text-xs text-muted">
-                      {payer
-                        ? `${payer.name} paid: your share is spending, and you'll owe it to ${payer.name}.`
-                        : "You paid: only your share is spending. The rest is pautang, still your money."}
+                    <p className={`text-xs ${paidBy === null ? "font-bold text-coral-text" : "text-muted"}`}>
+                      {paidBy === null
+                        ? "Pick who paid the bill."
+                        : payer
+                          ? payerOwes > 0 && shares?.ok
+                            ? deductionText(payer.name, payerOwes, shares.mine)
+                            : `${payer.name} paid: your share is spending, and you'll owe it to ${payer.name}.`
+                          : "You paid: only your share is spending. The rest is pautang, still your money."}
                     </p>
                   </>
                 )}
@@ -926,7 +937,7 @@ export function TransactionForm({
           </div>
         )}
 
-        {!payer && (
+        {iPaid && (
           <div className="order-6 flex flex-col gap-1.5 lg:order-none">
             <span className="text-sm font-extrabold">
               {type === "expense" ? "Pay with" : type === "income" ? "Received in" : "From"}
@@ -1165,16 +1176,36 @@ function splitShares(
   return { ok: true, mine, byKey };
 }
 
+/**
+ * Someone who owes you paid the bill: your share comes off what they owe
+ * (it's the same person's balance), and only the rest is utang.
+ */
+function deductionText(name: string, owes: number, mine: number): string {
+  const left = roundCents(owes - mine);
+  const start = `${name} paid and owes you ${formatPeso(owes)}. Your ${formatPeso(mine)} share comes off it:`;
+  if (left > 0) return `${start} ${name} will owe you ${formatPeso(left)}.`;
+  if (left === 0) return `${start} you're even.`;
+  return `${start} that clears it, and you'll owe ${name} ${formatPeso(-left)}.`;
+}
+
 function splitPong(
   amount: number,
   shares: Shares | null,
   participants: Participant[],
   paidBy: string | null,
+  payerOwes = 0,
 ): { mood: PongMood; line: string } {
   if (!amount) return { mood: "ask", line: "How much was the whole bill?" };
   if (!participants.length) return { mood: "listen", line: "Who did you split it with?" };
   if (!shares?.ok) return { mood: "worried", line: shares?.problem ?? "Check the shares." };
+  if (paidBy === null) return { mood: "ask", line: "Who paid the bill? You, or one of them?" };
   const payer = participants.find((p) => p.key === paidBy);
+  if (payer && payerOwes > 0) {
+    const left = roundCents(payerOwes - shares.mine);
+    return left >= 0
+      ? { mood: "happy", line: `I'll take your ${formatPeso(shares.mine)} share off what ${payer.name} owes you. ${left > 0 ? `${formatPeso(left)} left.` : "You're even!"}` }
+      : { mood: "listen", line: `That clears what ${payer.name} owes you, and you'll owe ${formatPeso(-left)}.` };
+  }
   if (payer) return { mood: "listen", line: `Your share is ${formatPeso(shares.mine)}. I'll note that you owe ${payer.name}.` };
   const owed = roundCents(amount - shares.mine);
   return { mood: "happy", line: `Your share is ${formatPeso(shares.mine)}. ${formatPeso(owed)} becomes pautang, still your money.` };

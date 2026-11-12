@@ -21,6 +21,7 @@ import {
   roundCents,
 } from "@/lib/money";
 import { dueDate, isOverdue, type Person } from "@/lib/people";
+import { payPerMonth as monthlyPay } from "@/lib/schedule";
 import { MoneyTabs } from "./money-tabs";
 import { WalletManager } from "./wallet-manager";
 import { isSavingsWallet, walletInterest } from "./wallet-totals";
@@ -84,9 +85,8 @@ async function Wallets() {
     plans.filter((p) => !p.personId).reduce((sum, p) => sum + (p.payments.find((x) => !x.transactionId)?.amount ?? 0), 0),
   );
   const payday = recurring.find((r) => r.kind === "payday");
-  const payPerMonth = payday?.amount
-    ? payday.amount * (payday.frequency === "weekly" ? 52 / 12 : payday.frequency === "twice_monthly" ? 2 : 1)
-    : null;
+  // Each week or payday can bring a different amount.
+  const payPerMonth = payday ? monthlyPay(payday) : null;
 
   return (
     <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start lg:gap-6">

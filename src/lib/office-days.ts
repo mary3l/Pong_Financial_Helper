@@ -1,8 +1,8 @@
 import { addDays, type Period } from "@/lib/dates";
 import { isOwed, paidInAdvance, type ForecastItem } from "@/lib/forecast";
 import { roundCents } from "@/lib/money";
-import { cutoffDaysOf, cutoffFor, cutoffPay, daysFor, settingsFor, type PayrollRecords } from "@/lib/payroll";
-import { occurrences, type Schedule } from "@/lib/schedule";
+import { cutoffFor, cutoffPay, cutoffRuleOf, daysFor, settingsFor, type PayrollRecords } from "@/lib/payroll";
+import { MAX_GAP_DAYS, occurrences, type Schedule } from "@/lib/schedule";
 
 // Plan › Bills by payday: every bill goes with the pay that covers it (the
 // last payday on or before it's due), and with the payroll calculator, how
@@ -64,7 +64,7 @@ const isOtherIncome = (i: ForecastItem) => i.flow === "in" && i.kind !== "payday
  * today, from the days you saved (or the usual work week).
  */
 export function officeDays(records: PayrollRecords, cutoff: Period, today: string, need: number): OfficeDays {
-  const days = daysFor(cutoff, new Map(records.days.map((d) => [d.date, d])), records.settings.startedOn);
+  const days = daysFor(cutoff, new Map(records.days.map((d) => [d.date, d])), records.settings.startedOn, records.settings);
   const past = days.filter((d) => d.date < today);
   const ahead = days.filter((d) => d.date >= today && d.status === "worked");
   const overtime = records.overtime.filter((o) => o.date >= cutoff.start && o.date < today && o.date <= cutoff.end);
@@ -103,19 +103,22 @@ export function billsByPayday({
   payday: Schedule;
   /** Spending money in your wallets now. */
   inWallets: number;
-  /** The payroll calculator's records, when it's set up for twice-a-month pay. */
+  /** The payroll calculator's records, when it's set up. */
   payroll: PayrollRecords | null;
   count?: number;
 }): PaydayBills[] {
-  // count + 1 paydays: each period ends the day before the next one.
-  const paydays = occurrences(payday, addDays(today, 1), addDays(today, 31 * (count + 2))).slice(0, count + 1);
+  // count + 1 paydays: each period ends the day before the next one. Paydays
+  // can be months apart (only the 5th Friday), so look as far as that needs.
+  const paydays = occurrences(payday, addDays(today, 1), addDays(today, MAX_GAP_DAYS * (count + 1) + 1)).slice(0, count + 1);
+  if (!paydays.length) return [];
   const bills = items.filter(isBill);
   const out: PaydayBills[] = [];
   let carried = 0;
 
   const windows = [
     { payday: null as string | null, from: today, until: paydays[0] },
-    ...paydays.slice(0, count).map((p, i) => ({ payday: p as string | null, from: p, until: paydays[i + 1] })),
+    // A period needs the payday after it to end.
+    ...paydays.slice(0, -1).slice(0, count).map((p, i) => ({ payday: p as string | null, from: p, until: paydays[i + 1] })),
   ];
   for (const w of windows) {
     const first = w.payday === null;
@@ -126,7 +129,7 @@ export function billsByPayday({
     const total = sum(due);
     const need = Math.max(0, roundCents(total + carried - otherIncome));
     const payItem = w.payday ? items.find((i) => i.kind === "payday" && i.dueOn === w.payday) : undefined;
-    const cutoff = w.payday && payroll ? cutoffFor(w.payday, cutoffDaysOf(payroll.settings)) : null;
+    const cutoff = w.payday && payroll ? cutoffFor(w.payday, cutoffRuleOf(payroll.settings)) : null;
     const office = cutoff && payroll ? officeDays(payroll, cutoff, today, need) : null;
     const money = first ? inWallets : (payItem?.amount ?? null);
     const left = money === null ? null : roundCents(money - need);

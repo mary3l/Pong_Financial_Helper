@@ -60,7 +60,7 @@ export async function AddTransaction({
       today={today()}
       mode={mode}
       prefill={prefillFrom(params)}
-      people={people.map((p) => ({ id: p.id, name: p.name }))}
+      people={people.map((p) => ({ id: p.id, name: p.name, balance: p.balance }))}
       startSplit={params.split === "1"}
       subcategories={subcategories}
     />

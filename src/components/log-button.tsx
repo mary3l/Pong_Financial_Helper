@@ -23,7 +23,7 @@ export function prefillHref(item: ForecastItem): string {
   if (item.category) query.set("category", item.category);
   if (item.accountId) query.set("account", item.accountId);
   if (item.kind === "payday" || item.kind === "income" || item.kind === "bill") {
-    query.set("link", `${item.id}|${item.dueOn}`);
+    query.set("link", `${item.id}|${item.scheduledOn ?? item.dueOn}`);
   }
   return `/add?${query}`;
 }

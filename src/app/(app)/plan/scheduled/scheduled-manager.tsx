@@ -18,7 +18,7 @@ import type { Account, PlannedExpense, RecurringItem } from "@/lib/data";
 import { addDays, formatRelativeDay, formatShortDay } from "@/lib/dates";
 import type { ForecastItem } from "@/lib/forecast";
 import { formatPeso, parseAmount } from "@/lib/money";
-import { WEEKDAYS, describeSchedule, type Frequency } from "@/lib/schedule";
+import { WEEKDAYS, describeSchedule, hasOwnAmounts, type Frequency } from "@/lib/schedule";
 
 type Repeat = "once" | Frequency;
 
@@ -106,7 +106,8 @@ export function ScheduledManager({
         ref: { table: "recurring", id: r.id },
         flow,
         name: payday ? "Payday" : r.name,
-        amount: payday && payroll && next ? next.amount : r.amount,
+        // Paydays that differ each week or each payday: the next one too.
+        amount: payday && (payroll || hasOwnAmounts(r)) && next ? next.amount : r.amount,
         category,
         accountId: r.accountId,
         when: describeSchedule(r) + (r.endsOn ? ` until ${formatShortDay(r.endsOn, today)}` : ""),
@@ -301,7 +302,12 @@ function ItemRow({
       <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
         {next && soon && <LogButton item={next} accounts={accounts} />}
         {row.payday ? (
-          <Link href="/settings/payday" className={linkClass}>
+          // With the calculator, how you're paid and each payday's amount are set there.
+          <Link
+            href={row.fromPayroll ? "/payroll" : "/settings/payday"}
+            aria-label={row.fromPayroll ? "Edit payday in the payroll calculator" : undefined}
+            className={linkClass}
+          >
             Edit
           </Link>
         ) : row.fromPayroll ? (

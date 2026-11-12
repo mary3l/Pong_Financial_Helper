@@ -54,6 +54,23 @@ export async function savePaydayAndBills(input: PaydayInput): Promise<SetupResul
   if (!supabase) return { error: SIGNED_OUT_ERROR };
   const failed = { error: "Couldn't save that. Please try again." };
 
+  // Paydays that differ (which Fridays pay, an amount per payday) need
+  // migration 0022: check before the old payday goes.
+  const weeks = input.schedule?.frequency === "weekly" && input.schedule.weeks?.length ? [...input.schedule.weeks] : null;
+  const amounts = input.schedule?.amounts?.some((a) => a !== null)
+    ? input.schedule.amounts.map((a) => (a === null ? null : roundCents(a)))
+    : null;
+  const daily = input.schedule?.frequency === "daily";
+  const weekdays = daily && input.schedule?.weekdays?.length ? [...input.schedule.weekdays] : null;
+  if (daily) {
+    const { error } = await supabase.from("recurring_items").select("pay_weekdays").limit(1);
+    if (error) return { error: "To get paid every work day, run step 23 in supabase/SQL_GUIDE.md first." };
+  }
+  if (weeks || amounts) {
+    const { error } = await supabase.from("recurring_items").select("pay_weeks, pay_amounts").limit(1);
+    if (error) return { error: "To pick paydays or an amount for each one, run step 22 in supabase/SQL_GUIDE.md first." };
+  }
+
   const clearPayday = await supabase.from("recurring_items").delete().eq("kind", "payday");
   if (clearPayday.error) return failed;
   if (input.schedule) {
@@ -66,6 +83,10 @@ export async function savePaydayAndBills(input: PaydayInput): Promise<SetupResul
       frequency: input.schedule.frequency,
       day1: input.schedule.day1,
       day2: input.schedule.day2,
+      // Left out when not used, so a payday saves before 0022 too.
+      ...(weeks ? { pay_weeks: weeks } : {}),
+      ...(weekdays ? { pay_weekdays: weekdays } : {}),
+      ...(amounts ? { pay_amounts: amounts } : {}),
     });
     if (error) return failed;
   }

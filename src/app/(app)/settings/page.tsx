@@ -9,7 +9,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getBudgets, getRecurringItems, getWidgetKey } from "@/lib/data";
 import { formatShortDay, today } from "@/lib/dates";
 import { formatPeso } from "@/lib/money";
-import { describeSchedule } from "@/lib/schedule";
+import { describeSchedule, hasOwnAmounts } from "@/lib/schedule";
 
 export const metadata = { title: "Settings & tools · Pong Money" };
 
@@ -137,7 +137,7 @@ async function PaydayRow() {
   const payday = items.find((i) => i.kind === "payday");
   const bills = items.filter((i) => i.kind === "bill");
   const pay = payday
-    ? `${describeSchedule(payday)}${payday.amount ? ` · ${formatPeso(payday.amount)}` : ""}`
+    ? `${describeSchedule(payday)}${payday.amount ? ` · ${hasOwnAmounts(payday) ? "about " : ""}${formatPeso(payday.amount)}` : ""}`
     : "Payday not set";
   return (
     <Row

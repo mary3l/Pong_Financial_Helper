@@ -1,6 +1,6 @@
 import { addDays, dateInMonth, daysBetween } from "@/lib/dates";
 import { roundCents } from "@/lib/money";
-import { nextOccurrence, occurrences, type Schedule } from "@/lib/schedule";
+import { amountOn, nextOccurrence, occurrences, type Schedule } from "@/lib/schedule";
 
 // The forecast (design canvas 3.1), Safe to spend and "Can I afford this?".
 // Pure, so the server and the browser share it.
@@ -31,6 +31,8 @@ export type ForecastItem = {
   estimate: boolean;
   /** Set once it was logged as a real transaction. */
   transactionId: string | null;
+  /** A payday moved to another day (a holiday): the date it's logged under. Missing: `dueOn`. */
+  scheduledOn?: string;
   /** The day that transaction happened, when known: before `dueOn` means it was paid in advance. */
   paidOn?: string | null;
   /** Installments, and bills or planned expenses bought on a credit line: the line it's billed on. */
@@ -67,7 +69,7 @@ export type ScheduleInputs = {
    * Payroll calculator: each payday's own amount by date, replacing the
    * payday's saved amount.
    */
-  paydayAmounts?: Record<string, { amount: number; estimate: boolean }>;
+  paydayAmounts?: Record<string, { amount: number; estimate: boolean; paidOn?: string }>;
   /** BNPL and loan payments (Phase 3). */
   installments?: {
     id: string;
@@ -114,8 +116,11 @@ export function scheduledItems(
         flow: r.kind === "bill" ? "out" : "in",
         id: r.id,
         name: r.kind === "payday" ? "Payday" : r.name,
-        amount: payroll ? payroll.amount : r.amount,
-        dueOn: date,
+        // A payday can bring a different amount each week or each payday.
+        amount: payroll ? payroll.amount : r.kind === "payday" ? amountOn(r, date) : r.amount,
+        // Paid on another day this time; logged under its usual date.
+        dueOn: payroll?.paidOn ?? date,
+        ...(payroll?.paidOn ? { scheduledOn: date } : {}),
         accountId: r.accountId,
         category: recurringCategory(r),
         estimate: payroll ? payroll.estimate : r.amountVaries,
@@ -327,7 +332,7 @@ export function safeToSpend({
   const dueBeforePayday = roundCents(due.reduce((sum, i) => sum + i.amount!, 0));
   const freeUntilPayday = Math.max(0, roundCents(inWallets + spentToday - dueBeforePayday));
   const setAsideLater =
-    payday.frequency === "weekly"
+    payday.frequency === "weekly" || payday.frequency === "daily"
       ? heldBackForLater({ freeUntilPayday, startOfDay: roundCents(inWallets + spentToday), daysLeft, items, today, nextPayday })
       : 0;
   const free = roundCents(freeUntilPayday - setAsideLater);

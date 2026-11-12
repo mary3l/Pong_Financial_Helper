@@ -50,7 +50,8 @@ function validate(input: ScheduledInput): string | null {
     if (!isValidDate(input.date)) return "Pick a date.";
     return null;
   }
-  if (!isValidSchedule({ frequency: input.repeat, day1: input.day1, day2: input.day2 })) {
+  // Every work day is for paydays only.
+  if (input.repeat === "daily" || !isValidSchedule({ frequency: input.repeat, day1: input.day1, day2: input.day2 })) {
     return "Check the dates it repeats on.";
   }
   if (input.endsOn !== null && !isValidDate(input.endsOn)) return "Check the end date, or leave it blank.";

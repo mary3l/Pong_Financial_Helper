@@ -157,3 +157,23 @@ describe("bills by payday", () => {
 function roundTo(n: number) {
   return Math.round(n * 100) / 100;
 }
+
+describe("paydays months apart", () => {
+  it("still ends every period on the next payday", () => {
+    // Saved before 5th-only paydays were turned away: Jan 29, Apr 30, Jul 30.
+    const fifthFriday = { frequency: "weekly" as const, day1: 5, day2: null, weeks: [5] };
+    const periods = billsByPayday({
+      items: [item("bill", "2026-12-01", 500)],
+      today: "2026-11-13",
+      payday: fifthFriday,
+      inWallets: 5000,
+      payroll: null,
+      count: 2,
+    });
+    expect(periods.map((p) => [p.from, p.to])).toEqual([
+      ["2026-11-13", "2027-01-28"],
+      ["2027-01-29", "2027-04-29"],
+      ["2027-04-30", "2027-07-29"],
+    ]);
+  });
+});

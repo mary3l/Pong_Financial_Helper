@@ -10,7 +10,7 @@ import {
 } from "@/lib/forecast";
 import { bnplFirstDue } from "@/lib/installments";
 import { formatPeso, roundCents, type AccountType } from "@/lib/money";
-import { occurrences, nextOccurrence, type Schedule } from "@/lib/schedule";
+import { MAX_GAP_DAYS, occurrences, nextOccurrence, type Schedule } from "@/lib/schedule";
 
 // BNPL credit you can still use: shown next to Safe to spend, never in it.
 // It's borrowed, so it never counts in You have, Net worth, the forecast or
@@ -242,7 +242,7 @@ export function totalUsable(lines: CreditRoom[], capLeft: number | null): number
 
 /** The kinsenas (or week, or month) a payment falls in: from the payday on or before it to the next one. */
 export function payCycle(payday: Schedule, date: string): { from: string; until: string } {
-  const from = occurrences(payday, addDays(date, -40), addDays(date, 1)).at(-1)!;
+  const from = occurrences(payday, addDays(date, -MAX_GAP_DAYS - 1), addDays(date, 1)).at(-1)!;
   return { from, until: nextOccurrence(payday, date) };
 }
 

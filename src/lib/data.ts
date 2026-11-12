@@ -107,6 +107,12 @@ export type RecurringItem = {
   endsOn: string | null;
   /** Set on SSS, PhilHealth and Pag-IBIG bills the payroll calculator manages. */
   payrollKey: string | null;
+  /** Weekly payday: the weeks of the month that pay (migration 0022). Null: every week. */
+  weeks: number[] | null;
+  /** Payday: each payday's own amount, by week or by day (migration 0022). Null: all the same. */
+  amounts: (number | null)[] | null;
+  /** Daily payday: the weekdays you're paid (migration 0023). Null: every day. */
+  weekdays: number[] | null;
 };
 
 export type BillPayment = {
@@ -297,8 +303,6 @@ export async function getLastInterest(): Promise<Map<string, string>> {
   return last;
 }
 
-const RECURRING_COLUMNS = "id, kind, name, amount, amount_varies, account_id, category, frequency, day1, day2, ends_on";
-
 type RecurringRow = {
   id: string;
   kind: RecurringItem["kind"];
@@ -311,15 +315,19 @@ type RecurringRow = {
   day1: number;
   day2: number | null;
   ends_on: string | null;
+  /** Missing until migration 0013. */
   payroll_key?: string | null;
+  /** Missing until migration 0022. */
+  pay_weeks?: number[] | null;
+  pay_amounts?: (number | string | null)[] | null;
+  /** Missing until migration 0023. */
+  pay_weekdays?: number[] | null;
 };
 
 export async function getRecurringItems(): Promise<RecurringItem[]> {
   const supabase = await db();
-  const select = (columns: string) => supabase.from("recurring_items").select(columns).order("created_at");
-  // 42703: migration 0013 (payroll_key) hasn't been run yet.
-  const first = await select(`${RECURRING_COLUMNS}, payroll_key`);
-  const { data, error } = first.error?.code === "42703" ? await select(RECURRING_COLUMNS) : first;
+  // "*": columns from later migrations are there once they're run.
+  const { data, error } = await supabase.from("recurring_items").select("*").order("created_at");
   if (error) throw dbError(error);
   return (data as unknown as RecurringRow[]).map((r) => ({
     id: r.id,
@@ -334,6 +342,9 @@ export async function getRecurringItems(): Promise<RecurringItem[]> {
     day2: r.day2,
     endsOn: r.ends_on,
     payrollKey: r.payroll_key ?? null,
+    weeks: r.pay_weeks?.length ? r.pay_weeks.map(Number) : null,
+    amounts: r.pay_amounts?.length ? r.pay_amounts.map((a) => (a === null ? null : Number(a))) : null,
+    weekdays: r.pay_weekdays?.length ? r.pay_weekdays.map(Number) : null,
   }));
 }
 
@@ -438,7 +449,7 @@ export async function readPayroll(
   today: string,
 ): Promise<PayrollRecords | null | "missing"> {
   const from = `${Number(today.slice(0, 4)) - 1}-01-01`;
-  const [s, d, o, c] = await Promise.all([
+  const [s, d, o, c, p, cc] = await Promise.all([
     supabase.from("payroll_settings").select("*").maybeSingle(),
     supabase
       .from("payroll_days")
@@ -451,10 +462,11 @@ export async function readPayroll(
       .gte("work_date", from)
       .order("work_date")
       .order("starts_at"),
-    supabase
-      .from("payroll_pay_changes")
-      .select("starts_on, daily_rate, hours_per_day, start_time, overtime_rate")
-      .order("starts_on"),
+    // "*": monthly_pay is there once migration 0023 is run.
+    supabase.from("payroll_pay_changes").select("*").order("starts_on"),
+    // Your cutoffs follow how often you're paid.
+    supabase.from("recurring_items").select("frequency").eq("kind", "payday").maybeSingle(),
+    supabase.from("payroll_cutoff_changes").select("usual_start, starts_on, ends_on, paid_on").order("usual_start"),
   ]);
   if (s.error?.code === "PGRST205") return "missing";
   if (s.error) throw dbError(s.error);
@@ -484,6 +496,24 @@ export async function readPayroll(
       ...(row.cutoff_day1 != null && row.cutoff_day2 != null
         ? { cutoffDays: [Number(row.cutoff_day1), Number(row.cutoff_day2)] as const }
         : {}),
+      // Undefined until migration 0022 is run: Monday, and the 1st.
+      ...(row.cutoff_weekday != null ? { cutoffWeekday: Number(row.cutoff_weekday) } : {}),
+      ...(row.cutoff_month_day != null ? { cutoffMonthDay: Number(row.cutoff_month_day) } : {}),
+      ...(p.data?.frequency ? { frequency: p.data.frequency as Frequency } : {}),
+      // Undefined until migration 0023 is run: pay per day, weekends off, no moved cutoffs.
+      ...(row.monthly_pay != null ? { monthlyPay: Number(row.monthly_pay) } : {}),
+      ...(row.saturday ? { saturday: row.saturday } : {}),
+      ...(row.sunday ? { sunday: row.sunday } : {}),
+      ...(cc.data?.length
+        ? {
+            cutoffChanges: cc.data.map((ch) => ({
+              usual: ch.usual_start,
+              start: ch.starts_on,
+              end: ch.ends_on,
+              paidOn: ch.paid_on,
+            })),
+          }
+        : {}),
     },
     days: d.data.map((day) => ({
       date: day.work_date,
@@ -503,17 +533,18 @@ export async function readPayroll(
       hoursPerDay: Number(ch.hours_per_day),
       startTime: String(ch.start_time).slice(0, 5),
       overtimeRate: Number(ch.overtime_rate),
+      monthlyPay: ch.monthly_pay == null ? null : Number(ch.monthly_pay),
     })),
   };
 }
 
 /**
- * Each payday's own amount when the payroll calculator is set up. It needs
- * pay twice a month: one cutoff per payday.
+ * Each payday's own amount when the payroll calculator is set up: the pay
+ * for the cutoffs it pays, weekly, monthly or twice a month.
  */
 async function payrollAmounts(recurring: RecurringItem[], today: string, until: string) {
   const payday = recurring.find((r) => r.kind === "payday");
-  if (payday?.frequency !== "twice_monthly") return undefined;
+  if (!payday) return undefined;
   const payroll = await getPayroll(today);
   if (!payroll || payroll === "missing") return undefined;
   return paydayAmounts(payroll, payday, today, until, today);

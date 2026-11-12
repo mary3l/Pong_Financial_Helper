@@ -5,19 +5,13 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { finishSetup, savePaydayAndBills, type BillInput } from "@/app/setup-actions";
 import { AmountInput } from "@/components/amount-input";
-import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
+import { FIELD_CLASS } from "@/components/choice-chip";
+import { PaydayPicker, choiceFrom, dayLabel, ordinal, scheduleFrom, type PayKind } from "@/components/payday-picker";
 import type { Account, RecurringItem } from "@/lib/data";
-import { parseAmount } from "@/lib/money";
-import { WEEKDAYS, type Frequency, type Schedule } from "@/lib/schedule";
+import { formatPeso, parseAmount, roundCents } from "@/lib/money";
+import { WEEKDAYS, WEEKS_OF_MONTH, describeSchedule, hasOwnAmounts, payPerMonth, slotCount, type Frequency } from "@/lib/schedule";
 
-type PayKind = Frequency | "irregular";
-
-const PAY_KINDS: { value: PayKind; label: string }[] = [
-  { value: "twice_monthly", label: "Twice a month" },
-  { value: "monthly", label: "Monthly" },
-  { value: "weekly", label: "Weekly" },
-  { value: "irregular", label: "Irregular" },
-];
+const PAY_KINDS: PayKind[] = ["daily", "weekly", "twice_monthly", "monthly", "irregular"];
 
 const BILL_IDEAS = ["Rent", "Electricity", "Water", "Internet", "Phone plan", "Subscriptions"];
 
@@ -27,9 +21,10 @@ let nextKey = 0;
 
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 
-function dayLabel(day: number) {
-  const suffix = day % 10 === 1 && day !== 11 ? "st" : day % 10 === 2 && day !== 12 ? "nd" : day % 10 === 3 && day !== 13 ? "rd" : "th";
-  return day >= 29 ? `${day}${suffix} (or last day)` : `${day}${suffix}`;
+/** Each payday's own amount as typed, from what's saved for this kind of pay. */
+function slotTexts(payday: RecurringItem | null, frequency: Frequency): string[] {
+  const saved = payday?.frequency === frequency ? payday.amounts : null;
+  return Array.from({ length: slotCount(frequency) }, (_, i) => (saved?.[i] != null ? String(saved[i]) : ""));
 }
 
 export function PaydayForm({
@@ -44,22 +39,24 @@ export function PaydayForm({
   bills: RecurringItem[];
   /** True when opened from Settings rather than first-run setup. */
   editing: boolean;
-  /** The payroll calculator works out each payday. */
-  payroll: boolean;
+  /**
+   * The payroll calculator works out each payday, and sets how you're paid:
+   * what each pay covers, in words ("cutoffs 3–17 and 18–2"). Null when it
+   * isn't set up.
+   */
+  payroll: { cutoffs: string } | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const [kind, setKind] = useState<PayKind>(
-    payday ? payday.frequency : editing ? "irregular" : "twice_monthly",
-  );
-  const [twice, setTwice] = useState<[number, number]>(
-    payday?.frequency === "twice_monthly" ? [payday.day1, payday.day2!] : [15, 30],
-  );
-  const [monthDay, setMonthDay] = useState(payday?.frequency === "monthly" ? payday.day1 : 30);
-  const [weekday, setWeekday] = useState(payday?.frequency === "weekly" ? payday.day1 : 5);
+  const [choice, setChoice] = useState(() => choiceFrom(payday, editing ? "irregular" : "twice_monthly"));
+  const kind = choice.kind;
   const [netPay, setNetPay] = useState(payday?.amount ? String(payday.amount) : "");
+  // Not every payday is the same: an amount per week, or per payday twice a month.
+  const [perPayday, setPerPayday] = useState(Boolean(payday && hasOwnAmounts(payday)));
+  const [weekAmounts, setWeekAmounts] = useState(() => slotTexts(payday, "weekly"));
+  const [dayAmounts, setDayAmounts] = useState(() => slotTexts(payday, "twice_monthly"));
   const defaultWallet = accounts.find((a) => a.type === "bank")?.id ?? accounts[0]?.id ?? "";
   const [payAccount, setPayAccount] = useState(payday?.accountId ?? defaultWallet);
   const [rows, setRows] = useState<BillRow[]>(() =>
@@ -72,6 +69,9 @@ export function PaydayForm({
       accountId: b.accountId ?? "",
     })),
   );
+  // With the calculator, how you're paid is set there: this keeps what's saved.
+  const fromPayroll = Boolean(payroll && payday);
+  const ownAmountsKind = kind === "weekly" || kind === "twice_monthly";
 
   const update = (key: number, patch: Partial<BillRow>) =>
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
@@ -89,22 +89,49 @@ export function PaydayForm({
   function save() {
     setError(null);
 
-    let schedule: Schedule | null = null;
-    if (kind === "twice_monthly") {
-      const [a, b] = [...twice].sort((x, y) => x - y);
-      if (a === b) {
-        setError("Pick two different paydays.");
-        return;
-      }
-      schedule = { frequency: kind, day1: a, day2: b };
-    } else if (kind === "monthly") {
-      schedule = { frequency: kind, day1: monthDay, day2: null };
-    } else if (kind === "weekly") {
-      schedule = { frequency: kind, day1: weekday, day2: null };
+    const picked = fromPayroll ? { schedule: payday!, order: [0, 1] as const } : scheduleFrom(choice);
+    if ("error" in picked && picked.error) {
+      setError(picked.error);
+      return;
+    }
+    const schedule = picked.schedule
+      ? {
+          frequency: picked.schedule.frequency,
+          day1: picked.schedule.day1,
+          day2: picked.schedule.day2,
+          weeks: picked.schedule.weeks ?? null,
+          weekdays: picked.schedule.weekdays ?? null,
+        }
+      : null;
+    // Each payday's amount as typed, in the schedule's order.
+    let typed: { label: string; text: string }[] = [];
+    if (schedule?.frequency === "twice_monthly" && !fromPayroll) {
+      typed = picked.order.map((i) => ({ label: `the ${ordinal(choice.twice[i])}`, text: dayAmounts[i] }));
+    } else if (schedule?.frequency === "weekly" && !fromPayroll) {
+      const paying = schedule.weeks ?? WEEKS_OF_MONTH;
+      // Only the weeks that pay keep an amount.
+      typed = WEEKS_OF_MONTH.map((w, i) => ({ label: `week ${w}`, text: paying.includes(w) ? weekAmounts[i] : "" }));
     }
 
     let amount: number | null = null;
-    if (schedule && netPay.trim()) {
+    let amounts: (number | null)[] | null = null;
+    if (schedule && perPayday && !payroll && typed.length > 0) {
+      const values: (number | null)[] = [];
+      for (const { label, text } of typed) {
+        const value = text.trim() ? parseAmount(text) : null;
+        if (value !== null && !(value > 0)) {
+          setError(`Check the pay for ${label}, or leave it blank.`);
+          return;
+        }
+        values.push(value);
+      }
+      const known = values.filter((a): a is number => a !== null);
+      if (known.length) {
+        amounts = values;
+        // A typical payday, for anywhere that shows one amount; blanks use it too.
+        amount = roundCents(known.reduce((s, a) => s + a, 0) / known.length);
+      }
+    } else if (schedule && netPay.trim()) {
       amount = parseAmount(netPay);
       if (!(amount > 0)) {
         setError("Check your net pay, or leave it blank.");
@@ -130,7 +157,7 @@ export function PaydayForm({
 
     startTransition(async () => {
       const result = await savePaydayAndBills({
-        schedule,
+        schedule: schedule ? { ...schedule, amounts } : null,
         amount,
         // Keep "estimate" while the amount is the one the calculator saved.
         amountVaries: Boolean(payday?.amountVaries) && amount === payday?.amount,
@@ -171,61 +198,72 @@ export function PaydayForm({
         <div className="contents @3xl:sticky @3xl:top-6 @3xl:flex @3xl:flex-col @3xl:gap-4">
           <section className="flex flex-col gap-4 rounded-3xl bg-card p-5">
             <h2 id="pay-kind" className="font-display text-xl font-semibold">How do you get paid?</h2>
-            <div role="group" aria-labelledby="pay-kind" className="flex flex-wrap gap-2">
-              {PAY_KINDS.map((k) => (
-                <ChoiceChip
-                  key={k.value}
-                  selected={kind === k.value}
-                  onClick={() => setKind(k.value)}
-                  className={kind === k.value ? "" : "bg-mint"}
-                >
-                  {k.label}
-                </ChoiceChip>
-              ))}
-            </div>
-
-            {kind === "twice_monthly" && (
-              <div className="flex gap-3">
-                {daySelect("payday-1", twice[0], (v) => setTwice([v, twice[1]]), "First payday")}
-                {daySelect("payday-2", twice[1], (v) => setTwice([twice[0], v]), "Second payday")}
+            {fromPayroll ? (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[15px] font-bold">
+                  {describeSchedule(payday!)} · {payroll!.cutoffs}
+                </p>
+                <p className="text-sm text-muted">Worked out by the payroll calculator, payday by payday.</p>
+                <Link href="/payroll" className="text-sm font-extrabold text-sea-dark hover:underline">
+                  Change in Payroll calculator ›
+                </Link>
               </div>
+            ) : (
+              <PaydayPicker value={choice} onChange={setChoice} kinds={PAY_KINDS} idPrefix="payday" labelledBy="pay-kind" />
             )}
-            {kind === "monthly" && daySelect("payday-month", monthDay, setMonthDay, "Payday")}
-            {kind === "weekly" && (
-              <div className="flex flex-col gap-1">
-                <label htmlFor="payday-week" className="text-sm font-bold">Payday</label>
-                <select id="payday-week" value={weekday} onChange={(e) => setWeekday(Number(e.target.value))} className={FIELD_CLASS}>
-                  {WEEKDAYS.map((name, i) => (
-                    <option key={name} value={i}>Every {name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {kind === "irregular" ? (
+            {kind === "irregular" && !fromPayroll ? (
               <p className="text-sm leading-relaxed text-muted">
                 No problem. Log income when it comes in. Safe to spend needs a payday, so it
                 will show your wallet total instead.
               </p>
             ) : (
-              <div className="flex flex-col gap-3 sm:flex-row">
-                {payroll && kind === "twice_monthly" ? (
-                  <div className="flex flex-1 flex-col gap-1">
-                    <span className="text-sm font-bold">Pay per payday</span>
-                    <p className="text-sm leading-relaxed text-muted">
-                      Worked out from the days you work.{" "}
-                      <Link href="/payroll" className="font-extrabold text-sea-dark underline">Payroll calculator</Link>
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex flex-1 flex-col gap-1">
-                    <label htmlFor="net-pay" className="text-sm font-bold">Net pay per payday <span className="font-semibold text-muted">(optional)</span></label>
-                    <div className="relative">
-                      <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-                      <AmountInput id="net-pay" value={netPay} onChange={setNetPay} placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8`} />
-                    </div>
-                    {editing && kind === "twice_monthly" && (
+              <div className="flex flex-col gap-3">
+                {!payroll && (
+                  <div className="flex flex-1 flex-col gap-2">
+                    {ownAmountsKind && (
+                      <div role="group" aria-label="Pay per payday" className="grid grid-cols-2 gap-1 rounded-xl bg-mint p-1">
+                        {[false, true].map((own) => (
+                          <button
+                            key={String(own)}
+                            type="button"
+                            aria-pressed={perPayday === own}
+                            onClick={() => setPerPayday(own)}
+                            className={`h-9 rounded-lg text-sm ${perPayday === own ? "bg-card font-extrabold" : "font-bold text-muted"}`}
+                          >
+                            {own ? (kind === "weekly" ? "Different each week" : "Different each payday") : "Same every payday"}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {perPayday && ownAmountsKind ? (
+                      <PerPaydayAmounts
+                        rows={
+                          kind === "weekly"
+                            ? [...choice.weeks].sort((a, b) => a - b).map((w) => ({
+                                key: w - 1,
+                                label: `Week ${w}`,
+                                hint: `${ordinal(w)} ${WEEKDAYS[choice.weekday]}`,
+                              }))
+                            : [0, 1].map((i) => ({ key: i, label: `${i === 0 ? "First" : "Second"} payday`, hint: dayLabel(choice.twice[i]) }))
+                        }
+                        values={kind === "weekly" ? weekAmounts : dayAmounts}
+                        onChange={(i, v) => (kind === "weekly" ? setWeekAmounts : setDayAmounts)((xs) => xs.map((x, j) => (j === i ? v : x)))}
+                        perMonth={monthlyFromTexts(kind as Frequency, choice.weeks, kind === "weekly" ? weekAmounts : dayAmounts)}
+                      />
+                    ) : (
+                      <div className="flex flex-col gap-1">
+                        <label htmlFor="net-pay" className="text-sm font-bold">
+                          {kind === "daily" ? "Pay each payday" : "Net pay per payday"} <span className="font-semibold text-muted">(optional)</span>
+                        </label>
+                        <div className="relative">
+                          <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
+                          <AmountInput id="net-pay" value={netPay} onChange={setNetPay} placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8`} />
+                        </div>
+                      </div>
+                    )}
+                    {editing && (
                       <Link href="/payroll" className="text-sm font-extrabold text-sea-dark hover:underline">
-                        Paid a daily rate? Use the payroll calculator
+                        Paid by the day you work? Use the payroll calculator
                       </Link>
                     )}
                   </div>
@@ -336,6 +374,63 @@ export function PaydayForm({
           </button>
         </section>
       </div>
+    </div>
+  );
+}
+
+/** Pay in a typical month from the amounts typed so far; null until every payday has one. */
+function monthlyFromTexts(kind: Frequency, weeks: number[], texts: string[]): number | null {
+  const amounts = texts.map((t) => (t.trim() ? parseAmount(t) : null));
+  if (amounts.some((a) => a !== null && !(a > 0))) return null;
+  return payPerMonth({
+    frequency: kind,
+    day1: 1,
+    day2: kind === "twice_monthly" ? 2 : null,
+    weeks: kind === "weekly" ? weeks : null,
+    amounts,
+    amount: null,
+  });
+}
+
+/** An amount for each payday: each week of the month that pays, or each of the two days. */
+function PerPaydayAmounts({
+  rows,
+  values,
+  onChange,
+  perMonth,
+}: {
+  rows: { key: number; label: string; hint: string }[];
+  values: string[];
+  onChange: (index: number, value: string) => void;
+  perMonth: number | null;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-2">
+        {rows.map((r) => (
+          <li key={r.key} className="flex items-center justify-between gap-3">
+            <label htmlFor={`pay-slot-${r.key}`} className="flex min-w-0 flex-col">
+              <span className="text-sm font-bold">{r.label}</span>
+              <span className="text-xs text-muted">{r.hint}</span>
+            </label>
+            <div className="relative w-40 shrink-0">
+              <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
+              <AmountInput
+                id={`pay-slot-${r.key}`}
+                value={values[r.key] ?? ""}
+                onChange={(v) => onChange(r.key, v)}
+                placeholder="0.00"
+                className={`${FIELD_CLASS} w-full pl-8 text-right`}
+              />
+            </div>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-muted">
+        {perMonth !== null
+          ? `About ${formatPeso(perMonth)} a month.`
+          : "Leave one blank if you don't know it yet: it uses the average of the others."}
+      </p>
     </div>
   );
 }

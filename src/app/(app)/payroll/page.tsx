@@ -2,7 +2,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { getPayroll, getRecurringItems } from "@/lib/data";
 import { isValidDate, today as getToday } from "@/lib/dates";
-import { cutoffContaining, cutoffDaysOf } from "@/lib/payroll";
+import { cutoffContaining, cutoffRuleOf, pageRule } from "@/lib/payroll";
 import { PayrollManager } from "./payroll-manager";
 
 export const metadata = { title: "Payroll calculator · Pong Money" };
@@ -33,9 +33,11 @@ async function Payroll({ searchParams }: Pick<PageProps<"/payroll">, "searchPara
   const today = getToday();
   const [{ cutoff }, payroll, recurring] = await Promise.all([searchParams, getPayroll(today), getRecurringItems()]);
   const picked = typeof cutoff === "string" && isValidDate(cutoff) ? cutoff : today;
-  // Your own cutoffs (3–17 and 18–2), or 1–15 and 16–end.
-  const period = cutoffContaining(picked, payroll && payroll !== "missing" ? cutoffDaysOf(payroll.settings) : undefined);
   const payday = recurring.find((r) => r.kind === "payday") ?? null;
+  // Cutoffs follow your payday: weeks, months, or your own two a month (3–17
+  // and 18–2), moved ones included. Daily pay shows a week at a time.
+  const settings = payroll && payroll !== "missing" ? payroll.settings : {};
+  const period = cutoffContaining(picked, pageRule(cutoffRuleOf({ ...settings, frequency: payday?.frequency })));
   // The day each SSS, PhilHealth and Pag-IBIG bill is due: which pay it comes out of.
   const contributionDays = Object.fromEntries(recurring.filter((r) => r.payrollKey).map((r) => [r.payrollKey!, r.day1]));
 
@@ -47,7 +49,11 @@ async function Payroll({ searchParams }: Pick<PageProps<"/payroll">, "searchPara
       records={payroll === "missing" ? null : payroll}
       missing={payroll === "missing"}
       contributionDays={contributionDays}
-      payday={payday?.frequency === "twice_monthly" ? { frequency: payday.frequency, day1: payday.day1, day2: payday.day2 } : null}
+      payday={
+        payday
+          ? { frequency: payday.frequency, day1: payday.day1, day2: payday.day2, weeks: payday.weeks, weekdays: payday.weekdays }
+          : null
+      }
     />
   );
 }

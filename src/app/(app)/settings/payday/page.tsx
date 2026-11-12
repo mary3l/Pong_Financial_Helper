@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { PaydayForm } from "@/app/setup/payday/payday-form";
 import { getAccounts, getPayroll, getRecurringItems } from "@/lib/data";
 import { today as getToday } from "@/lib/dates";
+import { coversText, cutoffRuleOf } from "@/lib/payroll";
 
 export const metadata = { title: "Payday and bills · Pong Money" };
 
@@ -36,7 +37,7 @@ async function Payday() {
       payday={items.find((i) => i.kind === "payday") ?? null}
       bills={items.filter((i) => i.kind === "bill" && i.frequency === "monthly" && !i.payrollKey)}
       editing
-      payroll={Boolean(payroll && payroll !== "missing")}
+      payroll={payroll && payroll !== "missing" ? { cutoffs: coversText(cutoffRuleOf(payroll.settings)) } : null}
     />
   );
 }

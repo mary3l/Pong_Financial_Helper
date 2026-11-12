@@ -1,10 +1,18 @@
 import { describe, expect, it } from "vitest";
+import type { Period } from "@/lib/dates";
 import {
   KINSENA,
   changeFor,
   contributions,
   cutoffContaining,
   cutoffDaysText,
+  cutoffChangeProblem,
+  cutoffRuleOf,
+  cutoffRuleText,
+  cutoffsPaidOn,
+  pageRule,
+  typicalCutoffPay,
+  usualFor,
   formatCutoff,
   isCutoffDays,
   nextCutoff,
@@ -293,5 +301,150 @@ describe("your own cutoff days: 3–17 and 18–2", () => {
     expect(isCutoffDays([18, 3])).toBe(false);
     expect(isCutoffDays([3, 30])).toBe(false);
     expect(isCutoffDays([5, 5])).toBe(false);
+  });
+});
+
+describe("cutoffs that follow your payday", () => {
+  const weekly: PayrollRecords = { settings: { ...settings, frequency: "weekly" }, days: [], overtime: [] };
+  const monthly: PayrollRecords = { settings: { ...settings, frequency: "monthly" }, days: [], overtime: [] };
+  const fridays = { frequency: "weekly" as const, day1: 5, day2: null };
+
+  it("makes weekly cutoffs from the day your week starts", () => {
+    expect(cutoffRuleOf(weekly.settings)).toEqual({ every: "week", weekday: 1 });
+    expect(cutoffContaining("2026-11-12", cutoffRuleOf(weekly.settings))).toEqual({ start: "2026-11-09", end: "2026-11-15" });
+    const fromSaturday = cutoffRuleOf({ ...weekly.settings, cutoffWeekday: 6 });
+    expect(cutoffContaining("2026-11-12", fromSaturday)).toEqual({ start: "2026-11-07", end: "2026-11-13" });
+    expect(cutoffRuleText(fromSaturday)).toBe("Saturday to Friday");
+    expect(typicalCutoffPay(weekly.settings)).toBe(4000);
+  });
+
+  it("makes monthly cutoffs from the day your month starts", () => {
+    expect(cutoffContaining("2026-11-12", cutoffRuleOf(monthly.settings))).toEqual({ start: "2026-11-01", end: "2026-11-30" });
+    const fromFifth = cutoffRuleOf({ ...monthly.settings, cutoffMonthDay: 5 });
+    expect(cutoffContaining("2026-11-03", fromFifth)).toEqual({ start: "2026-10-05", end: "2026-11-04" });
+    expect(cutoffRuleText(fromFifth)).toBe("the 5th to the 4th of the next month");
+    expect(typicalCutoffPay(monthly.settings)).toBe(17600);
+  });
+
+  it("pays each Friday for the week before", () => {
+    // Nov 13 pays Mon Nov 2 – Sun Nov 8: 5 weekdays.
+    expect(cutoffsPaidOn("2026-11-13", fridays, cutoffRuleOf(weekly.settings))).toEqual([{ start: "2026-11-02", end: "2026-11-08" }]);
+    expect(paydayAmounts(weekly, fridays, "2026-11-13", "2026-11-14", "2026-11-12")["2026-11-13"].amount).toBe(4000);
+  });
+
+  it("pays two weeks when only every other Friday pays", () => {
+    const firstAndThird = { ...fridays, weeks: [1, 3] };
+    expect(cutoffsPaidOn("2026-11-20", firstAndThird, cutoffRuleOf(weekly.settings))).toEqual([
+      { start: "2026-11-02", end: "2026-11-08" },
+      { start: "2026-11-09", end: "2026-11-15" },
+    ]);
+    expect(paydayAmounts(weekly, firstAndThird, "2026-11-20", "2026-11-21", "2026-11-12")["2026-11-20"].amount).toBe(8000);
+  });
+
+  it("pays monthly for the month before", () => {
+    // Oct 2026 has 22 weekdays.
+    const on15th = { frequency: "monthly" as const, day1: 15, day2: null };
+    expect(paydayAmounts(monthly, on15th, "2026-11-15", "2026-11-16", "2026-11-12")["2026-11-15"].amount).toBe(17600);
+  });
+
+  it("counts every weekly cutoff of the year once for tax", () => {
+    // 52 weeks start on a Monday in 2026, 5 days each.
+    const annual = taxPayments(weekly, 2026, "2026-11-12").at(-1)!;
+    expect(annual.grossToDate).toBe(52 * 4000);
+  });
+});
+
+describe("your own setup: per day, paid the 15th and 30th, cutoffs 3–17 and 18–2", () => {
+  const rate = { ...settings, dailyRate: 900.36, cutoffDays: [3, 18] as const };
+  const paydays = { frequency: "twice_monthly" as const, day1: 15, day2: 30 };
+  const records: PayrollRecords = { settings: rate, days: [], overtime: [] };
+
+  it("pays 3–17 on the 30th and 18–2 on the 15th", () => {
+    const amounts = paydayAmounts(records, paydays, "2026-11-15", "2026-12-16", "2026-11-13");
+    expect(amounts["2026-11-15"].amount).toBe(9903.96); // Oct 18 – Nov 2: 11 days
+    expect(amounts["2026-11-30"].amount).toBe(9903.96); // Nov 3 – 17: 11 days
+    expect(amounts["2026-12-15"].amount).toBe(9903.96); // Nov 18 – Dec 2: 11 days
+  });
+
+  it("moves the next cutoff to meet one that ended early", () => {
+    const moved = { ...rate, cutoffChanges: [{ usual: "2026-11-03", start: "2026-11-03", end: "2026-11-16", paidOn: null }] };
+    const rule = cutoffRuleOf(moved);
+    expect(cutoffContaining("2026-11-10", rule)).toEqual({ start: "2026-11-03", end: "2026-11-16" });
+    expect(cutoffContaining("2026-11-17", rule)).toEqual({ start: "2026-11-17", end: "2026-12-02" });
+    expect(previousCutoff({ start: "2026-11-03", end: "2026-11-16" }, rule)).toEqual({ start: "2026-10-18", end: "2026-11-02" });
+    // After that, back to the usual 3–17.
+    expect(cutoffContaining("2026-12-10", rule)).toEqual({ start: "2026-12-03", end: "2026-12-17" });
+    expect(usualFor({ start: "2026-11-17", end: "2026-12-02" }, rule)).toEqual({ start: "2026-11-18", end: "2026-12-02" });
+    const amounts = paydayAmounts({ ...records, settings: moved }, paydays, "2026-11-30", "2026-12-16", "2026-11-13");
+    expect(amounts["2026-11-30"].amount).toBe(9003.6); // 10 days
+    expect(amounts["2026-12-15"].amount).toBe(10804.32); // Nov 17 – Dec 2: 12 days
+  });
+
+  it("pays a cutoff on the day its payday moved to", () => {
+    const moved = { ...rate, cutoffChanges: [{ usual: "2026-11-03", start: "2026-11-03", end: "2026-11-17", paidOn: "2026-11-27" }] };
+    const amounts = paydayAmounts({ ...records, settings: moved }, paydays, "2026-11-30", "2026-12-01", "2026-11-13");
+    expect(amounts["2026-11-30"]).toEqual({ amount: 9903.96, estimate: true, paidOn: "2026-11-27" });
+    expect(paydayFor({ start: "2026-11-03", end: "2026-11-17" }, paydays, cutoffRuleOf(moved))).toBe("2026-11-27");
+  });
+
+  it("turns away a change that leaves a neighbour no days", () => {
+    const rule = cutoffRuleOf(rate);
+    const change = (start: string, end: string) => ({ usual: "2026-11-03", start, end, paidOn: null });
+    expect(cutoffChangeProblem(change("2026-11-03", "2026-11-16"), rule, "2026-11-13")).toBeNull();
+    expect(cutoffChangeProblem(change("2026-11-03", "2026-12-02"), rule, "2026-11-13")).toMatch(/after needs a day/);
+    expect(cutoffChangeProblem(change("2026-10-18", "2026-11-17"), rule, "2026-11-13")).toMatch(/before needs a day/);
+    expect(cutoffChangeProblem(change("2026-11-04", "2026-11-03"), rule, "2026-11-13")).toMatch(/can't end before/);
+  });
+});
+
+describe("a monthly rate, and weekends", () => {
+  const monthly: PayrollSettings = { ...settings, dailyRate: 900.36, monthlyPay: 19808 };
+  const nov1: Period = { start: "2026-11-01", end: "2026-11-15" };
+
+  it("pays half of it twice a month, less each work day missed", () => {
+    const days = daysFor(nov1, new Map(), null, monthly).map((d) =>
+      d.date === "2026-11-05" ? { ...d, status: "leave" as const, leaveType: "sick" as const } : d,
+    );
+    const pay = cutoffPay(monthly, days, [], 0.5);
+    expect(pay.basePay).toBe(9904);
+    expect(pay.missedDays).toBe(1);
+    expect(pay.total).toBe(9003.64);
+    expect(typicalCutoffPay({ ...monthly, frequency: "twice_monthly" })).toBe(9904);
+  });
+
+  it("counts a regular Saturday as a work day", () => {
+    const withSaturdays = { ...settings, dailyRate: 900.36, saturday: "regular" as const };
+    const pay = cutoffPay(withSaturdays, daysFor(nov1, new Map(), null, withSaturdays), []);
+    // Nov 2–6, 7, 9–13, 14: 12 days.
+    expect(pay.workedDays).toBe(12);
+    expect(pay.basePay).toBe(10804.32);
+  });
+
+  it("pays an overtime Saturday only for its hours", () => {
+    const overtimeSaturdays = { ...settings, dailyRate: 900.36, overtimeRate: 1.25, saturday: "overtime" as const };
+    const days = daysFor(nov1, new Map(), null, overtimeSaturdays).map((d) =>
+      d.date === "2026-11-07" ? { ...d, status: "worked" as const } : d,
+    );
+    const pay = cutoffPay(overtimeSaturdays, days, [{ date: "2026-11-07", start: "08:00", end: "12:00" }]);
+    expect(pay.workedDays).toBe(10);
+    expect(pay.overtimePay).toBe(562.73);
+  });
+});
+
+describe("paid every work day", () => {
+  const daily: PayrollRecords = { settings: { ...settings, dailyRate: 900.36, frequency: "daily" }, days: [], overtime: [] };
+  const weekdays = { frequency: "daily" as const, day1: 1, day2: null, weekdays: [1, 2, 3, 4, 5] };
+
+  it("pays each day on that day, and the weekend with Monday", () => {
+    const rule = cutoffRuleOf(daily.settings);
+    expect(cutoffsPaidOn("2026-11-17", weekdays, rule)).toEqual([{ start: "2026-11-17", end: "2026-11-17" }]);
+    expect(cutoffsPaidOn("2026-11-16", weekdays, rule).map((c) => c.start)).toEqual(["2026-11-14", "2026-11-15", "2026-11-16"]);
+    const amounts = paydayAmounts(daily, weekdays, "2026-11-16", "2026-11-21", "2026-11-13");
+    expect(Object.values(amounts).map((a) => a.amount)).toEqual([900.36, 900.36, 900.36, 900.36, 900.36]);
+    expect(typicalCutoffPay(daily.settings)).toBe(900.36);
+  });
+
+  it("shows and saves a week at a time", () => {
+    expect(cutoffContaining("2026-11-18", pageRule(cutoffRuleOf(daily.settings)))).toEqual({ start: "2026-11-16", end: "2026-11-22" });
   });
 });

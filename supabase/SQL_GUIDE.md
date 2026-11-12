@@ -522,6 +522,60 @@ select to_regclass('public.payroll_pay_changes') is not null;
 
 Expect `true`.
 
+## Step 22 · Paydays that differ, and cutoffs that follow your payday
+
+File: `migrations/0022_payday_amounts.sql`
+
+Lets weekly pay skip weeks (only the 1st and 3rd Friday, say) and gives each payday its own
+amount (week 1, week 2, ... or the 15th and the 30th). The payroll calculator's cutoffs follow
+your payday: a week for weekly pay, a month for monthly pay.
+
+- `recurring_items.pay_weeks`: the weeks of the month a weekly payday falls on. Blank: every week.
+- `recurring_items.pay_amounts`: each payday's own amount. Blank: the same every payday.
+- `payroll_settings.cutoff_weekday`, `cutoff_month_day`: the day your cutoff week or month starts.
+  Blank: Monday, and the 1st.
+
+Until you run this, every payday is the same amount and weekly cutoffs start on Monday.
+
+**Check**
+
+```sql
+select count(*) from information_schema.columns
+where (table_name = 'recurring_items' and column_name in ('pay_weeks', 'pay_amounts'))
+   or (table_name = 'payroll_settings' and column_name in ('cutoff_weekday', 'cutoff_month_day'));
+```
+
+Expect `4`.
+
+## Step 23 · Pay every work day, a monthly rate, weekends, and moved cutoffs
+
+File: `migrations/0023_daily_pay.sql`
+
+The payroll calculator's **Your pay** screen sets how you're paid, and these let it cover
+more kinds of pay:
+
+- A payday can be **every work day** (`recurring_items.frequency = 'daily'`), handed over on
+  the weekdays in `pay_weekdays`.
+- `payroll_settings.monthly_pay`: a rate **per month** instead of per day. Each payday's base is
+  its share (half, twice a month), and a work day you miss takes off monthly pay ÷ 22.
+- `payroll_settings.saturday`, `sunday`: `off`, `regular` (a work day) or `overtime` (only the
+  hours you work, at your overtime rate).
+- `payroll_cutoff_changes`: one cutoff on other dates than usual (it ended a day early), and the
+  day it's paid if that moved. The cutoffs either side move to meet it.
+
+Until you run this, pay is per day, weekends are off, and cutoffs keep their usual dates.
+
+If Supabase asks about destructive operations, that's the old frequency checks being swapped
+for ones that allow `daily`. No data is deleted.
+
+**Check**
+
+```sql
+select to_regclass('public.payroll_cutoff_changes') is not null;
+```
+
+Expect `true`.
+
 ---
 
 ## All done?
@@ -561,7 +615,10 @@ select
   exists (select 1 from information_schema.columns
           where table_name = 'installment_plans' and column_name = 'person_id') as step_19,
   to_regprocedure('public.widget_safe_to_spend(text)') is not null as step_20,
-  to_regclass('public.payroll_pay_changes') is not null     as step_21;
+  to_regclass('public.payroll_pay_changes') is not null     as step_21,
+  exists (select 1 from information_schema.columns
+          where table_name = 'recurring_items' and column_name = 'pay_amounts') as step_22,
+  to_regclass('public.payroll_cutoff_changes') is not null  as step_23;
 ```
 
 The first `false` is the step to run next.

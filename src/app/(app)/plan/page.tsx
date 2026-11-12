@@ -64,7 +64,7 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
   const paydays = items.filter((i) => i.kind === "payday" && i.dueOn < end).map((i) => i.dueOn);
   const periods = paymentsByPeriod({ items, today, nextPayday });
   // Office days need the payroll calculator, which pays each cutoff on its own payday.
-  const records = payroll && payroll !== "missing" && payday?.frequency === "twice_monthly" ? payroll : null;
+  const records = payroll && payroll !== "missing" ? payroll : null;
   const byPayday = payday ? billsByPayday({ items, today, payday, inWallets, payroll: records }) : [];
   const weekOut = addDays(today, 7);
   const lowBeforePayday = nextPayday ? lowestBetween(forecast.days, today, nextPayday) : null;
