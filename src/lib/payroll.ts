@@ -38,13 +38,13 @@ export const RATES = {
   workDaysPerMonth: 22,
   /** Working days in a week, for a typical weekly payday. */
   workDaysPerWeek: 5,
-  /** SSS, self-employed or voluntary (2025): the full 15% of your salary credit. */
+  /** SSS, self-employed or voluntary (2025, unchanged in 2026): the full 15% of your salary credit. */
   sss: { rate: 0.15, minCredit: 5000, maxCredit: 35000, step: 500 },
-  /** PhilHealth, self-paying (2025): the full 5%, with an income floor and ceiling. */
+  /** PhilHealth, self-paying (2025, unchanged in 2026): the full 5%, with an income floor and ceiling. */
   philhealth: { rate: 0.05, floor: 10000, ceiling: 100000 },
-  /** Pag-IBIG, self-employed: both shares, on pay up to ₱10,000. */
+  /** Pag-IBIG, self-employed (HDMF Circular 460, Feb 2024; unchanged in 2026): both shares, on pay up to ₱10,000. */
   pagibig: { rate: 0.04, lowRate: 0.03, lowUpTo: 1500, maxBase: 10000 },
-  /** BIR 8% option: 8% of yearly gross above ₱250,000. */
+  /** BIR 8% option (unchanged in 2026): 8% of yearly gross above ₱250,000. */
   tax: { rate: 0.08, exempt: 250000 },
   /** The day of the month the monthly contributions are paid. */
   contributionDay: 30,

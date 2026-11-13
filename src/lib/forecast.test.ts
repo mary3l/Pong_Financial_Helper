@@ -3,6 +3,7 @@ import {
   affordVerdict,
   isOwed,
   itemEffect,
+  nextUnreceivedPayday,
   project,
   safeToSpend,
   scheduledItems,
@@ -162,6 +163,64 @@ describe("safe to spend", () => {
 
   it("without a payday is just what's in your wallets", () => {
     expect(safeToSpend({ inWallets: 500, payday: null, items: [], today: TODAY }).free).toBe(500);
+  });
+
+  describe("pay received early", () => {
+    const today = "2026-11-13";
+    const philhealth = { ...rent, id: "philhealth", name: "PhilHealth", amount: 500, day1: 15 };
+    const water = { ...rent, id: "water", name: "Water", amount: 1000, day1: 20 };
+    const early = (received: boolean, extra: Partial<ScheduleInputs> = {}) =>
+      scheduledItems(
+        {
+          recurring: [payday, philhealth, water, rent],
+          billPayments: [
+            { recurringItemId: "philhealth", dueOn: "2026-11-15", transactionId: "t-philhealth" },
+            ...(received ? [{ recurringItemId: "pay", dueOn: "2026-11-15", transactionId: "t-pay" }] : []),
+          ],
+          planned: [
+            { id: "side", type: "income", name: "Side job", amount: 10000, category: "other_income", dueOn: "2026-11-15", accountId: "bank", transactionId: "t-side" },
+          ],
+          installments: [{ id: "i1", name: "Bonchon", dueOn: "2026-11-16", amount: 355, payFromAccountId: "bank", transactionId: null }],
+          ...extra,
+        },
+        today,
+        "2026-12-13",
+      );
+
+    it("counts down to the payday after it, spreading what's left over those days", () => {
+      // The wallets already hold the Nov 15 pay and the side job.
+      const sts = safeToSpend({ inWallets: 30000, payday, items: early(true), today, spentToday: 50 });
+      expect(sts.nextPayday).toBe("2026-11-30");
+      expect(sts.daysLeft).toBe(17);
+      // Water and Bonchon before Nov 30; PhilHealth is paid, rent is Dec 5.
+      expect(sts.dueBeforePayday).toBe(1355);
+      expect(sts.dueCount).toBe(2);
+      expect(sts.free).toBe(30050 - 1355);
+      expect(sts.perDay).toBe(Math.floor((30050 - 1355) / 17));
+      expect(sts.leftToday).toBe(Math.floor((30050 - 1355) / 17) - 50);
+    });
+
+    it("counts down to that payday again once it's undone", () => {
+      const sts = safeToSpend({ inWallets: 30000, payday, items: early(false), today });
+      expect(sts.nextPayday).toBe("2026-11-15");
+      expect(sts.daysLeft).toBe(2);
+      expect(sts.dueBeforePayday).toBe(0);
+    });
+
+    it("matches a payday moved to another day by its usual date", () => {
+      const moved = early(true, { paydayAmounts: { "2026-11-15": { amount: 11471.25, estimate: false, paidOn: "2026-11-13" } } });
+      expect(nextUnreceivedPayday(payday, moved, today)).toBe("2026-11-30");
+    });
+
+    it("skips every payday already received", () => {
+      const both = early(true, {
+        billPayments: [
+          { recurringItemId: "pay", dueOn: "2026-11-15", transactionId: "t-pay" },
+          { recurringItemId: "pay", dueOn: "2026-11-30", transactionId: "t-pay-2" },
+        ],
+      });
+      expect(nextUnreceivedPayday(payday, both, today)).toBe("2026-12-15");
+    });
   });
 });
 

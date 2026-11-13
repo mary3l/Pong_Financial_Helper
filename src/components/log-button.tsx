@@ -7,7 +7,7 @@ import { settlePerson } from "@/app/people-actions";
 import { logPlanned, logRecurring } from "@/app/plan-actions";
 import { deleteTransaction } from "@/app/transaction-actions";
 import { AmountInput } from "@/components/amount-input";
-import { FIELD_CLASS } from "@/components/choice-chip";
+import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import { CloseIcon } from "@/components/icons";
 import type { Account } from "@/lib/data";
 import type { ForecastItem } from "@/lib/forecast";
@@ -153,9 +153,11 @@ function WalletPicker({
   // An estimate (a payday from the payroll calculator, a bill that varies):
   // type what actually came in or went out. Installments, utang and planned
   // items log their own amounts.
+  // First asks whether the estimate is right; "No" opens the amount.
   const editable = item.estimate && (item.kind === "payday" || item.kind === "income" || item.kind === "bill");
+  const [changing, setChanging] = useState(false);
   const [typed, setTyped] = useState(() => String(estimate));
-  const parsed = editable ? parseAmount(typed) : estimate;
+  const parsed = editable && changing ? parseAmount(typed) : estimate;
   const valid = Number.isFinite(parsed) && parsed > 0;
   const amount = valid ? parsed : estimate;
   const [problem, setProblem] = useState<string | null>(null);
@@ -221,24 +223,54 @@ function WalletPicker({
         </div>
 
         {editable && (
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={`log-amount-${item.key}`} className="text-sm font-bold">
-              {incoming ? "How much came in" : "How much you paid"}
-            </label>
-            <div className="relative">
-              <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-              <AmountInput
-                id={`log-amount-${item.key}`}
-                value={typed}
-                onChange={(v) => {
+          <div role="group" aria-labelledby={`log-estimate-${item.key}`} className="flex flex-col gap-2 rounded-[20px] border-2 border-line px-4 py-3">
+            <p id={`log-estimate-${item.key}`} className="flex flex-col">
+              <span className="font-bold">Is the estimate right?</span>
+              <span className="text-[13px] text-muted">
+                {formatPeso(estimate)} is {item.kind === "payday" ? "what the payroll calculator expects" : "an estimate"}.
+              </span>
+            </p>
+            <div className="flex gap-2">
+              <ChoiceChip
+                selected={!changing}
+                onClick={() => {
                   setProblem(null);
-                  setTyped(v);
+                  setChanging(false);
                 }}
-                placeholder="0.00"
-                className={`${FIELD_CLASS} w-full pl-8 text-right`}
-              />
+              >
+                Yes
+              </ChoiceChip>
+              <ChoiceChip
+                selected={changing}
+                onClick={() => {
+                  setProblem(null);
+                  setTyped(String(estimate));
+                  setChanging(true);
+                }}
+              >
+                No, change it
+              </ChoiceChip>
             </div>
-            <p className="text-xs text-muted">Estimated {formatPeso(estimate)}. Change it to {incoming ? "what actually landed" : "what you actually paid"}.</p>
+            {changing && (
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor={`log-amount-${item.key}`} className="text-sm font-bold">
+                  {incoming ? "How much came in" : "How much you paid"}
+                </label>
+                <div className="relative">
+                  <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
+                  <AmountInput
+                    id={`log-amount-${item.key}`}
+                    value={typed}
+                    onChange={(v) => {
+                      setProblem(null);
+                      setTyped(v);
+                    }}
+                    placeholder="0.00"
+                    className={`${FIELD_CLASS} w-full pl-8 text-right`}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 

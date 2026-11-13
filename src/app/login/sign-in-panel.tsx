@@ -20,7 +20,9 @@ export function SignInPanel() {
     setError(null);
     const { error } = await createClient().auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: callbackUrl() },
+      // Always show Google's account chooser, so a second account (or a
+      // demo one) can sign in instead of the last one used.
+      options: { redirectTo: callbackUrl(), queryParams: { prompt: "select_account" } },
     });
     // On success the browser is already leaving for Google.
     if (error) {

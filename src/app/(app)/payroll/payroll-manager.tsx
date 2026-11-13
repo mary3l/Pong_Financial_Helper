@@ -17,7 +17,7 @@ import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import { FormDialog } from "@/components/form-dialog";
 import { ChevronIcon } from "@/components/icons";
 import { PaydayPicker, choiceFrom, ordinal, scheduleFrom, type PayKind } from "@/components/payday-picker";
-import { addDays, formatLongDay, formatShortDay, isValidDate, type Period } from "@/lib/dates";
+import { addDays, formatLongDay, formatShortDay, isValidDate, weekdayOf, type Period } from "@/lib/dates";
 import { formatPeso, parseAmount } from "@/lib/money";
 import {
   DEFAULT_CUTOFF_WEEKDAY,
@@ -66,7 +66,7 @@ import {
   type PayrollSettings,
   type WeekendMode,
 } from "@/lib/payroll";
-import { MAX_GAP_DAYS, WEEKDAYS, describeSchedule, occurrences, type Frequency, type Schedule } from "@/lib/schedule";
+import { MAX_GAP_DAYS, SHORT_WEEKDAYS, WEEKDAYS, describeSchedule, occurrences, type Frequency, type Schedule } from "@/lib/schedule";
 
 const STATUSES: { value: DayStatus; label: string }[] = [
   { value: "worked", label: "Worked" },
@@ -227,7 +227,7 @@ function SettingsCard({
         </p>
         {changes.length > 0 && <PayByCutoff records={records} changes={changes} period={period} today={today} />}
         {editing && (
-          <FormDialog title="Your pay" onClose={() => setEditing(false)}>
+          <FormDialog title="Your pay" onClose={() => setEditing(false)} wide>
             <SettingsForm
               initial={settings}
               records={records}
@@ -767,6 +767,8 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [changing, setChanging] = useState(false);
+  // The day being edited, and the cutoff as it was when you tapped it.
+  const [open, setOpen] = useState<{ date: string; days: PayrollDay[]; overtime: OvertimeRow[] } | null>(null);
   const [pending, startTransition] = useTransition();
 
   const pay = cutoffPay(settings, days, overtime, daily ? null : shareOf(rule));
@@ -774,7 +776,7 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
   // Only every other Friday pays: that payday covers this week and others.
   const paidWith = paidOn ? cutoffsPaidOn(paydayFor(period, payday), payday, rule).length - 1 : 0;
   const changed = daily ? null : changeOf(period, rule);
-  const perMinute = hourlyRate(settings) / 60;
+  const editingDay = open ? days.find((d) => d.date === open.date) : undefined;
 
   function update(date: string, patch: Partial<PayrollDay>) {
     setNotice(null);
@@ -807,7 +809,25 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
     setOvertime((os) => os.map((o) => (o.key === key ? { ...o, ...patch } : o)));
   }
 
-  function save() {
+  function addOvertime(date: string) {
+    setNotice(null);
+    setOvertime((os) => [...os, { key: nextKey++, date, start: "17:00", end: "18:00" }]);
+  }
+
+  function openDay(date: string) {
+    setOpen({ date, days, overtime });
+  }
+
+  /** ✕ or Cancel: the day goes back to how it was when you tapped it. */
+  function cancelDay() {
+    if (open) {
+      setDays(open.days);
+      setOvertime(open.overtime);
+    }
+    setOpen(null);
+  }
+
+  function save(onSaved?: () => void) {
     setError(null);
     setNotice(null);
     startTransition(async () => {
@@ -816,8 +836,12 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
         days,
         overtime: overtime.map(({ date, start, end }) => ({ date, start, end })),
       });
-      if (result.error) setError(result.error);
-      else if (daily) setNotice(`Saved. This week's pay is ${formatPeso(pay.total)}.`);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      onSaved?.();
+      if (daily) setNotice(`Saved. This week's pay is ${formatPeso(pay.total)}.`);
       else if (paidWith > 0) setNotice(`Saved. ${formatPeso(pay.total)} of your ${formatShortDay(paidOn!, today)} payday is from this cutoff.`);
       else setNotice(`Saved. Your ${formatShortDay(paidOn!, today)} payday is now ${formatPeso(pay.total)}.`);
     });
@@ -877,7 +901,7 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
       </div>
       <p className="text-sm text-muted">
         {saved ? "Saved." : "Not saved yet: your usual work days count as worked until you save."} Tap a day to mark leave or a
-        day off, and add your time in if you were late.
+        day off, add your time in if you were late, or add overtime.
       </p>
       {changing && (
         <FormDialog title="Change this cutoff" onClose={() => setChanging(false)}>
@@ -885,164 +909,40 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
         </FormDialog>
       )}
 
-      <ul className="flex flex-col">
-        {days.map((day) => {
-          const kind = dayKind(day.date, settings);
-          const overtimeDay = kind === "overtime";
-          const late = day.status === "worked" && !overtimeDay ? minutesLate(day.timeIn, settings) : 0;
-          const dayOvertime = overtime.filter((o) => o.date === day.date);
-          return (
-            <li key={day.date} className="flex flex-col gap-2 border-b border-line-soft py-3 last:border-0">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className={`font-bold ${day.status === "off" ? "text-muted" : ""}`}>
-                  {formatLongDay(day.date)}
-                  {overtimeDay && <span className="ml-1.5 text-xs font-extrabold text-muted">Overtime day</span>}
-                  {day.date === today && <span className="ml-1.5 text-xs font-extrabold text-sea">Today</span>}
-                </span>
-                {overtimeDay ? (
-                  <div role="group" aria-label={`${formatLongDay(day.date)}: off or overtime`} className="grid grid-cols-2 gap-1 rounded-xl bg-mint p-1">
-                    {[false, true].map((on) => (
-                      <button
-                        key={String(on)}
-                        type="button"
-                        aria-pressed={(day.status === "worked") === on}
-                        onClick={() => setOvertimeDay(day.date, on)}
-                        className={`h-8 rounded-lg px-2.5 text-[13px] ${
-                          (day.status === "worked") === on
-                            ? on
-                              ? "bg-sea font-extrabold text-white"
-                              : "bg-ink font-extrabold text-mint"
-                            : "font-bold text-muted hover:text-ink"
-                        }`}
-                      >
-                        {on ? "Overtime" : "Off"}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div role="group" aria-label={`${formatLongDay(day.date)}: worked, leave or off`} className="grid grid-cols-3 gap-1 rounded-xl bg-mint p-1">
-                    {STATUSES.map((s) => (
-                      <button
-                        key={s.value}
-                        type="button"
-                        aria-pressed={day.status === s.value}
-                        onClick={() => setStatus(day.date, s.value)}
-                        className={`h-8 rounded-lg px-2.5 text-[13px] ${
-                          day.status === s.value
-                            ? s.value === "leave"
-                              ? "bg-coral font-extrabold text-white"
-                              : s.value === "worked"
-                                ? "bg-sea font-extrabold text-white"
-                                : "bg-ink font-extrabold text-mint"
-                            : "font-bold text-muted hover:text-ink"
-                        }`}
-                      >
-                        {s.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+      <CutoffCalendar days={days} overtime={overtime} settings={settings} today={today} onOpen={openDay} />
 
-              {day.status === "worked" && !overtimeDay && (
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <label htmlFor={`in-${day.date}`} className="text-sm font-bold text-muted">Time in</label>
-                  <input
-                    id={`in-${day.date}`}
-                    type="time"
-                    value={day.timeIn ?? ""}
-                    onChange={(e) => update(day.date, { timeIn: e.target.value || null })}
-                    className="h-10 rounded-xl border-2 border-line bg-card px-2 text-[15px] outline-none focus:border-sea"
-                  />
-                  {late > 0 ? (
-                    <span className="text-sm font-bold text-coral-text">
-                      {formatMinutes(late)} late · −{formatPeso(late * perMinute)}
-                    </span>
-                  ) : (
-                    <span className="text-sm text-muted">On time</span>
-                  )}
-                  {kind === "off" && <span className="text-sm text-muted">Usually off: paid a day&apos;s rate</span>}
-                </div>
-              )}
-
-              {day.status === "leave" && (
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <div role="group" aria-label="Leave type" className="flex gap-2">
-                    {LEAVE_TYPES.map((t) => (
-                      <button
-                        key={t.value}
-                        type="button"
-                        aria-pressed={day.leaveType === t.value}
-                        onClick={() => update(day.date, { leaveType: t.value })}
-                        className={`h-9 shrink-0 rounded-full px-3 text-sm font-extrabold ${
-                          day.leaveType === t.value ? "bg-ink text-mint" : "bg-mint text-ink hover:bg-sea-tint"
-                        }`}
-                      >
-                        {t.label}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    aria-label={`Reason for leave on ${formatLongDay(day.date)}`}
-                    value={day.note ?? ""}
-                    maxLength={100}
-                    onChange={(e) => update(day.date, { note: e.target.value || null })}
-                    placeholder="Reason (optional)"
-                    className="h-10 min-w-0 flex-1 rounded-xl border-2 border-line bg-card px-3 text-[15px] outline-none focus:border-sea"
-                  />
-                </div>
-              )}
-
-              {dayOvertime.map((o) => (
-                <div key={o.key} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className="text-sm font-bold text-muted">Overtime</span>
-                  <input
-                    type="time"
-                    aria-label="Overtime start"
-                    value={o.start}
-                    required
-                    onChange={(e) => updateOvertime(o.key, { start: e.target.value })}
-                    className="h-10 rounded-xl border-2 border-line bg-card px-2 text-[15px] outline-none focus:border-sea"
-                  />
-                  <span aria-hidden="true" className="text-muted">to</span>
-                  <input
-                    type="time"
-                    aria-label="Overtime end"
-                    value={o.end}
-                    required
-                    onChange={(e) => updateOvertime(o.key, { end: e.target.value })}
-                    className="h-10 rounded-xl border-2 border-line bg-card px-2 text-[15px] outline-none focus:border-sea"
-                  />
-                  {o.start && o.end && o.start !== o.end && (
-                    <span className="text-sm font-bold text-sea">
-                      {formatMinutes(overtimeMinutes(o))} × {settings.overtimeRate} · +{formatPeso(overtimeMinutes(o) * perMinute * settings.overtimeRate)}
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setOvertime((os) => os.filter((x) => x.key !== o.key))}
-                    className="h-9 rounded-full px-2.5 text-sm font-extrabold text-coral-text hover:bg-coral-tint"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-              {(!overtimeDay || day.status === "worked") && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNotice(null);
-                    setOvertime((os) => [...os, { key: nextKey++, date: day.date, start: "17:00", end: "18:00" }]);
-                  }}
-                  className="self-start text-sm font-extrabold text-sea-dark hover:underline"
-                >
-                  + Overtime
-                </button>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+      {editingDay && (
+        <FormDialog title={formatLongDay(editingDay.date)} onClose={cancelDay}>
+          <div className="flex flex-col gap-4">
+            <DayEditor
+              day={editingDay}
+              overtime={overtime.filter((o) => o.date === editingDay.date)}
+              settings={settings}
+              today={today}
+              onStatus={(status) => setStatus(editingDay.date, status)}
+              onOvertimeDay={(worked) => setOvertimeDay(editingDay.date, worked)}
+              onChange={(patch) => update(editingDay.date, patch)}
+              onAddOvertime={() => addOvertime(editingDay.date)}
+              onChangeOvertime={updateOvertime}
+              onRemoveOvertime={(key) => setOvertime((os) => os.filter((x) => x.key !== key))}
+            />
+            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => save(() => setOpen(null))}
+                disabled={pending}
+                className="h-12 flex-1 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60 sm:flex-none"
+              >
+                {pending ? "Saving…" : "Save"}
+              </button>
+              <button type="button" onClick={cancelDay} className="h-12 rounded-[14px] px-5 font-extrabold text-ink hover:bg-card">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </FormDialog>
+      )}
 
       <dl className="flex flex-col gap-1.5 rounded-2xl bg-mint p-4 text-[15px]">
         {pay.share !== null ? (
@@ -1083,10 +983,282 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
 
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
       <p role="status" className="text-sm font-bold text-sea-dark empty:hidden">{notice}</p>
-      <button type="button" onClick={save} disabled={pending} className="h-12 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60 sm:self-start">
+      <button type="button" onClick={() => save()} disabled={pending} className="h-12 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60 sm:self-start">
         {pending ? "Updating…" : daily ? "Save this week" : "Update my payday"}
       </button>
     </Card>
+  );
+}
+
+const MONTH = new Intl.DateTimeFormat("en", { month: "short", timeZone: "UTC" });
+
+/** Minutes of overtime that day, skipping rows still missing a time. */
+function overtimeOn(date: string, overtime: OvertimeEntry[]): number {
+  return overtime
+    .filter((o) => o.date === date && o.start && o.end && o.start !== o.end)
+    .reduce((sum, o) => sum + overtimeMinutes(o), 0);
+}
+
+/** The cutoff's days on a Sunday-first calendar. Tap a day to edit it. */
+function CutoffCalendar({
+  days,
+  overtime,
+  settings,
+  today,
+  onOpen,
+}: {
+  days: PayrollDay[];
+  overtime: OvertimeEntry[];
+  settings: PayrollSettings;
+  today: string;
+  onOpen: (date: string) => void;
+}) {
+  const blanks = days.length > 0 ? weekdayOf(days[0].date) : 0;
+  return (
+    <div className="flex flex-col gap-2">
+      <div aria-hidden="true" className="grid grid-cols-7 gap-1 text-center text-xs font-extrabold text-muted sm:gap-1.5">
+        {SHORT_WEEKDAYS.map((w) => (
+          <span key={w}>{w}</span>
+        ))}
+      </div>
+      <ul className="grid grid-cols-7 gap-1 sm:gap-1.5">
+        {Array.from({ length: blanks }, (_, i) => (
+          <li key={`blank-${i}`} aria-hidden="true" />
+        ))}
+        {days.map((day, i) => {
+          const overtimeDay = dayKind(day.date, settings) === "overtime";
+          const late = day.status === "worked" && !overtimeDay ? minutesLate(day.timeIn, settings) : 0;
+          const extra = overtimeOn(day.date, overtime);
+          const dayNumber = Number(day.date.slice(8));
+          const label =
+            day.status === "leave"
+              ? day.leaveType === "personal"
+                ? "Personal leave"
+                : "Sick leave"
+              : day.status === "off"
+                ? "Off"
+                : overtimeDay
+                  ? "Overtime"
+                  : "Worked";
+          const tone =
+            day.status === "leave" ? "bg-coral-tint" : day.status === "off" ? "bg-mint text-muted" : "bg-sea-tint";
+          const details = [label, late > 0 && `${formatMinutes(late)} late`, extra > 0 && `${formatMinutes(extra)} overtime`]
+            .filter(Boolean)
+            .join(", ");
+          return (
+            <li key={day.date}>
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                aria-label={`${formatLongDay(day.date)}${day.date === today ? " (today)" : ""}: ${details}`}
+                onClick={() => onOpen(day.date)}
+                className={`flex h-full min-h-14 w-full flex-col items-start gap-0.5 rounded-xl p-1.5 text-left hover:ring-2 hover:ring-sea/40 sm:min-h-20 sm:p-2 ${tone} ${
+                  day.date === today ? "ring-2 ring-sea" : ""
+                }`}
+              >
+                <span className="flex items-baseline gap-1 leading-none">
+                  <span className="text-sm font-extrabold sm:text-[15px]">{dayNumber}</span>
+                  {(i === 0 || dayNumber === 1) && (
+                    <span className="text-[10px] font-extrabold uppercase text-muted">{MONTH.format(new Date(day.date))}</span>
+                  )}
+                </span>
+                <span className="hidden text-xs font-bold sm:block">{label}</span>
+                {late > 0 && (
+                  <span className="text-[11px] font-extrabold leading-tight text-coral-text">
+                    <span className="sm:hidden">Late</span>
+                    <span className="hidden sm:inline">{formatMinutes(late)} late</span>
+                  </span>
+                )}
+                {extra > 0 && (
+                  <span className="text-[11px] font-extrabold leading-tight text-sea-dark">
+                    +<span className="sm:hidden">OT</span>
+                    <span className="hidden sm:inline">{formatMinutes(extra)} OT</span>
+                  </span>
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <div aria-hidden="true" className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold text-muted">
+        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-sea-tint" />Worked</span>
+        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-coral-tint" />Leave</span>
+        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border border-line bg-mint" />Off</span>
+        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded ring-2 ring-sea" />Today</span>
+      </div>
+    </div>
+  );
+}
+
+/** One day of the cutoff, in its dialog: worked, leave or off, time in, overtime. */
+function DayEditor({
+  day,
+  overtime,
+  settings,
+  today,
+  onStatus,
+  onOvertimeDay,
+  onChange,
+  onAddOvertime,
+  onChangeOvertime,
+  onRemoveOvertime,
+}: {
+  day: PayrollDay;
+  overtime: OvertimeRow[];
+  settings: PayrollSettings;
+  today: string;
+  onStatus: (status: DayStatus) => void;
+  onOvertimeDay: (worked: boolean) => void;
+  onChange: (patch: Partial<PayrollDay>) => void;
+  onAddOvertime: () => void;
+  onChangeOvertime: (key: number, patch: Partial<OvertimeEntry>) => void;
+  onRemoveOvertime: (key: number) => void;
+}) {
+  const kind = dayKind(day.date, settings);
+  const overtimeDay = kind === "overtime";
+  const late = day.status === "worked" && !overtimeDay ? minutesLate(day.timeIn, settings) : 0;
+  const perMinute = hourlyRate(settings) / 60;
+  const segment = (selected: boolean, tone: string) =>
+    `h-11 rounded-lg px-2.5 text-[15px] ${selected ? `${tone} font-extrabold` : "font-bold text-muted hover:text-ink"}`;
+
+  return (
+    <div className="flex flex-col gap-4">
+      {(overtimeDay || day.date === today) && (
+        <p className="text-sm text-muted">
+          {day.date === today && <span className="font-extrabold text-sea">Today. </span>}
+          {overtimeDay && "An overtime day: only the hours you work count, at your overtime rate."}
+        </p>
+      )}
+
+      {overtimeDay ? (
+        <div role="group" aria-label="Off or overtime" className="grid grid-cols-2 gap-1 rounded-xl bg-card p-1">
+          {[false, true].map((on) => (
+            <button
+              key={String(on)}
+              type="button"
+              aria-pressed={(day.status === "worked") === on}
+              onClick={() => onOvertimeDay(on)}
+              className={segment((day.status === "worked") === on, on ? "bg-sea text-white" : "bg-ink text-mint")}
+            >
+              {on ? "Overtime" : "Off"}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div role="group" aria-label="Worked, leave or off" className="grid grid-cols-3 gap-1 rounded-xl bg-card p-1">
+          {STATUSES.map((s) => (
+            <button
+              key={s.value}
+              type="button"
+              aria-pressed={day.status === s.value}
+              onClick={() => onStatus(s.value)}
+              className={segment(
+                day.status === s.value,
+                s.value === "leave" ? "bg-coral text-white" : s.value === "worked" ? "bg-sea text-white" : "bg-ink text-mint",
+              )}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {day.status === "worked" && !overtimeDay && (
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={`in-${day.date}`} className="text-sm font-bold">Time in</label>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <input
+              id={`in-${day.date}`}
+              type="time"
+              value={day.timeIn ?? ""}
+              onChange={(e) => onChange({ timeIn: e.target.value || null })}
+              className="h-12 rounded-xl border-2 border-line bg-card px-3 text-[15px] outline-none focus:border-sea"
+            />
+            {late > 0 ? (
+              <span className="text-sm font-bold text-coral-text">
+                {formatMinutes(late)} late · −{formatPeso(late * perMinute)}
+              </span>
+            ) : (
+              <span className="text-sm text-muted">On time</span>
+            )}
+          </div>
+          {kind === "off" && <p className="text-sm text-muted">Usually off: paid a day&apos;s rate.</p>}
+        </div>
+      )}
+
+      {day.status === "leave" && (
+        <div className="flex flex-col gap-2">
+          <div role="group" aria-label="Leave type" className="flex gap-2">
+            {LEAVE_TYPES.map((t) => (
+              <button
+                key={t.value}
+                type="button"
+                aria-pressed={day.leaveType === t.value}
+                onClick={() => onChange({ leaveType: t.value })}
+                className={`h-10 shrink-0 rounded-full px-3.5 text-sm font-extrabold ${
+                  day.leaveType === t.value ? "bg-ink text-mint" : "bg-card text-ink hover:bg-sea-tint"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <input
+            aria-label="Reason for leave"
+            value={day.note ?? ""}
+            maxLength={100}
+            onChange={(e) => onChange({ note: e.target.value || null })}
+            placeholder="Reason (optional)"
+            className="h-12 min-w-0 rounded-xl border-2 border-line bg-card px-3 text-[15px] outline-none focus:border-sea"
+          />
+        </div>
+      )}
+
+      {overtime.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-bold">Overtime</span>
+          {overtime.map((o) => (
+            <div key={o.key} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <input
+                type="time"
+                aria-label="Overtime start"
+                value={o.start}
+                required
+                onChange={(e) => onChangeOvertime(o.key, { start: e.target.value })}
+                className="h-12 rounded-xl border-2 border-line bg-card px-3 text-[15px] outline-none focus:border-sea"
+              />
+              <span aria-hidden="true" className="text-muted">to</span>
+              <input
+                type="time"
+                aria-label="Overtime end"
+                value={o.end}
+                required
+                onChange={(e) => onChangeOvertime(o.key, { end: e.target.value })}
+                className="h-12 rounded-xl border-2 border-line bg-card px-3 text-[15px] outline-none focus:border-sea"
+              />
+              <button
+                type="button"
+                onClick={() => onRemoveOvertime(o.key)}
+                className="h-10 rounded-full px-2.5 text-sm font-extrabold text-coral-text hover:bg-coral-tint"
+              >
+                Remove
+              </button>
+              {o.start && o.end && o.start !== o.end && (
+                <span className="basis-full text-sm font-bold text-sea">
+                  {formatMinutes(overtimeMinutes(o))} × {settings.overtimeRate} · +
+                  {formatPeso(overtimeMinutes(o) * perMinute * settings.overtimeRate)}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {(!overtimeDay || day.status === "worked") && (
+        <button type="button" onClick={onAddOvertime} className="self-start text-sm font-extrabold text-sea-dark hover:underline">
+          + Overtime
+        </button>
+      )}
+    </div>
   );
 }
 

@@ -123,9 +123,10 @@ async function Dashboard() {
   await saveWidgetSnapshot(sts, today);
   const forecast = project(inWallets, items, today, 30);
   const pong = pongSays(sts, accounts.length > 0, today);
-  // Everything scheduled in the next 7 days, plus late planned items.
+  // Everything still to come in the next 7 days, plus late planned items.
+  // Once received or paid it's done and drops off (Plan still has its undo).
   const weekOut = addDays(today, 7);
-  const dueSoon = items.filter((i) => i.dueOn < weekOut && (i.dueOn >= today || !i.transactionId));
+  const dueSoon = items.filter((i) => i.dueOn < weekOut && !i.transactionId);
   const hasScheduled = items.some((i) => i.kind !== "planned");
   const wallets = accounts.filter((a) => isSpendable(a.type));
   const dollars = wallets.filter((a) => a.currency === "USD");

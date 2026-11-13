@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PaidInAdvanceTag } from "@/components/paid-in-advance-tag";
+import { billCalendar } from "@/lib/bill-calendar";
 import { DEBT_SHARE } from "@/lib/bnpl";
 import type { Account } from "@/lib/data";
 import { formatShortDay } from "@/lib/dates";
@@ -8,6 +9,7 @@ import type { ForecastItem } from "@/lib/forecast";
 import { formatPeso } from "@/lib/money";
 import type { PaydayBills } from "@/lib/office-days";
 import { groupByPayee, type PayTo, type PeriodPayments } from "@/lib/pay-periods";
+import { BillCalendarView, BillsViewSection } from "./bills-view";
 
 // Plan's payment sections: Bills by payday and BNPL & loan payments. Each
 // card shows how much goes where first; every payment is behind a tap.
@@ -157,30 +159,35 @@ export function BillsByPayday({ periods, accounts, today }: { periods: PaydayBil
   const withOffice = periods.some((p) => p.office);
   const lenderName = (id: string) => accounts.find((a) => a.id === id)?.name;
   return (
-    <section aria-labelledby="by-payday-heading" className="flex flex-col gap-2.5">
-      <div className="flex flex-col gap-0.5">
-        <h2 id="by-payday-heading" className="font-display text-xl font-semibold">Bills by payday</h2>
-        <p className="text-[13px] text-muted">
-          {withOffice
-            ? "Each pay covers the bills until the next one. Go in at least this many days in its cutoff to cover them."
-            : "Each pay covers the bills until the next one."}
+    <section aria-labelledby="by-payday-heading">
+      <BillsViewSection
+        heading={
+          <div className="flex flex-col gap-0.5">
+            <h2 id="by-payday-heading" className="font-display text-xl font-semibold">Bills by payday</h2>
+            <p className="text-[13px] text-muted">
+              {withOffice
+                ? "Each pay covers the bills until the next one. Go in at least this many days in its cutoff to cover them."
+                : "Each pay covers the bills until the next one."}
+            </p>
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-2">
+          {periods.map((p) => (
+            <PaydayCard key={p.from} period={p} today={today} lenderName={lenderName} />
+          ))}
+        </div>
+        <p className="text-xs text-muted">
+          Bills, installments, loan payments and utang in your forecast; day-to-day spending isn&apos;t in it.
+          {withOffice && (
+            <>
+              {" "}Days off and leave you saved in the{" "}
+              <Link href="/payroll" className="font-extrabold text-sea-dark underline">Payroll calculator</Link> are left out
+              of the days you can still go in.
+            </>
+          )}
         </p>
-      </div>
-      <div className="flex flex-col gap-2">
-        {periods.map((p) => (
-          <PaydayCard key={p.from} period={p} today={today} lenderName={lenderName} />
-        ))}
-      </div>
-      <p className="text-xs text-muted">
-        Bills, installments, loan payments and utang in your forecast; day-to-day spending isn&apos;t in it.
-        {withOffice && (
-          <>
-            {" "}Days off and leave you saved in the{" "}
-            <Link href="/payroll" className="font-extrabold text-sea-dark underline">Payroll calculator</Link> are left out
-            of the days you can still go in.
-          </>
-        )}
-      </p>
+      </BillsViewSection>
     </section>
   );
 }
@@ -199,6 +206,10 @@ function PaydayCard({
   const range = `${formatShortDay(p.from, today)} – ${formatShortDay(p.to, today)}`;
   const cutoffRange = p.cutoff && office?.firstDay ? `${formatShortDay(office.firstDay, today)} – ${formatShortDay(p.cutoff.end, today)}` : null;
   const groups = groupByPayee(p.bills, lenderName, today);
+  const calendar = billCalendar({ from: p.from, to: p.to, payday: p.payday, pay: p.money, bills: p.bills, today, lenderName });
+  const details = Object.fromEntries(
+    calendar.days.filter((d) => d.count > 0).map((d) => [d.date, <PayeeList key={d.date} groups={d.bills} today={today} />]),
+  );
   return (
     <article aria-label={p.payday ? `${formatShortDay(p.payday, today)} pay` : "Before payday"} className="flex flex-col gap-2.5 rounded-[20px] bg-card px-4 py-3.5">
       <div className="flex items-baseline justify-between gap-3">
@@ -240,7 +251,29 @@ function PaydayCard({
         )
       )}
 
-      {groups.length > 0 && <PayeeList groups={groups} today={today} />}
+      <div className="contents group-data-[view=calendar]/bills:hidden">
+        {groups.length > 0 && <PayeeList groups={groups} today={today} />}
+      </div>
+      <div className="hidden group-data-[view=calendar]/bills:contents">
+        <BillCalendarView
+          days={calendar.days}
+          weekStart={calendar.weekStart}
+          blanks={calendar.blanks}
+          pay={p.payday ? p.money : null}
+          details={details}
+          late={
+            calendar.late.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <h4 className="flex justify-between gap-3 text-[13px] font-extrabold text-coral-text">
+                  <span>Late</span>
+                  <span>{formatPeso(calendar.lateTotal)}</span>
+                </h4>
+                <PayeeList groups={calendar.late} today={today} />
+              </div>
+            )
+          }
+        />
+      </div>
 
       {p.paidEarly.length > 0 && (
         <div className="flex flex-col gap-1">
@@ -303,7 +336,11 @@ function PaydayCard({
         )}
       </dl>
 
-      {p.bills.length > 1 && <ItemList label={`See all ${p.bills.length} bills`} items={p.bills} today={today} />}
+      {p.bills.length > 1 && (
+        <div className="contents group-data-[view=calendar]/bills:hidden">
+          <ItemList label={`See all ${p.bills.length} bills`} items={p.bills} today={today} />
+        </div>
+      )}
     </article>
   );
 }

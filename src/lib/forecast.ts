@@ -292,6 +292,22 @@ export type SafeToSpend = {
 };
 
 /**
+ * The next payday after today whose pay you haven't received yet. Pay marked
+ * received early is already in your wallets, so that payday is done and Safe
+ * to spend lasts until the one after it. Undo it and it counts again. Paydays
+ * moved to another day match by their usual date.
+ */
+export function nextUnreceivedPayday(payday: Schedule, items: ForecastItem[], today: string): string {
+  const received = new Set(
+    items.filter((i) => i.kind === "payday" && i.transactionId).map((i) => i.scheduledOn ?? i.dueOn),
+  );
+  let next = nextOccurrence(payday, today);
+  // Items only reach so far ahead, so this always stops; the cap is a guard.
+  for (let n = 0; n < 400 && received.has(next); n++) next = nextOccurrence(payday, next);
+  return next;
+}
+
+/**
  * Safe to spend: wallet money at the start of today, minus unpaid bills and
  * planned expenses due before the next payday, spread over the days until
  * then. What you spend today comes out of today's share, so the daily amount
@@ -326,7 +342,7 @@ export function safeToSpend({
       leftToday: null,
     };
   }
-  const nextPayday = nextOccurrence(payday, today);
+  const nextPayday = nextUnreceivedPayday(payday, items, today);
   const daysLeft = daysBetween(today, nextPayday);
   const due = items.filter((i) => isOwed(i) && i.amount !== null && i.dueOn < nextPayday);
   const dueBeforePayday = roundCents(due.reduce((sum, i) => sum + i.amount!, 0));
