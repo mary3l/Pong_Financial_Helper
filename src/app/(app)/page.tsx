@@ -122,7 +122,7 @@ async function Dashboard() {
   await saveWidgetSnapshot({ perDay: day.plan.perDay, until: day.plan.segments[0].until }, today);
   const forecast = project(inWallets, items, today, 30);
   const nextPayday = payday ? nextUnreceivedPayday(payday, items, today) : null;
-  const pong = pongSays(day, { hasWallets: accounts.length > 0, hasPayday: Boolean(payday) }, today);
+  const pong = pongSays(day, { hasWallets: accounts.length > 0, hasPayday: Boolean(payday) });
   // Everything still to come in the next 7 days, plus late planned items.
   // Once received or paid it's done and drops off (Plan still has its undo).
   const weekOut = addDays(today, 7);

@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { Pong, type PongMood } from "@/components/pong";
-import { addDays, formatShortDay } from "@/lib/dates";
+import { formatShortDay } from "@/lib/dates";
 import { formatPeso, roundCents } from "@/lib/money";
-import { nextSegment, PLAN_DAYS, PLAN_FLOOR, type PlanToday } from "@/lib/payment-plan";
+import { PLAN_DAYS, PLAN_FLOOR, type PlanToday } from "@/lib/payment-plan";
 
 // Home's Safe to spend card (design canvas 2.1), with Pong in the corner
 // saying how it's going. Today's amount comes from the payment plan and is
@@ -57,17 +57,19 @@ export function SafeToSpendCard({
         </div>
         <Pong mood={pong.mood} size={84} className="pong-peek -mt-1 -mr-2 shrink-0 drop-shadow-[0_3px_0_rgba(0,0,0,0.18)]" />
       </div>
-      <p className="relative mt-1 rounded-[18px_6px_18px_18px] bg-sea-deep/60 px-3.5 py-2.5 text-[15px] leading-snug text-sea-text">
-        {pong.message}
-        {pong.link && (
-          <>
-            {" "}
-            <Link href={pong.link.href} className="font-extrabold text-white underline underline-offset-4">
-              {pong.link.label}
-            </Link>
-          </>
-        )}
-      </p>
+      {pong.message && (
+        <p className="relative mt-1 rounded-[18px_6px_18px_18px] bg-sea-deep/60 px-3.5 py-2.5 text-[15px] leading-snug text-sea-text">
+          {pong.message}
+          {pong.link && (
+            <>
+              {" "}
+              <Link href={pong.link.href} className="font-extrabold text-white underline underline-offset-4">
+                {pong.link.label}
+              </Link>
+            </>
+          )}
+        </p>
+      )}
       {current.length > 0 && (
         <div className="relative mt-1.5 flex flex-col gap-2 border-t border-dashed border-sea-light pt-3">
           <h3 className="text-[13px] font-bold text-sea-text">BNPL CAP · THIS BILL</h3>
@@ -131,7 +133,7 @@ function BreakdownLine({
   );
 }
 
-export function pongSays(day: PlanToday, { hasWallets, hasPayday }: { hasWallets: boolean; hasPayday: boolean }, today: string): PongLine {
+export function pongSays(day: PlanToday, { hasWallets, hasPayday }: { hasWallets: boolean; hasPayday: boolean }): PongLine {
   if (!hasWallets) {
     return {
       mood: "ask",
@@ -154,14 +156,8 @@ export function pongSays(day: PlanToday, { hasWallets, hasPayday }: { hasWallets
       link: { href: "/plan/payments", label: "See payments" },
     };
   }
-  if (spent === 0) {
-    const until = formatShortDay(addDays(plan.segments[0].until, -1), today);
-    const next = nextSegment(plan);
-    return {
-      mood: "peek",
-      message: `${formatPeso(plan.perDay)} a day until ${until}${next ? ` · ${formatPeso(next.perDay)} from ${formatShortDay(next.from, today)}` : ""}`,
-    };
-  }
+  // Nothing spent yet: the amount says it all, so no bubble.
+  if (spent === 0) return { mood: "peek", message: "" };
   if (left > plan.perDay * 0.2) return { mood: "happy", message: `${formatPeso(left)} left today` };
   if (left > 0) return { mood: "listen", message: `${formatPeso(left)} left · almost there` };
   if (left === 0) return { mood: "listen", message: `Today's ${formatPeso(plan.perDay)} is used up` };
