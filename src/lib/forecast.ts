@@ -41,6 +41,8 @@ export type ForecastItem = {
   boughtOn?: string | null;
   /** Installments: the plan's last payment. */
   lastPayment?: boolean;
+  /** Installments: the fee or interest in this payment, which paying early can cut. */
+  fee?: number;
 };
 
 export type ScheduleInputs = {
@@ -84,6 +86,8 @@ export type ScheduleInputs = {
     /** Which payment of how many. */
     seq?: number;
     months?: number;
+    /** The fee or interest in this payment. */
+    fee?: number;
   }[];
 };
 
@@ -166,6 +170,7 @@ export function scheduledItems(
       lenderId: p.lenderAccountId ?? null,
       // Not a one-payment bill ("October Billing"): only a plan's final payment.
       lastPayment: p.months !== undefined && p.months > 1 && p.seq === p.months,
+      ...(p.fee ? { fee: p.fee } : {}),
     });
   }
 

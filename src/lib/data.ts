@@ -22,6 +22,7 @@ import {
   type TransactionType,
   type WalletPurpose,
 } from "@/lib/money";
+import { billCycles, type CapLine } from "@/lib/payment-plan";
 import { paydayAmounts, type PayrollRecords } from "@/lib/payroll";
 import { personItems, type EntryKind, type Person } from "@/lib/people";
 import type { Frequency } from "@/lib/schedule";
@@ -676,6 +677,7 @@ export function installmentInputs(plans: InstallmentPlan[]): NonNullable<Schedul
       lenderAccountId: plan.accountId,
       seq: p.seq,
       months: plan.months,
+      fee: p.feePart,
     })),
   );
 }
@@ -880,6 +882,53 @@ export async function getPlanInputs(today: string, days: number): Promise<PlanIn
     people,
     items: await withPaidDates(items),
   };
+}
+
+/**
+ * Today's day-to-day spending from spending wallets. Bills, planned items
+ * and installments you paid or logged today don't count: the plan already
+ * held that money back. BNPL doesn't either: it has its own caps.
+ */
+export async function getCashSpentToday(todays: Transaction[], accounts: Account[]): Promise<number> {
+  const spending = new Set(accounts.filter((a) => countsAsSpending(a)).map((a) => a.id));
+  const expenses = todays.filter((t) => t.type === "expense" && spending.has(t.accountId));
+  if (!expenses.length) return 0;
+  const scheduled = await getScheduledTransactionIds(expenses.map((t) => t.id));
+  return roundCents(expenses.filter((t) => !scheduled.has(t.id)).reduce((sum, t) => sum + t.amount, 0));
+}
+
+/**
+ * Each BNPL line with a due day, for its caps: what you've put on it since
+ * the start of the bill today's buys land on. Only your own day-to-day buys
+ * count, not scheduled items (already in the plan) or someone else's
+ * purchase on your line.
+ */
+export async function getCapLines(accounts: Account[], today: string): Promise<CapLine[]> {
+  const lines = accounts.filter((a) => a.type === "credit_line" && a.dueDay);
+  if (!lines.length) return [];
+  const since = new Map(lines.map((a) => [a.id, billCycles({ id: a.id, dueDay: a.dueDay!, cutoffDay: a.cutoffDay ?? null }, today)[0]?.from ?? today]));
+  const from = [...since.values()].sort()[0];
+  const ids = new Set(lines.map((a) => a.id));
+  const bought = (await getTransactions({ from, to: today })).filter(
+    (t) => t.type === "expense" && ids.has(t.accountId) && t.occurredOn >= since.get(t.accountId)!,
+  );
+  const scheduled = await getScheduledTransactionIds(bought.map((t) => t.id));
+  const theirs = bought.length
+    ? new Set(
+        (await getInstallmentPlans())
+          .filter((p) => p.personId && p.sourceTxnId)
+          .map((p) => p.sourceTxnId!),
+      )
+    : new Set<string>();
+  const own = bought.filter((t) => !scheduled.has(t.id) && !theirs.has(t.id));
+  return lines.map((a) => ({
+    id: a.id,
+    name: a.name,
+    dueDay: a.dueDay!,
+    cutoffDay: a.cutoffDay ?? null,
+    creditLeft: a.creditLimit && a.creditLimit > 0 ? roundCents(Math.max(0, a.creditLimit + Math.min(0, a.balance))) : null,
+    used: roundCents(own.filter((t) => t.accountId === a.id).reduce((sum, t) => sum + t.amount, 0)),
+  }));
 }
 
 /** The day each of these transactions happened, by id. */

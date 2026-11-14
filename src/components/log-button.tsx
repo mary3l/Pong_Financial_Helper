@@ -37,18 +37,21 @@ export function LogButton({
   item,
   accounts,
   early = false,
+  label: labelAs,
 }: {
   item: ForecastItem;
   accounts: Account[];
   /** Due a while from now: "Pay early" instead of "Mark paid". */
   early?: boolean;
+  /** The button's word instead, like the payment plan's "Pay". */
+  label?: string;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const paid = Boolean(item.transactionId);
   const incoming = item.flow === "in";
-  const label = incoming ? "Add income" : early ? "Pay early" : "Mark paid";
+  const label = labelAs ?? (incoming ? "Add income" : early ? "Pay early" : "Mark paid");
   // Scheduled items are in pesos, so dollar wallets aren't offered.
   const wallets = accounts.filter((a) => paysInPesos(a) && !a.archived);
 

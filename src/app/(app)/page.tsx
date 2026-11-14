@@ -10,15 +10,14 @@ import { getCurrentUser } from "@/lib/auth";
 import { creditRoom } from "@/lib/bnpl";
 import { categoryInfo } from "@/lib/categories";
 import {
-  getBnplCap,
   getBudgets,
+  getCapLines,
+  getCashSpentToday,
   getPlanInputs,
-  getScheduledTransactionIds,
   getTransactions,
   withoutArchived,
   type Account,
   type Budget,
-  type Transaction,
 } from "@/lib/data";
 import {
   addDays,
@@ -28,11 +27,10 @@ import {
   periodContaining,
   today as getToday,
 } from "@/lib/dates";
-import { itemLabel, project, safeToSpend, type ForecastItem } from "@/lib/forecast";
+import { itemLabel, nextUnreceivedPayday, project, type ForecastItem } from "@/lib/forecast";
 import { getUsdRate } from "@/lib/fx";
 import {
   accountTypeLabel,
-  countsAsSpending,
   formatBalance,
   formatMoney,
   formatPeso,
@@ -44,6 +42,7 @@ import {
   purposeLabel,
   roundCents,
 } from "@/lib/money";
+import { PLAN_DAYS, planToday } from "@/lib/payment-plan";
 import { dueDate, isOverdue } from "@/lib/people";
 import { saveWidgetSnapshot } from "@/lib/widget-snapshot";
 import { SafeToSpendCard, pongSays } from "./safe-to-spend-card";
@@ -106,23 +105,24 @@ async function Dashboard() {
   const today = getToday();
   const period = periodContaining(today);
   const [plan, todays, budgets, spentThisKinsenas] = await Promise.all([
-    getPlanInputs(today, 30),
+    getPlanInputs(today, PLAN_DAYS),
     getTransactions({ from: today, to: today }),
     getBudgets(),
     getTransactions({ from: period.start, to: period.end }),
   ]);
   const { accounts, inWallets, setAside, payday, items, people } = plan;
-  const credit = creditRoom(accounts);
-  const [activity, spentToday, cap] = await Promise.all([
+  const [activity, cash, lines] = await Promise.all([
     withoutArchived(todays),
-    spendingToday(todays, accounts),
-    credit.length ? getBnplCap(today, plan) : null,
+    getCashSpentToday(todays, accounts),
+    getCapLines(accounts, today),
   ]);
-  const sts = safeToSpend({ inWallets, payday, items, today, spentToday });
+  const day = planToday({ inWallets, cash, items, today, lines });
+  const limitLeft = roundCents(creditRoom(accounts).reduce((sum, l) => sum + (l.creditLeft ?? 0), 0));
   // The home screen widget shows this too (0020_widget_safe_to_spend.sql).
-  await saveWidgetSnapshot(sts, today);
+  await saveWidgetSnapshot({ perDay: day.plan.perDay, until: day.plan.segments[0].until }, today);
   const forecast = project(inWallets, items, today, 30);
-  const pong = pongSays(sts, accounts.length > 0, today);
+  const nextPayday = payday ? nextUnreceivedPayday(payday, items, today) : null;
+  const pong = pongSays(day, { hasWallets: accounts.length > 0, hasPayday: Boolean(payday) }, today);
   // Everything still to come in the next 7 days, plus late planned items.
   // Once received or paid it's done and drops off (Plan still has its undo).
   const weekOut = addDays(today, 7);
@@ -136,7 +136,7 @@ async function Dashboard() {
   return (
     <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:items-start">
       <div className="flex flex-col gap-5">
-        <SafeToSpendCard sts={sts} pong={pong} setAside={setAside} credit={credit} cap={cap} today={today} />
+        <SafeToSpendCard day={day} pong={pong} setAside={setAside} limitLeft={limitLeft} today={today} />
 
         {overdue.length > 0 && (
           <section aria-label="Overdue pautang" className="flex flex-col gap-1 rounded-[20px] bg-coral-tint px-4 py-3">
@@ -242,7 +242,7 @@ async function Dashboard() {
               <strong className={forecast.lowest.balance < 0 ? "text-coral-text" : ""}>
                 {formatPeso(forecast.lowest.balance)} on {formatShortDay(forecast.lowest.date, today)}
               </strong>
-              {sts.nextPayday && forecast.lowest.date === addDays(sts.nextPayday, -1) && ", the day before payday"}
+              {nextPayday && forecast.lowest.date === addDays(nextPayday, -1) && ", the day before payday"}
             </span>
           </Link>
         )}
@@ -269,18 +269,6 @@ async function Dashboard() {
       </div>
     </div>
   );
-}
-
-/**
- * What today's expenses took out of spending wallets. Bills, planned items
- * and installments you paid today don't count: Safe to spend already set
- * that money aside as "due before payday".
- */
-async function spendingToday(todays: Transaction[], accounts: Account[]): Promise<number> {
-  const spending = new Set(accounts.filter((a) => countsAsSpending(a)).map((a) => a.id));
-  const expenses = todays.filter((t) => t.type === "expense" && spending.has(t.accountId));
-  const scheduled = await getScheduledTransactionIds(expenses.map((t) => t.id));
-  return roundCents(expenses.filter((t) => !scheduled.has(t.id)).reduce((sum, t) => sum + t.amount, 0));
 }
 
 /** Desktop dashboard: budgets this kinsenas at a glance (design "Web · Dashboard"). */
