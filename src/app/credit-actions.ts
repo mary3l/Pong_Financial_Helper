@@ -659,6 +659,93 @@ export async function undoInstallment(id: string): Promise<CreditResult> {
   return {};
 }
 
+export type PlanEdit = {
+  name: string;
+  /** Each unpaid payment, fee included; null leaves the amounts. Only for a bill added by hand. */
+  amount: number | null;
+  /** The next unpaid payment's due date, the rest a month apart; null leaves the dates. Only for a bill added by hand. */
+  nextDue: string | null;
+  /** Change what you owe on the credit line by what the payments left change by. */
+  adjustOwed: boolean;
+};
+
+/**
+ * Edits a BNPL plan: its name, and for a bill added by hand (no purchase
+ * behind it), the amount and due date of the payments left. Paid ones stay
+ * as they are. A purchase's amount lives on the purchase, so it's not here.
+ */
+export async function updatePlan(id: string, input: PlanEdit): Promise<CreditResult> {
+  const name = cleanName(input.name);
+  if (!name) return { error: "Give it a name." };
+  if (name.length > 60) return { error: "Keep the name to 60 characters." };
+  if (input.amount !== null && !validAmount(input.amount)) return { error: "Enter how much you'll pay." };
+  if (input.nextDue !== null && !isValidDate(input.nextDue)) return { error: "Pick when it's due." };
+
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const [{ data: plan }, payments] = await Promise.all([
+    supabase.from("installment_plans").select("id, kind, account_id, source_txn_id").eq("id", id).maybeSingle(),
+    supabase
+      .from("scheduled_payments")
+      .select("id, seq, due_on, amount, principal_part, fee_part, transfer_txn_id, fee_txn_id")
+      .eq("plan_id", id)
+      .order("seq"),
+  ]);
+  if (!plan || plan.kind !== "bnpl" || payments.error) return { error: "Couldn't find that plan." };
+
+  const byHand = !plan.source_txn_id;
+  const unpaid = payments.data.filter((p) => !p.transfer_txn_id && !p.fee_txn_id);
+  const dates = byHand && input.nextDue !== null ? monthlyDates(input.nextDue, unpaid.length) : null;
+  const changes = unpaid.map((p, i) => {
+    const fee = Number(p.fee_part);
+    const amount = byHand && input.amount !== null ? roundCents(input.amount) : Number(p.amount);
+    return { id: p.id, dueOn: dates?.[i] ?? p.due_on, amount, principal: roundCents(amount - fee), fee, old: p };
+  });
+  if (changes.some((c) => c.fee >= c.amount)) return { error: "The payment has to be more than its fee." };
+  if (roundCents(changes.reduce((sum, c) => sum + c.amount, 0)) > MAX_AMOUNT) return { error: "That amount is too big." };
+
+  for (const c of changes) {
+    if (c.amount === Number(c.old.amount) && c.dueOn === c.old.due_on) continue;
+    const { error } = await supabase
+      .from("scheduled_payments")
+      .update({ amount: c.amount, principal_part: c.principal, due_on: c.dueOn })
+      .eq("id", c.id);
+    if (error) return FAILED;
+  }
+
+  const paidPrincipal = payments.data.filter((p) => !unpaid.includes(p)).reduce((sum, p) => sum + Number(p.principal_part), 0);
+  const firstDue = [...payments.data.filter((p) => !unpaid.includes(p)).map((p) => p.due_on), ...changes.map((c) => c.dueOn)].sort()[0];
+  const { error } = await supabase
+    .from("installment_plans")
+    .update({
+      name,
+      principal: roundCents(paidPrincipal + changes.reduce((sum, c) => sum + c.principal, 0)),
+      ...(firstDue ? { first_due: firstDue } : {}),
+    })
+    .eq("id", id);
+  if (error) return FAILED;
+
+  // What you owe goes up or down by the change in principal still to pay.
+  const diff = roundCents(changes.reduce((sum, c) => sum + c.principal - Number(c.old.principal_part), 0));
+  if (input.adjustOwed && diff !== 0) {
+    const { data: account } = await supabase
+      .from("accounts")
+      .select("starting_balance")
+      .eq("id", plan.account_id)
+      .eq("type", "credit_line")
+      .maybeSingle();
+    if (!account) return FAILED;
+    const { error: owedError } = await supabase
+      .from("accounts")
+      .update({ starting_balance: roundCents(Number(account.starting_balance) - diff) })
+      .eq("id", plan.account_id);
+    if (owedError) return FAILED;
+  }
+
+  refresh();
+  return {};
+}
+
 /**
  * Removes a plan and its unpaid schedule, e.g. one entered by mistake or
  * paid off early. Payments already made stay in Activity.

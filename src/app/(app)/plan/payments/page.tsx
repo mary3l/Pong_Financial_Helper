@@ -2,10 +2,9 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LogButton } from "@/components/log-button";
-import { PaidInAdvanceTag } from "@/components/paid-in-advance-tag";
 import { getCapLines, getCashSpentToday, getPlanInputs, getTransactions, type Account } from "@/lib/data";
 import { addDays, formatRelativeDay, formatShortDay, today as getToday } from "@/lib/dates";
-import { paidInAdvance, type ForecastItem } from "@/lib/forecast";
+import type { ForecastItem } from "@/lib/forecast";
 import { formatPeso } from "@/lib/money";
 import {
   breathers,
@@ -57,7 +56,8 @@ async function Payments() {
   const next = nextSegment(plan);
   const end = addDays(today, PLAN_DAYS);
   const creditLines = new Set(accounts.filter((a) => a.type === "credit_line").map((a) => a.id));
-  const shown = [...items, ...held].filter((i) => i.amount !== null && i.dueOn < end);
+  // Paid and received items are done: they're off the list (undo is on the wallet's page).
+  const shown = [...items, ...held].filter((i) => i.amount !== null && !i.transactionId && i.dueOn < end);
   const dateOf = (i: ForecastItem) => (i.dueOn < today ? today : i.dueOn);
   const dates = [...new Set(shown.map(dateOf))].sort();
   const balance = new Map(plan.days.map((d) => [d.date, d.balance]));
@@ -155,30 +155,28 @@ function PaymentRow({
     );
   }
   const incoming = item.flow === "in";
-  const paid = Boolean(item.transactionId);
-  const late = !paid && item.dueOn < today;
+  const late = item.dueOn < today;
   const wallet = accounts.find((a) => a.id === item.accountId)?.name;
   // BNPL bills stay on their due day; everything else can go early when there's room.
-  const earliest = incoming || paid || item.dueOn <= today ? today : isBnplBill(item, creditLines) ? item.dueOn : earliestToPay(item, plan, today);
+  const earliest = incoming || item.dueOn <= today ? today : isBnplBill(item, creditLines) ? item.dueOn : earliestToPay(item, plan, today);
   return (
     <li className="flex items-center gap-3 border-t border-line-soft py-2.5">
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex flex-wrap items-baseline gap-x-2">
-          <span className={`truncate font-bold ${paid ? "text-muted line-through" : incoming ? "text-sea-dark" : ""}`}>{item.name}</span>
+          <span className={`truncate font-bold ${incoming ? "text-sea-dark" : ""}`}>{item.name}</span>
           {late && <span className="rounded-full bg-coral-tint px-2 text-xs font-extrabold text-coral-text">Late</span>}
-          {!paid && !incoming && (item.fee ?? 0) >= 1 ? (
+          {!incoming && (item.fee ?? 0) >= 1 ? (
             <span className="rounded-full bg-sea-tint px-2 text-xs font-extrabold text-sea-dark">Strategic</span>
           ) : null}
-          {paidInAdvance(item) && <PaidInAdvanceTag paidOn={item.paidOn!} today={today} />}
         </span>
         {wallet && <span className="text-[13px] text-muted">{wallet}</span>}
       </span>
-      <span className={`font-display text-[17px] font-semibold ${paid ? "text-muted line-through" : incoming ? "text-sea" : ""}`}>
+      <span className={`font-display text-[17px] font-semibold ${incoming ? "text-sea" : ""}`}>
         {incoming ? "+" : ""}
         {formatPeso(item.amount!)}
       </span>
-      {incoming ? null : earliest === today || paid ? (
-        <LogButton item={item} accounts={accounts} label={paid ? undefined : "Pay"} />
+      {incoming ? null : earliest === today ? (
+        <LogButton item={item} accounts={accounts} label="Pay" />
       ) : (
         <span className="flex shrink-0 flex-col items-center gap-0.5">
           <span

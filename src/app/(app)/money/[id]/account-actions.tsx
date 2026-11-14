@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { addUpcomingPayments, deleteLoanForGood, fixBillDates, payInstallments, removePlan } from "@/app/credit-actions";
+import { addUpcomingPayments, deleteLoanForGood, fixBillDates, payInstallments, removePlan, updatePlan } from "@/app/credit-actions";
 import { assignPlanToPerson, theyPaidInstallments } from "@/app/people-actions";
 import { removeWallet, restoreWallet } from "@/app/wallet-actions";
 import { AmountInput } from "@/components/amount-input";
@@ -106,7 +106,7 @@ export function AssignPlanButton({
       onClick={() => setOpen(true)}
       className="w-fit text-[13px] font-extrabold text-sea-dark underline"
     >
-      Someone else pays this
+      Assign to someone
     </button>
   );
 
@@ -171,6 +171,150 @@ export function AssignPlanButton({
             <div className="flex flex-wrap gap-2">
               <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-4 font-extrabold text-ink disabled:opacity-60">
                 {pending ? "Saving…" : `${who || "They"} pays it`}
+              </button>
+              <button type="button" onClick={() => setOpen(false)} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </FormDialog>
+      )}
+    </>
+  );
+}
+
+/**
+ * Edit a plan: its name, and for a bill added by hand, the amount and due
+ * date of the payments left. A purchase's amount is on the purchase.
+ */
+export function EditPlanButton({
+  id,
+  name: savedName,
+  lineName,
+  byHand,
+  unpaid,
+}: {
+  id: string;
+  name: string;
+  lineName: string;
+  /** Added with + Upcoming payment: no purchase behind it. */
+  byHand: boolean;
+  /** The payments left: how many, the next one's amount and due date, and the fee in each. */
+  unpaid: { count: number; amount: number; dueOn: string; fee: number; principal: number } | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(savedName);
+  const [amount, setAmount] = useState(unpaid ? String(unpaid.amount) : "");
+  const [nextDue, setNextDue] = useState(unpaid?.dueOn ?? "");
+  const [adjustOwed, setAdjustOwed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  const payments = byHand ? unpaid : null;
+  const parsed = payments ? parseAmount(amount) : NaN;
+  // How much what you owe changes: the principal of every payment left.
+  const diff = payments && Number.isFinite(parsed) ? roundCents((parsed - payments.fee - payments.principal) * payments.count) : 0;
+
+  function start() {
+    setName(savedName);
+    setAmount(unpaid ? String(unpaid.amount) : "");
+    setNextDue(unpaid?.dueOn ?? "");
+    setAdjustOwed(false);
+    setError(null);
+    setOpen(true);
+  }
+
+  function save(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (payments && (Number.isNaN(parsed) || parsed <= 0)) {
+      setError("Enter how much you'll pay.");
+      return;
+    }
+    startTransition(async () => {
+      const result = await updatePlan(id, {
+        name,
+        amount: payments ? parsed : null,
+        nextDue: payments ? nextDue : null,
+        adjustOwed: adjustOwed && diff !== 0,
+      });
+      if (result.error) setError(result.error);
+      else setOpen(false);
+    });
+  }
+
+  const many = (payments?.count ?? 0) > 1;
+  return (
+    <>
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-label={`Edit ${savedName}`}
+        onClick={start}
+        className="h-9 rounded-full px-3 text-xs font-extrabold text-sea-dark hover:bg-sea-tint"
+      >
+        Edit
+      </button>
+      {open && (
+        <FormDialog title={`Edit ${savedName}`} onClose={() => setOpen(false)}>
+          <form onSubmit={save} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <label htmlFor={`plan-name-${id}`} className="text-sm font-bold">Name</label>
+              <input
+                id={`plan-name-${id}`}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={60}
+                required
+                className={FIELD_CLASS}
+              />
+            </div>
+            {payments && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="flex flex-col gap-1">
+                  <label htmlFor={`plan-amount-${id}`} className="text-sm font-bold">{many ? `Each of the ${payments.count} left` : "Amount"}</label>
+                  <div className="relative">
+                    <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
+                    <AmountInput
+                      id={`plan-amount-${id}`}
+                      value={amount}
+                      onChange={setAmount}
+                      placeholder="0.00"
+                      required
+                      className={`${FIELD_CLASS} w-full pl-8 text-right`}
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor={`plan-due-${id}`} className="text-sm font-bold">{many ? "Next payment due" : "Due"}</label>
+                  <input
+                    id={`plan-due-${id}`}
+                    type="date"
+                    value={nextDue}
+                    onChange={(e) => setNextDue(e.target.value)}
+                    required
+                    className={FIELD_CLASS}
+                  />
+                </div>
+              </div>
+            )}
+            {diff !== 0 && (
+              <label className="flex items-start gap-3 rounded-[14px] bg-card px-3 py-2.5">
+                <input
+                  type="checkbox"
+                  checked={adjustOwed}
+                  onChange={(e) => setAdjustOwed(e.target.checked)}
+                  className="mt-0.5 h-5 w-5 shrink-0 accent-sea"
+                />
+                <span className="text-[13px] font-bold">
+                  {diff > 0 ? "Add" : "Take"} {formatPeso(Math.abs(diff))} {diff > 0 ? "to" : "off"} what I owe on {lineName}
+                </span>
+              </label>
+            )}
+            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+            <div className="flex flex-wrap gap-2">
+              <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
+                {pending ? "Saving…" : "Save"}
               </button>
               <button type="button" onClick={() => setOpen(false)} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card">
                 Cancel
