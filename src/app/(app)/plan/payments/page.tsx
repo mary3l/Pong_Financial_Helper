@@ -15,7 +15,9 @@ import {
   PLAN_DAYS,
   type PaymentPlan,
 } from "@/lib/payment-plan";
-import { PlanTabs } from "../plan-tabs";
+import { aheadCandidates } from "@/lib/pay-ahead";
+import { PlanTabs, SegmentLinks } from "../plan-tabs";
+import { PayAheadCalendar } from "./pay-ahead-calendar";
 
 export const metadata = { title: "Payments · Pong Money" };
 
@@ -23,19 +25,21 @@ export const metadata = { title: "Payments · Pong Money" };
 // green when it's safe to pay today (even early), grey with the first safe
 // day when it isn't; BNPL bills only on their due day, with each bill's cap
 // for new buys held on it. A long gap with nothing due gets a "Breathe" line.
-export default function PaymentsPage() {
+// Calendar: plan the day you'll pay each loan payment or bill ahead (pay-ahead-calendar.tsx).
+export default function PaymentsPage({ searchParams }: PageProps<"/plan/payments">) {
   return (
     <div className="flex flex-col gap-4 lg:max-w-3xl">
       <h1 className="font-display text-3xl font-semibold">Plan</h1>
       <PlanTabs current="payments" />
       <Suspense fallback={<PaymentsSkeleton />}>
-        <Payments />
+        <Payments searchParams={searchParams} />
       </Suspense>
     </div>
   );
 }
 
-async function Payments() {
+async function Payments({ searchParams }: Pick<PageProps<"/plan/payments">, "searchParams">) {
+  const calendar = (await searchParams).view === "calendar";
   // Read the clock only at request time (Cache Components).
   await connection();
   const today = getToday();
@@ -52,10 +56,36 @@ async function Payments() {
     );
   }
   const [cash, lines] = await Promise.all([getCashSpentToday(todays, accounts), getCapLines(accounts, today)]);
-  const { plan, held, capPerDay } = planToday({ inWallets, cash, items, today, lines });
+  const { plan, held, capPerDay, start } = planToday({ inWallets, cash, items, today, lines });
+  const creditLines = new Set(accounts.filter((a) => a.type === "credit_line").map((a) => a.id));
+  const views = (
+    <SegmentLinks
+      label="Show payments as"
+      options={[
+        { href: "/plan/payments", label: "List", current: !calendar },
+        { href: "/plan/payments?view=calendar", label: "Calendar", current: calendar },
+      ]}
+    />
+  );
+  if (calendar) {
+    const paydays = [...new Set(items.filter((i) => i.kind === "payday" && !i.transactionId && i.dueOn > today).map((i) => i.dueOn))].sort();
+    return (
+      <div className="flex flex-col gap-3">
+        {views}
+        <PayAheadCalendar
+          start={start}
+          items={items}
+          held={held}
+          candidates={aheadCandidates(items, creditLines, today)}
+          today={today}
+          paydays={paydays}
+          accounts={accounts}
+        />
+      </div>
+    );
+  }
   const next = nextSegment(plan);
   const end = addDays(today, PLAN_DAYS);
-  const creditLines = new Set(accounts.filter((a) => a.type === "credit_line").map((a) => a.id));
   // Paid and received items are done: they're off the list (undo is on the wallet's page).
   const shown = [...items, ...held].filter((i) => i.amount !== null && !i.transactionId && i.dueOn < end);
   const dateOf = (i: ForecastItem) => (i.dueOn < today ? today : i.dueOn);
@@ -66,6 +96,7 @@ async function Payments() {
 
   return (
     <div className="flex flex-col gap-2">
+      {views}
       <section className="flex flex-col gap-2.5 rounded-[20px] bg-sea p-4 text-white">
         <div className="grid grid-cols-2 gap-2">
           <Stretch label={`Now – ${formatShortDay(addDays(plan.segments[0].until, -1), today)}`} perDay={plan.perDay} />

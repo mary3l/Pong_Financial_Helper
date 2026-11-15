@@ -43,6 +43,8 @@ export type ForecastItem = {
   lastPayment?: boolean;
   /** Installments: the fee or interest in this payment, which paying early can cut. */
   fee?: number;
+  /** Bills the payroll calculator takes from your pay (SSS, PhilHealth, Pag-IBIG): nothing to pay yourself. */
+  fromPayroll?: boolean;
 };
 
 export type ScheduleInputs = {
@@ -55,6 +57,8 @@ export type ScheduleInputs = {
     accountId: string | null;
     category: string | null;
     endsOn: string | null;
+    /** Set when the payroll calculator manages it. */
+    payrollKey?: string | null;
   })[];
   billPayments: { recurringItemId: string; dueOn: string; transactionId: string }[];
   planned: {
@@ -129,6 +133,7 @@ export function scheduledItems(
         category: recurringCategory(r),
         estimate: payroll ? payroll.estimate : r.amountVaries,
         transactionId: logged.get(`${r.id}|${date}`) ?? null,
+        ...(r.payrollKey ? { fromPayroll: true } : {}),
       });
     }
   }
