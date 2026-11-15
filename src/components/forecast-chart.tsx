@@ -1,7 +1,7 @@
 import type { DayBalance } from "@/lib/forecast";
 
 // Projected balance per day as a step line (balances change on whole days).
-// Dashed line at ₱0, dotted lines on paydays, a dot on the low point.
+// Dashed line at the floor (₱0 unless set), dotted lines on paydays, a dot on the low point.
 // `compare` draws a second line, for "Can I afford this?" before vs after.
 // No hooks, so it renders on the server and inside client components.
 
@@ -14,6 +14,7 @@ export function ForecastChart({
   low,
   label,
   height = 140,
+  floor = 0,
 }: {
   days: DayBalance[];
   compare?: DayBalance[];
@@ -22,11 +23,13 @@ export function ForecastChart({
   /** Read out instead of the drawing. */
   label: string;
   height?: number;
+  /** Where the dashed line goes: ₱0, or the payment plan's floor. */
+  floor?: number;
 }) {
   if (days.length < 2) return null;
   const H = height;
   const values = [...days, ...(compare ?? [])].map((d) => d.balance);
-  const min = Math.min(0, ...values);
+  const min = Math.min(0, floor, ...values);
   const max = Math.max(...values);
   const span = max - min || 1;
   // A little room above the top and below the bottom.
@@ -52,7 +55,7 @@ export function ForecastChart({
             <line key={date} x1={x(indexOf.get(date)!)} x2={x(indexOf.get(date)!)} y1={0} y2={H} className="stroke-sun" strokeWidth={2} strokeDasharray="3 5" vectorEffect="non-scaling-stroke" />
           ) : null,
         )}
-        <line x1={0} x2={W} y1={y(0)} y2={y(0)} className="stroke-muted" strokeWidth={1.5} strokeDasharray="6 5" vectorEffect="non-scaling-stroke" />
+        <line x1={0} x2={W} y1={y(floor)} y2={y(floor)} className="stroke-muted" strokeWidth={1.5} strokeDasharray="6 5" vectorEffect="non-scaling-stroke" />
         {compare && (
           <path d={step(compare)} fill="none" className="stroke-coral" strokeWidth={2.5} strokeDasharray="7 5" vectorEffect="non-scaling-stroke" />
         )}

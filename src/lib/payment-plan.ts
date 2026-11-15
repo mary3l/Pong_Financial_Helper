@@ -136,6 +136,37 @@ export function earliestToPay(item: ForecastItem, plan: PaymentPlan, today: stri
   return earliest;
 }
 
+/** One item on the plan, with what's in your spending wallets right after it. */
+export type PlanRow = { item: ForecastItem; date: string; balanceAfter: number };
+
+/**
+ * Every item that moves money within the plan, by date (late ones today),
+ * each with your wallets right after it: the day before's end-of-day balance
+ * on the plan (this morning's for today), plus that day's items so far. The
+ * day's spending comes off at the end of the day, so the last row of a day
+ * is the day's balance before spending. Paydays with no amount stay in, at 0.
+ */
+export function planRows(plan: PaymentPlan, start: number, items: ForecastItem[], today: string): PlanRow[] {
+  const index = new Map(plan.days.map((d, i) => [d.date, i]));
+  const rows: PlanRow[] = [];
+  let date = "";
+  let running = start;
+  const events = items
+    .map((item) => ({ item, date: item.dueOn < today ? today : item.dueOn, change: itemEffect(item) }))
+    .filter((e) => index.has(e.date) && (e.change !== 0 || (e.item.kind === "payday" && e.item.amount === null)))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  for (const e of events) {
+    if (e.date !== date) {
+      date = e.date;
+      const i = index.get(date)!;
+      running = i === 0 ? start : plan.days[i - 1].balance;
+    }
+    running = roundCents(running + e.change);
+    rows.push({ item: e.item, date: e.date, balanceAfter: running });
+  }
+  return rows;
+}
+
 /** The stretch after today's, when the amount goes up. */
 export function nextSegment(plan: PaymentPlan): PlanSegment | null {
   return plan.segments[1] ?? null;

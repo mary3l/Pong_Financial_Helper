@@ -4,17 +4,16 @@ import { Suspense } from "react";
 import { ForecastChart } from "@/components/forecast-chart";
 import { Pong, type PongMood } from "@/components/pong";
 import { categoryInfo } from "@/lib/categories";
-import { getPayroll, getPlanInputs } from "@/lib/data";
+import { getCapLines, getCashSpentToday, getPayroll, getPlanInputs, getTransactions } from "@/lib/data";
 import { addDays, formatShortDay, today as getToday } from "@/lib/dates";
-import { itemEffect, itemLabel, lowestBetween, paidInAdvance, project, type DayBalance } from "@/lib/forecast";
+import { itemEffect, itemLabel, lowestBetween, nextUnreceivedPayday, type DayBalance } from "@/lib/forecast";
 import { formatPeso } from "@/lib/money";
 import { billsByPayday } from "@/lib/office-days";
 import { PERIOD_DAYS, paymentsByPeriod } from "@/lib/pay-periods";
-import { nextOccurrence } from "@/lib/schedule";
+import { PLAN_DAYS, PLAN_FLOOR, planRows, planToday } from "@/lib/payment-plan";
 import { BillsByPayday, PaymentsByPeriod } from "./payment-sections";
 import { PlanTabs, SegmentLinks } from "./plan-tabs";
 import { LogButton } from "@/components/log-button";
-import { PaidInAdvanceTag } from "@/components/paid-in-advance-tag";
 
 export const metadata = { title: "Plan · Pong Money" };
 
@@ -40,10 +39,11 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
   // Read the clock only at request time (Cache Components).
   await connection();
   const today = getToday();
-  // Enough items for the pay periods too; the chart and list still stop at `days`.
-  const [{ accounts, inWallets, payday, items }, payroll] = await Promise.all([
-    getPlanInputs(today, Math.max(days, PERIOD_DAYS)),
+  // The whole plan and the pay periods; the chart and list still stop at `days`.
+  const [{ accounts, inWallets, payday, items }, payroll, todays] = await Promise.all([
+    getPlanInputs(today, Math.max(PLAN_DAYS, PERIOD_DAYS)),
     getPayroll(today),
+    getTransactions({ from: today, to: today }),
   ]);
 
   if (!accounts.length) {
@@ -58,18 +58,23 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
     );
   }
 
-  const forecast = project(inWallets, items, today, days);
-  const nextPayday = payday ? nextOccurrence(payday, today) : null;
+  // Same plan as Home and Payments: spending its daily amount, BNPL caps held on their bill days.
+  const [cash, lines] = await Promise.all([getCashSpentToday(todays, accounts), getCapLines(accounts, today)]);
+  const { plan, start, held } = planToday({ inWallets, cash, items, today, lines });
   const end = addDays(today, days);
+  const forecastDays = plan.days.slice(0, days);
+  const forecastLow = lowestBetween(forecastDays, today, end)!;
+  const rows = planRows(plan, start, [...items, ...held], today).filter((r) => r.date < end);
+  const nextPayday = payday ? nextUnreceivedPayday(payday, items, today) : null;
   const paydays = items.filter((i) => i.kind === "payday" && i.dueOn < end).map((i) => i.dueOn);
   const periods = paymentsByPeriod({ items, today, nextPayday });
   // Office days need the payroll calculator, which pays each cutoff on its own payday.
   const records = payroll && payroll !== "missing" ? payroll : null;
   const byPayday = payday ? billsByPayday({ items, today, payday, inWallets, payroll: records }) : [];
   const weekOut = addDays(today, 7);
-  const lowBeforePayday = nextPayday ? lowestBetween(forecast.days, today, nextPayday) : null;
-  const headsUp = lowBeforePayday ?? forecast.lowest;
-  const pong = headsUpMood(headsUp, inWallets);
+  const lowBeforePayday = nextPayday ? lowestBetween(forecastDays, today, nextPayday) : null;
+  const headsUp = lowBeforePayday ?? forecastLow;
+  const pong = headsUpMood(headsUp);
 
   return (
     <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:items-start lg:gap-6">
@@ -85,11 +90,12 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
             <span className="text-sm font-bold text-muted">now {formatPeso(inWallets)}</span>
           </div>
           <ForecastChart
-            days={forecast.days}
+            days={forecastDays}
             paydays={paydays}
-            low={forecast.lowest}
+            low={forecastLow}
+            floor={PLAN_FLOOR}
             height={170}
-            label={`Projected balance for the next ${days} days, from ${formatPeso(inWallets)} today. Lowest ${formatPeso(forecast.lowest.balance)} on ${formatShortDay(forecast.lowest.date, today)}.`}
+            label={`Projected balance for the next ${days} days, from ${formatPeso(inWallets)} today. Lowest ${formatPeso(forecastLow.balance)} on ${formatShortDay(forecastLow.date, today)}.`}
           />
           <div className="flex justify-between text-xs font-bold text-muted">
             <span>Today</span>
@@ -98,7 +104,7 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
             <span className="flex items-center gap-1.5"><span aria-hidden="true" className="h-0.5 w-4 bg-sea" />Balance</span>
             <span className="flex items-center gap-1.5"><span aria-hidden="true" className="h-3 w-0 border-l-2 border-dashed border-sun" />Payday</span>
-            <span className="flex items-center gap-1.5"><span aria-hidden="true" className="w-4 border-t-2 border-dashed border-muted" />₱0</span>
+            <span className="flex items-center gap-1.5"><span aria-hidden="true" className="w-4 border-t-2 border-dashed border-muted" />{formatPeso(PLAN_FLOOR)}</span>
           </div>
         </section>
 
@@ -108,7 +114,7 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
             <h2 className="text-[13px] font-extrabold text-muted">HEADS UP</h2>
             <p className="text-[15px] leading-snug">
               {lowBeforePayday ? "Lowest point before payday is " : "Lowest point is "}
-              <strong className={headsUp.balance < 0 ? "text-coral-text" : ""}>
+              <strong className={headsUp.balance < PLAN_FLOOR ? "text-coral-text" : ""}>
                 {formatPeso(headsUp.balance)} on {formatShortDay(headsUp.date, today)}
               </strong>
               {nextPayday && headsUp.date === addDays(nextPayday, -1) ? ", the day before payday." : "."}
@@ -146,14 +152,16 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
       <section aria-labelledby="coming-heading" className="flex flex-col gap-2.5">
         <h2 id="coming-heading" className="font-display text-xl font-semibold">What&apos;s coming</h2>
         <div className="rounded-[20px] bg-card px-4 py-1.5">
-          {forecast.rows.length ? (
+          {rows.length ? (
             <ul className="flex flex-col">
-              {forecast.rows.map(({ item, date, balanceAfter }) => {
+              {rows.map(({ item, date, balanceAfter }) => {
                 const change = itemEffect(item);
                 const late = item.dueOn < today;
+                // What's still open of a BNPL bill's cap: held, not something to edit or pay.
+                const cap = item.key.startsWith("cap|");
                 // A week out, only money going out gets a button: pay it early, from what you have now.
                 const soon = date < weekOut;
-                const payEarly = !soon && item.flow === "out" && item.amount !== null;
+                const payEarly = !cap && !soon && item.flow === "out" && item.amount !== null;
                 return (
                   <li key={item.key} className="grid grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-b border-line-soft py-2.5 last:border-0">
                     <span className={`row-span-2 text-xs font-extrabold uppercase ${late ? "text-coral-text" : "text-muted"}`}>
@@ -164,7 +172,6 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
                         {item.name}
                         {item.estimate && <span className="font-normal text-muted"> (est.)</span>}
                       </span>
-                      {paidInAdvance(item) && <PaidInAdvanceTag paidOn={item.paidOn!} today={today} />}
                     </span>
                     <span className={`text-right font-display text-[17px] font-semibold ${change > 0 ? "text-sea" : ""}`}>
                       {item.amount === null ? "amount not set" : `${change > 0 ? "+" : "−"}${formatPeso(item.amount)}`}
@@ -175,10 +182,10 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
                       {item.boughtOn &&
                         ` · bought ${formatShortDay(item.boughtOn, today)} on ${accounts.find((a) => a.id === item.lenderId)?.name ?? "your card"}, paid with its bill`}
                       {" · "}balance after{" "}
-                      <span className={balanceAfter < 0 ? "font-bold text-coral-text" : ""}>{formatPeso(balanceAfter)}</span>
+                      <span className={balanceAfter < PLAN_FLOOR ? "font-bold text-coral-text" : ""}>{formatPeso(balanceAfter)}</span>
                     </span>
                     <span className="flex items-center justify-end gap-1">
-                      {(item.kind === "planned" || item.kind === "bill" || item.kind === "income") && (
+                      {!cap && (item.kind === "planned" || item.kind === "bill" || item.kind === "income") && (
                         <Link
                           href={`/plan/scheduled?edit=${item.id}`}
                           aria-label={`Edit ${item.name}`}
@@ -187,7 +194,7 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
                           Edit
                         </Link>
                       )}
-                      {(soon || payEarly || item.transactionId) && <LogButton item={item} accounts={accounts} early={payEarly} />}
+                      {!cap && (soon || payEarly) && <LogButton item={item} accounts={accounts} early={payEarly} />}
                     </span>
                   </li>
                 );
@@ -209,9 +216,10 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
   );
 }
 
-function headsUpMood(low: DayBalance, start: number): PongMood {
+// The plan keeps PLAN_FLOOR, so only dipping under it is news.
+function headsUpMood(low: DayBalance): PongMood {
   if (low.balance < 0) return "shocked";
-  if (low.balance < start * 0.15) return "worried";
+  if (low.balance < PLAN_FLOOR) return "worried";
   return "happy";
 }
 

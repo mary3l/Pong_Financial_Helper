@@ -9,6 +9,7 @@ import {
   earliestToPay,
   isBnplBill,
   PLAN_FLOOR,
+  planRows,
   planToday,
   tomorrowsAmount,
 } from "@/lib/payment-plan";
@@ -77,6 +78,23 @@ describe("buildPaymentPlan", () => {
     const plan = buildPaymentPlan({ start: 2000, items: [item(3, -1500)], today, days: 10 });
     expect(plan.short).toBe(true);
     expect(plan.perDay).toBe(0);
+  });
+});
+
+describe("planRows", () => {
+  it("gives each item the balance after it: the day before's, plus that day's items", () => {
+    const plan = buildPaymentPlan({ start: 8000, items: crunch, today, days: 20 });
+    // ₱400 a day: ₱6,000 left after day 4, ₱1,000 after day 9.
+    expect(planRows(plan, 8000, crunch, today).map((r) => [r.date, r.item.name, r.balanceAfter])).toEqual([
+      [day(5), "SLoan", 3000],
+      [day(10), "Payday", 7000],
+    ]);
+  });
+
+  it("puts late items today, skips paid ones and items past the plan", () => {
+    const items = [item(-2, -500, { name: "Late" }), item(1, -200, { transactionId: "t1" }), item(30, -100)];
+    const plan = buildPaymentPlan({ start: 3000, items, today, days: 10 });
+    expect(planRows(plan, 3000, items, today)).toEqual([{ item: items[0], date: today, balanceAfter: 2500 }]);
   });
 });
 

@@ -27,7 +27,7 @@ import {
   periodContaining,
   today as getToday,
 } from "@/lib/dates";
-import { itemLabel, nextUnreceivedPayday, project, type ForecastItem } from "@/lib/forecast";
+import { itemLabel, lowestBetween, nextUnreceivedPayday, type ForecastItem } from "@/lib/forecast";
 import { getUsdRate } from "@/lib/fx";
 import {
   accountTypeLabel,
@@ -42,7 +42,7 @@ import {
   purposeLabel,
   roundCents,
 } from "@/lib/money";
-import { PLAN_DAYS, planToday } from "@/lib/payment-plan";
+import { PLAN_DAYS, PLAN_FLOOR, planToday } from "@/lib/payment-plan";
 import { dueDate, isOverdue } from "@/lib/people";
 import { saveWidgetSnapshot } from "@/lib/widget-snapshot";
 import { SafeToSpendCard, pongSays } from "./safe-to-spend-card";
@@ -120,7 +120,9 @@ async function Dashboard() {
   const limitLeft = roundCents(creditRoom(accounts).reduce((sum, l) => sum + (l.creditLeft ?? 0), 0));
   // The home screen widget shows this too (0020_widget_safe_to_spend.sql).
   await saveWidgetSnapshot({ perDay: day.plan.perDay, until: day.plan.segments[0].until }, today);
-  const forecast = project(inWallets, items, today, 30);
+  // The plan's balance: spending its daily amount, with BNPL caps held.
+  const forecastDays = day.plan.days.slice(0, 30);
+  const forecastLow = lowestBetween(forecastDays, today, addDays(today, 30))!;
   const nextPayday = payday ? nextUnreceivedPayday(payday, items, today) : null;
   const pong = pongSays(day, { hasWallets: accounts.length > 0, hasPayday: Boolean(payday) });
   // Everything still to come in the next 7 days, plus late planned items.
@@ -231,18 +233,19 @@ async function Dashboard() {
               <span className="text-sm font-extrabold text-sea">Forecast ›</span>
             </span>
             <ForecastChart
-              days={forecast.days}
-              low={forecast.lowest}
+              days={forecastDays}
+              low={forecastLow}
+              floor={PLAN_FLOOR}
               paydays={items.filter((i) => i.kind === "payday").map((i) => i.dueOn)}
               height={64}
-              label={`Projected balance for the next 30 days. Lowest ${formatPeso(forecast.lowest.balance)} on ${formatShortDay(forecast.lowest.date, today)}.`}
+              label={`Projected balance for the next 30 days. Lowest ${formatPeso(forecastLow.balance)} on ${formatShortDay(forecastLow.date, today)}.`}
             />
             <span className="text-[15px]">
               Lowest:{" "}
-              <strong className={forecast.lowest.balance < 0 ? "text-coral-text" : ""}>
-                {formatPeso(forecast.lowest.balance)} on {formatShortDay(forecast.lowest.date, today)}
+              <strong className={forecastLow.balance < PLAN_FLOOR ? "text-coral-text" : ""}>
+                {formatPeso(forecastLow.balance)} on {formatShortDay(forecastLow.date, today)}
               </strong>
-              {nextPayday && forecast.lowest.date === addDays(nextPayday, -1) && ", the day before payday"}
+              {nextPayday && forecastLow.date === addDays(nextPayday, -1) && ", the day before payday"}
             </span>
           </Link>
         )}

@@ -5,8 +5,8 @@ import { ChevronIcon } from "@/components/icons";
 import { creditRoom } from "@/lib/bnpl";
 import { getBnplCap, getPlanInputs } from "@/lib/data";
 import { today as getToday } from "@/lib/dates";
+import { nextUnreceivedPayday } from "@/lib/forecast";
 import { countsAsSpending, paysInPesos } from "@/lib/money";
-import { nextOccurrence } from "@/lib/schedule";
 import { AffordForm } from "./afford-form";
 
 export const metadata = { title: "Can I afford this? · Pong Money" };
@@ -46,7 +46,7 @@ async function Afford() {
       start={inWallets}
       items={items}
       today={today}
-      nextPayday={payday ? nextOccurrence(payday, today) : null}
+      nextPayday={payday ? nextUnreceivedPayday(payday, items, today) : null}
       payKnown={Boolean(payday?.amount)}
       payday={payday ? { frequency: payday.frequency, day1: payday.day1, day2: payday.day2 } : null}
       credit={credit}
