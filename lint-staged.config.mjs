@@ -4,7 +4,7 @@
 const MAX_FILES = 40;
 const quote = (files) => files.map((f) => `"${f}"`).join(" ");
 
-export default {
+const config = {
   "*.{ts,tsx,js,mjs}": (files) =>
     files.length > MAX_FILES
       ? ["eslint --fix", "prettier --write ."]
@@ -12,3 +12,5 @@ export default {
   "*.{css,json,yml,yaml}": (files) =>
     files.length > MAX_FILES ? "prettier --write ." : `prettier --write ${quote(files)}`,
 };
+
+export default config;
