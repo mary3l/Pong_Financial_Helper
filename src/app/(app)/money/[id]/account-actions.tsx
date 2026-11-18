@@ -2,7 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { addUpcomingPayments, deleteLoanForGood, fixBillDates, payInstallments, removePlan, updatePlan } from "@/app/credit-actions";
+import {
+  addUpcomingPayments,
+  deleteLoanForGood,
+  fixBillDates,
+  payInstallments,
+  removePlan,
+  updatePlan,
+} from "@/app/credit-actions";
 import { assignPlanToPerson, theyPaidInstallments } from "@/app/people-actions";
 import { removeWallet, restoreWallet } from "@/app/wallet-actions";
 import { AmountInput } from "@/components/amount-input";
@@ -34,7 +41,9 @@ export function PayBillButton({ ids, total }: { ids: string[]; total: number }) 
       >
         {pending ? "Paying…" : `Pay bill · ${formatPeso(total)}`}
       </button>
-      <p role="alert" className="text-xs font-bold text-coral-text empty:hidden">{error}</p>
+      <p role="alert" className="text-xs font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
     </div>
   );
 }
@@ -61,7 +70,9 @@ export function TheyPaidButton({ ids, label }: { ids: string[]; label: string })
       >
         {pending ? "Saving…" : label}
       </button>
-      <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">{error}</span>
+      <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">
+        {error}
+      </span>
     </span>
   );
 }
@@ -97,7 +108,9 @@ export function AssignPlanButton({
   const search = typed.trim().toLowerCase();
   const matches = search ? people.filter((p) => p.name.toLowerCase().includes(search)) : people;
   const exact = people.find((p) => p.name.toLowerCase() === search);
-  const who = personId ? people.find((p) => p.id === personId)?.name : exact?.name ?? typed.trim();
+  const who = personId
+    ? people.find((p) => p.id === personId)?.name
+    : (exact?.name ?? typed.trim());
 
   const button = (
     <button
@@ -119,7 +132,11 @@ export function AssignPlanButton({
             onSubmit={(e) => {
               e.preventDefault();
               setError(null);
-              const target = personId ? { personId } : exact ? { personId: exact.id } : { name: typed };
+              const target = personId
+                ? { personId }
+                : exact
+                  ? { personId: exact.id }
+                  : { name: typed };
               if (!personId && !search) {
                 setError("Who pays it? Pick someone or type a name.");
                 return;
@@ -132,7 +149,9 @@ export function AssignPlanButton({
             }}
             className="flex flex-col gap-3"
           >
-            <label htmlFor={`assign-${planId}`} className="text-sm font-bold">{loan ? `Who is this ${name} loan for?` : `Who uses your account for ${name}?`}</label>
+            <label htmlFor={`assign-${planId}`} className="text-sm font-bold">
+              {loan ? `Who is this ${name} loan for?` : `Who uses your account for ${name}?`}
+            </label>
             <input
               id={`assign-${planId}`}
               value={personId ? (people.find((p) => p.id === personId)?.name ?? "") : typed}
@@ -162,17 +181,34 @@ export function AssignPlanButton({
             )}
             <p className="text-xs leading-snug text-muted">
               {who || "They"} will owe you {formatPeso(left)}
-              {interest > 0 && <>, plus the {formatPeso(interest)} {loan ? "interest" : "fees"} in the payments left</>}. Its
-              payments leave your forecast and Safe to spend, and <strong>They paid</strong> sends their money straight to{" "}
-              {loan ? name : "the bill"}, so none of it is your expense. Payments already made stay as they are.
-              {loan?.movesMoney && " The loan money that landed in your wallet changes to having gone to them."}
+              {interest > 0 && (
+                <>
+                  , plus the {formatPeso(interest)} {loan ? "interest" : "fees"} in the payments
+                  left
+                </>
+              )}
+              . Its payments leave your forecast and Safe to spend, and <strong>They paid</strong>{" "}
+              sends their money straight to {loan ? name : "the bill"}, so none of it is your
+              expense. Payments already made stay as they are.
+              {loan?.movesMoney &&
+                " The loan money that landed in your wallet changes to having gone to them."}
             </p>
-            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+              {error}
+            </p>
             <div className="flex flex-wrap gap-2">
-              <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-4 font-extrabold text-ink disabled:opacity-60">
+              <button
+                type="submit"
+                disabled={pending}
+                className="h-11 rounded-[14px] bg-sun px-4 font-extrabold text-ink disabled:opacity-60"
+              >
                 {pending ? "Saving…" : `${who || "They"} pays it`}
               </button>
-              <button type="button" onClick={() => setOpen(false)} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card"
+              >
                 Cancel
               </button>
             </div>
@@ -213,7 +249,10 @@ export function EditPlanButton({
   const payments = byHand ? unpaid : null;
   const parsed = payments ? parseAmount(amount) : NaN;
   // How much what you owe changes: the principal of every payment left.
-  const diff = payments && Number.isFinite(parsed) ? roundCents((parsed - payments.fee - payments.principal) * payments.count) : 0;
+  const diff =
+    payments && Number.isFinite(parsed)
+      ? roundCents((parsed - payments.fee - payments.principal) * payments.count)
+      : 0;
 
   function start() {
     setName(savedName);
@@ -259,7 +298,9 @@ export function EditPlanButton({
         <FormDialog title={`Edit ${savedName}`} onClose={() => setOpen(false)}>
           <form onSubmit={save} className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
-              <label htmlFor={`plan-name-${id}`} className="text-sm font-bold">Name</label>
+              <label htmlFor={`plan-name-${id}`} className="text-sm font-bold">
+                Name
+              </label>
               <input
                 id={`plan-name-${id}`}
                 value={name}
@@ -272,9 +313,16 @@ export function EditPlanButton({
             {payments && (
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1">
-                  <label htmlFor={`plan-amount-${id}`} className="text-sm font-bold">{many ? `Each of the ${payments.count} left` : "Amount"}</label>
+                  <label htmlFor={`plan-amount-${id}`} className="text-sm font-bold">
+                    {many ? `Each of the ${payments.count} left` : "Amount"}
+                  </label>
                   <div className="relative">
-                    <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
+                    <span
+                      aria-hidden="true"
+                      className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted"
+                    >
+                      ₱
+                    </span>
                     <AmountInput
                       id={`plan-amount-${id}`}
                       value={amount}
@@ -286,7 +334,9 @@ export function EditPlanButton({
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label htmlFor={`plan-due-${id}`} className="text-sm font-bold">{many ? "Next payment due" : "Due"}</label>
+                  <label htmlFor={`plan-due-${id}`} className="text-sm font-bold">
+                    {many ? "Next payment due" : "Due"}
+                  </label>
                   <input
                     id={`plan-due-${id}`}
                     type="date"
@@ -307,16 +357,27 @@ export function EditPlanButton({
                   className="mt-0.5 h-5 w-5 shrink-0 accent-sea"
                 />
                 <span className="text-[13px] font-bold">
-                  {diff > 0 ? "Add" : "Take"} {formatPeso(Math.abs(diff))} {diff > 0 ? "to" : "off"} what I owe on {lineName}
+                  {diff > 0 ? "Add" : "Take"} {formatPeso(Math.abs(diff))} {diff > 0 ? "to" : "off"}{" "}
+                  what I owe on {lineName}
                 </span>
               </label>
             )}
-            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+              {error}
+            </p>
             <div className="flex flex-wrap gap-2">
-              <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
+              <button
+                type="submit"
+                disabled={pending}
+                className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60"
+              >
                 {pending ? "Saving…" : "Save"}
               </button>
-              <button type="button" onClick={() => setOpen(false)} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card"
+              >
                 Cancel
               </button>
             </div>
@@ -355,7 +416,9 @@ export function RemovePlanButton({ id, name }: { id: string; name: string }) {
       >
         {pending ? "Removing…" : confirm ? "Tap to remove" : "Remove"}
       </button>
-      <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">{error}</span>
+      <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">
+        {error}
+      </span>
     </span>
   );
 }
@@ -368,7 +431,12 @@ export function AccountActions({
 }: {
   account: Account;
   /** Loans: the plan and wallets the edit form needs. */
-  loan?: { plan: InstallmentPlan | null; wallets: Account[]; today: string; paidBy?: string | null };
+  loan?: {
+    plan: InstallmentPlan | null;
+    wallets: Account[];
+    today: string;
+    paidBy?: string | null;
+  };
   startEditing?: boolean;
 }) {
   const router = useRouter();
@@ -421,13 +489,19 @@ export function AccountActions({
               return;
             }
             startTransition(async () => {
-              const result = account.archived ? await restoreWallet(account.id) : await removeWallet(account.id);
+              const result = account.archived
+                ? await restoreWallet(account.id)
+                : await removeWallet(account.id);
               if (result.error) setError(result.error);
               else if (!account.archived && !result.archived) router.push("/money");
             });
           }}
           className={`h-10 rounded-[14px] px-4 text-sm font-extrabold disabled:opacity-60 ${
-            account.archived ? "bg-card text-ink" : confirm ? "bg-coral text-white" : "text-coral-text hover:bg-coral-tint"
+            account.archived
+              ? "bg-card text-ink"
+              : confirm
+                ? "bg-coral text-white"
+                : "text-coral-text hover:bg-coral-tint"
           }`}
         >
           {account.archived ? "Restore" : confirm ? "Tap again to remove" : "Remove"}
@@ -438,7 +512,12 @@ export function AccountActions({
           With history, it&apos;s archived instead, so your past transactions stay right.
         </p>
       )}
-      <p role="alert" className="max-w-60 text-right text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <p
+        role="alert"
+        className="max-w-60 text-right text-sm font-bold text-coral-text empty:hidden"
+      >
+        {error}
+      </p>
     </div>
   );
 }
@@ -454,9 +533,9 @@ export function DeleteLoanForGood({ account }: { account: Account }) {
       {account.type === "loan" && (
         <div className="mt-2 flex flex-col gap-2 rounded-[20px] bg-coral-tint p-4">
           <p className="text-sm leading-snug">
-            <strong>Added by mistake, or twice?</strong> Delete for good removes {account.name} and everything it
-            logged: the money it put into a wallet, its payments and their interest. Wallet balances go back to what
-            they&apos;d be without it. This can&apos;t be undone.
+            <strong>Added by mistake, or twice?</strong> Delete for good removes {account.name} and
+            everything it logged: the money it put into a wallet, its payments and their interest.
+            Wallet balances go back to what they&apos;d be without it. This can&apos;t be undone.
           </p>
           <button
             type="button"
@@ -477,11 +556,17 @@ export function DeleteLoanForGood({ account }: { account: Account }) {
               confirmDelete ? "bg-coral text-white" : "bg-card text-coral-text"
             }`}
           >
-            {pending && confirmDelete ? "Deleting…" : confirmDelete ? "Tap again to delete for good" : "Delete for good"}
+            {pending && confirmDelete
+              ? "Deleting…"
+              : confirmDelete
+                ? "Tap again to delete for good"
+                : "Delete for good"}
           </button>
         </div>
       )}
-      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
     </div>
   );
 }
@@ -504,9 +589,15 @@ export function FixBillDatesButton({ lineId, count }: { lineId: string; count: n
         }}
         className="h-11 self-start rounded-[14px] bg-sun px-4 font-extrabold text-ink disabled:opacity-60"
       >
-        {pending ? "Moving…" : count === 1 ? "Move it to the right bill" : `Move all ${count} to the right bills`}
+        {pending
+          ? "Moving…"
+          : count === 1
+            ? "Move it to the right bill"
+            : `Move all ${count} to the right bills`}
       </button>
-      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
     </div>
   );
 }
@@ -624,8 +715,8 @@ export function UpcomingPayments({
         <FormDialog title="Upcoming payment" onClose={close}>
           <form onSubmit={save} className="flex flex-col gap-3">
             <p className="text-[13px] text-muted">
-              A bill or an installment on {account.name}, like one its app already shows. It goes into
-              Coming up, your forecast and Safe to spend.
+              A bill or an installment on {account.name}, like one its app already shows. It goes
+              into Coming up, your forecast and Safe to spend.
             </p>
             <div role="group" aria-label="Kind" className="flex flex-wrap gap-2">
               {[
@@ -643,9 +734,16 @@ export function UpcomingPayments({
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="flex flex-col gap-1">
-                <label htmlFor="upcoming-amount" className="text-sm font-bold">{installment ? "Monthly payment" : "Amount"}</label>
+                <label htmlFor="upcoming-amount" className="text-sm font-bold">
+                  {installment ? "Monthly payment" : "Amount"}
+                </label>
                 <div className="relative">
-                  <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted"
+                  >
+                    ₱
+                  </span>
                   <AmountInput
                     id="upcoming-amount"
                     value={amount}
@@ -658,7 +756,9 @@ export function UpcomingPayments({
                 </div>
               </div>
               <div className="flex flex-col gap-1">
-                <label htmlFor="upcoming-due" className="text-sm font-bold">{installment ? "Next payment due" : "Due"}</label>
+                <label htmlFor="upcoming-due" className="text-sm font-bold">
+                  {installment ? "Next payment due" : "Due"}
+                </label>
                 <input
                   id="upcoming-due"
                   type="date"
@@ -672,27 +772,51 @@ export function UpcomingPayments({
               {installment && (
                 <>
                   <div className="flex flex-col gap-1">
-                    <label htmlFor="upcoming-months" className="text-sm font-bold">Months in all</label>
-                    <select id="upcoming-months" value={months} onChange={(e) => setMonths(Number(e.target.value))} className={FIELD_CLASS}>
+                    <label htmlFor="upcoming-months" className="text-sm font-bold">
+                      Months in all
+                    </label>
+                    <select
+                      id="upcoming-months"
+                      value={months}
+                      onChange={(e) => setMonths(Number(e.target.value))}
+                      className={FIELD_CLASS}
+                    >
                       {MONTH_CHOICES.map((m) => (
-                        <option key={m} value={m}>{m} months</option>
+                        <option key={m} value={m}>
+                          {m} months
+                        </option>
                       ))}
                     </select>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label htmlFor="upcoming-paid" className="text-sm font-bold">Payments already made</label>
-                    <select id="upcoming-paid" value={paid} onChange={(e) => setAlreadyPaid(Number(e.target.value))} className={FIELD_CLASS}>
+                    <label htmlFor="upcoming-paid" className="text-sm font-bold">
+                      Payments already made
+                    </label>
+                    <select
+                      id="upcoming-paid"
+                      value={paid}
+                      onChange={(e) => setAlreadyPaid(Number(e.target.value))}
+                      className={FIELD_CLASS}
+                    >
                       {Array.from({ length: total }, (_, i) => i).map((n) => (
-                        <option key={n} value={n}>{n === 0 ? "None yet" : `${n} of ${total}`}</option>
+                        <option key={n} value={n}>
+                          {n === 0 ? "None yet" : `${n} of ${total}`}
+                        </option>
                       ))}
                     </select>
                   </div>
                   <div className="flex flex-col gap-1">
                     <label htmlFor="upcoming-fee" className="text-sm font-bold">
-                      Interest or fee in each <span className="font-semibold text-muted">(optional)</span>
+                      Interest or fee in each{" "}
+                      <span className="font-semibold text-muted">(optional)</span>
                     </label>
                     <div className="relative">
-                      <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
+                      <span
+                        aria-hidden="true"
+                        className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted"
+                      >
+                        ₱
+                      </span>
                       <AmountInput
                         id="upcoming-fee"
                         value={fee}
@@ -703,7 +827,8 @@ export function UpcomingPayments({
                       />
                     </div>
                     <span id="upcoming-fee-hint" className="text-xs text-muted">
-                      Only this part counts as spending when you pay. The rest pays down what you owe.
+                      Only this part counts as spending when you pay. The rest pays down what you
+                      owe.
                     </span>
                   </div>
                 </>
@@ -724,7 +849,11 @@ export function UpcomingPayments({
             </div>
             {valid && dates.length > 0 && (
               <p className="text-[13px] text-muted">
-                {formatPeso(each)} on {dates.slice(0, 3).map((d) => formatShortDay(d, today)).join(", ")}
+                {formatPeso(each)} on{" "}
+                {dates
+                  .slice(0, 3)
+                  .map((d) => formatShortDay(d, today))
+                  .join(", ")}
                 {dates.length > 3 && `, … ${formatShortDay(dates.at(-1)!, today)}`}
                 {installment && ` (payments ${paid + 1} to ${total} of ${total})`}
                 {left > 1 && ` · ${formatPeso(toPay)} left to pay`}
@@ -739,20 +868,34 @@ export function UpcomingPayments({
                 className="mt-0.5 h-5 w-5 shrink-0 accent-sea"
               />
               <span className="flex flex-col text-[13px]">
-                <span className="font-bold">Add {owedLeft > 0 ? formatPeso(owedLeft) : "it"} to what I owe on {account.name}</span>
+                <span className="font-bold">
+                  Add {owedLeft > 0 ? formatPeso(owedLeft) : "it"} to what I owe on {account.name}
+                </span>
                 <span className="text-muted">
                   Leave this off if it&apos;s already in what you owe
-                  {unscheduled > 0 ? ` (${formatPeso(unscheduled)} of that has no payment dates yet)` : ""}. Turn it on
-                  for a purchase you haven&apos;t logged.
+                  {unscheduled > 0
+                    ? ` (${formatPeso(unscheduled)} of that has no payment dates yet)`
+                    : ""}
+                  . Turn it on for a purchase you haven&apos;t logged.
                 </span>
               </span>
             </label>
-            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+              {error}
+            </p>
             <div className="flex flex-wrap gap-2">
-              <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
+              <button
+                type="submit"
+                disabled={pending}
+                className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60"
+              >
                 {pending ? "Saving…" : left > 1 ? `Add ${left} payments` : "Add payment"}
               </button>
-              <button type="button" onClick={close} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card">
+              <button
+                type="button"
+                onClick={close}
+                className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card"
+              >
                 Cancel
               </button>
             </div>

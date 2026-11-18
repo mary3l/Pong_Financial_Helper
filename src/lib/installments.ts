@@ -58,7 +58,11 @@ export function statementFor(purchasedOn: string, cutoffDay: number): string {
  * week after buying (statements need time to close). Without a due day: a
  * month later.
  */
-export function bnplFirstDue(purchasedOn: string, dueDay: number | null, cutoffDay: number | null = null): string {
+export function bnplFirstDue(
+  purchasedOn: string,
+  dueDay: number | null,
+  cutoffDay: number | null = null,
+): string {
   if (!dueDay) return monthlyDates(purchasedOn, 2)[1];
   if (cutoffDay) return nextOccurrence(monthly(dueDay), statementFor(purchasedOn, cutoffDay));
   return nextOccurrence(monthly(dueDay), addDays(purchasedOn, 6));
@@ -68,13 +72,26 @@ export function bnplFirstDue(purchasedOn: string, dueDay: number | null, cutoffD
  * The bill an older, unpaid purchase goes on when you add it now: the one
  * after the purchase, or the next one from today if that date has passed.
  */
-export function catchUpDue(purchasedOn: string, dueDay: number | null, today: string, cutoffDay: number | null = null): string {
+export function catchUpDue(
+  purchasedOn: string,
+  dueDay: number | null,
+  today: string,
+  cutoffDay: number | null = null,
+): string {
   const afterPurchase = bnplFirstDue(purchasedOn, dueDay, cutoffDay);
-  const nextBill = dueDay ? nextOccurrence({ frequency: "monthly", day1: dueDay, day2: null }, addDays(today, -1)) : today;
+  const nextBill = dueDay
+    ? nextOccurrence({ frequency: "monthly", day1: dueDay, day2: null }, addDays(today, -1))
+    : today;
   return afterPurchase < nextBill ? nextBill : afterPurchase;
 }
 
-export type Redate = { planId: string; name: string; purchasedOn: string; from: string; to: string };
+export type Redate = {
+  planId: string;
+  name: string;
+  purchasedOn: string;
+  from: string;
+  to: string;
+};
 
 /**
  * Purchases logged on a credit line that sit on the wrong bill for its
@@ -85,7 +102,12 @@ export type Redate = { planId: string; name: string; purchasedOn: string; from: 
  * so nothing you've settled or that's already late changes.
  */
 export function misdatedPlans(
-  plans: { id: string; name: string; sourceTxnId: string | null; payments: { seq: number; dueOn: string; transactionId: string | null }[] }[],
+  plans: {
+    id: string;
+    name: string;
+    sourceTxnId: string | null;
+    payments: { seq: number; dueOn: string; transactionId: string | null }[];
+  }[],
   purchasedOn: Map<string, string>,
   line: { dueDay: number | null; cutoffDay: number | null },
   today: string,
@@ -116,10 +138,16 @@ export function onCardBills(
   lines: { id: string; dueDay: number | null; cutoffDay: number | null }[],
 ): ForecastItem[] {
   return items.map((i) => {
-    if (i.flow !== "out" || (i.kind !== "planned" && i.kind !== "bill") || i.transactionId) return i;
+    if (i.flow !== "out" || (i.kind !== "planned" && i.kind !== "bill") || i.transactionId)
+      return i;
     const line = lines.find((l) => l.id === i.accountId);
     if (!line?.dueDay) return i;
-    return { ...i, boughtOn: i.dueOn, dueOn: bnplFirstDue(i.dueOn, line.dueDay, line.cutoffDay), lenderId: line.id };
+    return {
+      ...i,
+      boughtOn: i.dueOn,
+      dueOn: bnplFirstDue(i.dueOn, line.dueDay, line.cutoffDay),
+      lenderId: line.id,
+    };
   });
 }
 
@@ -155,7 +183,8 @@ export function loanSummary({ received, monthly, months }: LoanTerms): LoanSumma
   return {
     total,
     interest,
-    ratePerMonth: received > 0 && months > 0 ? Math.round((interest / received / months) * 10000) / 100 : 0,
+    ratePerMonth:
+      received > 0 && months > 0 ? Math.round((interest / received / months) * 10000) / 100 : 0,
   };
 }
 
@@ -172,7 +201,9 @@ export function loanSchedule(
   const principals = splitAmount(received, months);
   const dates = monthlyDates(nextDue, months - alreadyPaid);
   return principals.slice(alreadyPaid).map((principalPart, i) => {
-    const feePart = roundCents(Math.max(0, loanPayment(monthly, months, alreadyPaid + i + 1) - principalPart));
+    const feePart = roundCents(
+      Math.max(0, loanPayment(monthly, months, alreadyPaid + i + 1) - principalPart),
+    );
     return {
       seq: alreadyPaid + i + 1,
       dueOn: dates[i],
@@ -187,7 +218,11 @@ export function loanSchedule(
  * A loan you were already paying before adding it here: every due date
  * before today counts as paid, and the next one is when the rest start.
  */
-export function runningLoan(firstDue: string, months: number, today: string): { paid: number; nextDue: string } {
+export function runningLoan(
+  firstDue: string,
+  months: number,
+  today: string,
+): { paid: number; nextDue: string } {
   const dates = monthlyDates(firstDue, months);
   const paid = dates.filter((d) => d < today).length;
   return { paid, nextDue: dates[Math.min(paid, months - 1)] };
@@ -218,7 +253,10 @@ export type UpcomingTerms = {
  * line: the payments still to make, numbered "4 of 6", the next due on
  * `nextDue`.
  */
-export function upcomingSchedule({ amount, fee, months, alreadyPaid }: UpcomingTerms, nextDue: string): PaymentRow[] {
+export function upcomingSchedule(
+  { amount, fee, months, alreadyPaid }: UpcomingTerms,
+  nextDue: string,
+): PaymentRow[] {
   const feePart = roundCents(Math.min(fee, amount));
   const principalPart = roundCents(amount - feePart);
   return monthlyDates(nextDue, months - alreadyPaid).map((dueOn, i) => ({

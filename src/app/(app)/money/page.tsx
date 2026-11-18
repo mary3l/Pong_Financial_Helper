@@ -13,13 +13,7 @@ import {
 } from "@/lib/data";
 import { formatShortDay, today as getToday } from "@/lib/dates";
 import { getUsdRate } from "@/lib/fx";
-import {
-  formatPeso,
-  isDebt,
-  isSpendable,
-  pesoTotal,
-  roundCents,
-} from "@/lib/money";
+import { formatPeso, isDebt, isSpendable, pesoTotal, roundCents } from "@/lib/money";
 import { dueDate, isOverdue, type Person } from "@/lib/people";
 import { payPerMonth as monthlyPay } from "@/lib/schedule";
 import { MoneyTabs } from "./money-tabs";
@@ -63,7 +57,11 @@ async function Wallets() {
   const spending = wallets.filter((a) => !isSavingsWallet(a));
   const debts = active.filter((a) => isDebt(a.type));
   const debtGroups = [
-    { key: "bnpl", label: "Buy now, pay later", accounts: debts.filter((a) => a.type === "credit_line") },
+    {
+      key: "bnpl",
+      label: "Buy now, pay later",
+      accounts: debts.filter((a) => a.type === "credit_line"),
+    },
     { key: "loan", label: "Loans", accounts: debts.filter((a) => a.type === "loan") },
   ].filter((g) => g.accounts.length > 0);
 
@@ -77,12 +75,15 @@ async function Wallets() {
   // Pautang is still your money; utang is money you owe.
   const owedToYou = roundCents(people.reduce((sum, p) => sum + Math.max(0, p.balance), 0));
   const owe = roundCents(
-    debts.reduce((sum, a) => sum + Math.max(0, -a.balance), 0) + people.reduce((sum, p) => sum + Math.max(0, -p.balance), 0),
+    debts.reduce((sum, a) => sum + Math.max(0, -a.balance), 0) +
+      people.reduce((sum, p) => sum + Math.max(0, -p.balance), 0),
   );
 
   // What installments cost per month: the next unpaid payment of each plan. Others' plans on your lines are theirs.
   const perMonth = roundCents(
-    plans.filter((p) => !p.personId).reduce((sum, p) => sum + (p.payments.find((x) => !x.transactionId)?.amount ?? 0), 0),
+    plans
+      .filter((p) => !p.personId)
+      .reduce((sum, p) => sum + (p.payments.find((x) => !x.transactionId)?.amount ?? 0), 0),
   );
   const payday = recurring.find((r) => r.kind === "payday");
   // Each week or payday can bring a different amount.
@@ -96,14 +97,21 @@ async function Wallets() {
           {[
             { label: "You have", hint: "Spending money", value: have },
             { label: "You owe", hint: "BNPL, loans, utang", value: owe },
-            { label: "Net worth", hint: "Savings and pautang included", value: roundCents(everything + owedToYou - owe), wide: true },
+            {
+              label: "Net worth",
+              hint: "Savings and pautang included",
+              value: roundCents(everything + owedToYou - owe),
+              wide: true,
+            },
           ].map((s) => (
             <div
               key={s.label}
               className={`flex min-w-0 flex-col gap-0.5 rounded-2xl bg-card px-3.5 py-3 ${s.wide ? "col-span-2 sm:col-span-1" : ""}`}
             >
               <dt className="text-xs font-bold text-muted">{s.label}</dt>
-              <dd className={`font-display text-xl font-semibold whitespace-nowrap sm:text-2xl ${s.value < 0 ? "text-coral-text" : ""}`}>
+              <dd
+                className={`font-display text-xl font-semibold whitespace-nowrap sm:text-2xl ${s.value < 0 ? "text-coral-text" : ""}`}
+              >
                 {formatPeso(s.value)}
               </dd>
               <dd className="text-[11px] leading-tight text-muted">{s.hint}</dd>
@@ -133,7 +141,9 @@ async function Wallets() {
             {interestPerMonth > 0 && ` · earning ≈ ${formatPeso(interestPerMonth)}/mo in interest`}
           </h2>
           <WalletManager
-            accounts={accounts.filter((a) => (isSpendable(a.type) && !isSavingsWallet(a)) || a.archived)}
+            accounts={accounts.filter(
+              (a) => (isSpendable(a.type) && !isSavingsWallet(a)) || a.archived,
+            )}
             accrued={accrued}
             today={today}
             usdRate={usdRate?.rate ?? null}
@@ -156,18 +166,31 @@ async function Wallets() {
             <section key={group.key} aria-label={group.label} className="flex flex-col gap-1.5">
               {debtGroups.length > 1 && (
                 <h3 className="px-1 font-extrabold">
-                  {group.label} · {formatPeso(roundCents(group.accounts.reduce((sum, a) => sum + Math.max(0, -a.balance), 0)))}
+                  {group.label} ·{" "}
+                  {formatPeso(
+                    roundCents(group.accounts.reduce((sum, a) => sum + Math.max(0, -a.balance), 0)),
+                  )}
                 </h3>
               )}
               <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
                 {group.accounts.map((a) => (
-                  <li key={a.id} className="flex items-center gap-1 border-b border-line-soft last:border-0">
-                    <Link href={`/money/${a.id}`} className="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2.5 text-ink">
+                  <li
+                    key={a.id}
+                    className="flex items-center gap-1 border-b border-line-soft last:border-0"
+                  >
+                    <Link
+                      href={`/money/${a.id}`}
+                      className="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2.5 text-ink"
+                    >
                       <span className="flex min-w-0 flex-1 flex-col">
                         <span className="truncate font-bold">{a.name}</span>
-                        <span className="text-[13px] text-muted">{debtDetail(a, plans, today)}</span>
+                        <span className="text-[13px] text-muted">
+                          {debtDetail(a, plans, today)}
+                        </span>
                       </span>
-                      <span className="font-display text-[17px] font-semibold">{formatPeso(Math.max(0, -a.balance))}</span>
+                      <span className="font-display text-[17px] font-semibold">
+                        {formatPeso(Math.max(0, -a.balance))}
+                      </span>
                       <ChevronIcon size={20} className="text-muted" />
                     </Link>
                     {a.type === "credit_line" && (
@@ -225,31 +248,55 @@ function PeoplePanel({ people, today }: { people: Person[]; today: string }) {
   return (
     <section aria-labelledby="people-panel-heading" className="hidden flex-col gap-2 lg:flex">
       <div className="flex items-baseline justify-between">
-        <h2 id="people-panel-heading" className="font-display text-xl font-semibold">Utang &amp; pautang</h2>
-        <Link href="/money/people" className="text-sm font-extrabold text-sea">See all ›</Link>
+        <h2 id="people-panel-heading" className="font-display text-xl font-semibold">
+          Utang &amp; pautang
+        </h2>
+        <Link href="/money/people" className="text-sm font-extrabold text-sea">
+          See all ›
+        </Link>
       </div>
       <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
         {open.slice(0, 8).map((p) => (
           <li key={p.id} className="border-b border-line-soft last:border-0">
-            <Link href={`/money/people/${p.id}`} className="flex min-h-12 items-center justify-between gap-3 py-2 text-ink">
+            <Link
+              href={`/money/people/${p.id}`}
+              className="flex min-h-12 items-center justify-between gap-3 py-2 text-ink"
+            >
               <span className="flex min-w-0 flex-col">
                 <span className="truncate font-bold">{p.name}</span>
-                <span className={`text-[13px] ${isOverdue(p, today) ? "font-bold text-coral-text" : "text-muted"}`}>
+                <span
+                  className={`text-[13px] ${isOverdue(p, today) ? "font-bold text-coral-text" : "text-muted"}`}
+                >
                   {p.balance > 0 ? "Owes you" : "You owe"}
-                  {dueDate(p) && ` · ${isOverdue(p, today) ? "was due" : "due"} ${formatShortDay(dueDate(p)!, today)}`}
+                  {dueDate(p) &&
+                    ` · ${isOverdue(p, today) ? "was due" : "due"} ${formatShortDay(dueDate(p)!, today)}`}
                 </span>
               </span>
-              <span className={`font-display text-[17px] font-semibold ${p.balance < 0 ? "text-coral-text" : ""}`}>
+              <span
+                className={`font-display text-[17px] font-semibold ${p.balance < 0 ? "text-coral-text" : ""}`}
+              >
                 {formatPeso(Math.abs(p.balance))}
               </span>
             </Link>
           </li>
         ))}
-        {!open.length && <li className="py-3 text-[15px] text-muted">Nobody owes anybody. All square!</li>}
+        {!open.length && (
+          <li className="py-3 text-[15px] text-muted">Nobody owes anybody. All square!</li>
+        )}
       </ul>
       <div className="grid grid-cols-2 gap-2">
-        <Link href="/money/people/new" className="flex h-11 items-center justify-center rounded-[16px] bg-sun font-extrabold text-ink">+ Lend / borrow</Link>
-        <Link href="/add?split=1" className="flex h-11 items-center justify-center rounded-[16px] border-2 border-sea font-extrabold text-sea-dark">+ Split a bill</Link>
+        <Link
+          href="/money/people/new"
+          className="flex h-11 items-center justify-center rounded-[16px] bg-sun font-extrabold text-ink"
+        >
+          + Lend / borrow
+        </Link>
+        <Link
+          href="/add?split=1"
+          className="flex h-11 items-center justify-center rounded-[16px] border-2 border-sea font-extrabold text-sea-dark"
+        >
+          + Split a bill
+        </Link>
       </div>
     </section>
   );

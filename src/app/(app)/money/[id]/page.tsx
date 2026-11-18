@@ -3,14 +3,32 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LogButton } from "@/components/log-button";
-import { getAccounts, getInstallmentPlans, getPeople, getScheduledFor, getSplitsPaidWith, getTransactionDates, installmentInputs } from "@/lib/data";
+import {
+  getAccounts,
+  getInstallmentPlans,
+  getPeople,
+  getScheduledFor,
+  getSplitsPaidWith,
+  getTransactionDates,
+  installmentInputs,
+} from "@/lib/data";
 import { addDays, formatShortDay, isValidDate, today as getToday } from "@/lib/dates";
 import { scheduledItems, sortItems } from "@/lib/forecast";
 import { bnplFirstDue, catchUpDue, dueText, misdatedPlans, statementFor } from "@/lib/installments";
 import { formatPeso, isDebt, isSpendable, paysInPesos, roundCents } from "@/lib/money";
 import { nextOccurrence } from "@/lib/schedule";
 import { readPage, toSplitBill, type SplitBill } from "@/lib/splits";
-import { AccountActions, AssignPlanButton, DeleteLoanForGood, EditPlanButton, FixBillDatesButton, PayBillButton, RemovePlanButton, TheyPaidButton, UpcomingPayments } from "./account-actions";
+import {
+  AccountActions,
+  AssignPlanButton,
+  DeleteLoanForGood,
+  EditPlanButton,
+  FixBillDatesButton,
+  PayBillButton,
+  RemovePlanButton,
+  TheyPaidButton,
+  UpcomingPayments,
+} from "./account-actions";
 import { AddSplitsButton } from "./add-splits";
 import { WalletActivity } from "./wallet-activity";
 
@@ -22,7 +40,9 @@ export const metadata = { title: "Account · Pong Money" };
 export default function AccountPage({ params, searchParams }: PageProps<"/money/[id]">) {
   return (
     <div className="flex flex-col gap-4 lg:max-w-3xl">
-      <Link href="/money" className="flex h-10 w-fit items-center font-extrabold text-sea-dark">‹ Money</Link>
+      <Link href="/money" className="flex h-10 w-fit items-center font-extrabold text-sea-dark">
+        ‹ Money
+      </Link>
       <Suspense fallback={<div className="h-[560px] rounded-[20px] bg-line-soft" />}>
         <Account params={params} searchParams={searchParams} />
       </Suspense>
@@ -44,7 +64,8 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
   ]);
   const account = accounts.find((a) => a.id === id);
   if (account && isSpendable(account.type)) {
-    const p = typeof query.p === "string" && isValidDate(query.p) && query.p <= today ? query.p : today;
+    const p =
+      typeof query.p === "string" && isValidDate(query.p) && query.p <= today ? query.p : today;
     return <WalletActivity account={account} date={p} today={today} page={readPage(query.page)} />;
   }
   if (!account || !isDebt(account.type)) notFound();
@@ -57,7 +78,11 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
   for (const [splitId, records] of splits) {
     const plan = plans.find((p) => p.sourceTxnId && records.some((r) => r.id === p.sourceTxnId));
     if (plan) splitOfPlan.set(plan.id, toSplitBill(splitId, records));
-    else notOnBill.push({ ...toSplitBill(splitId, records), dueOn: catchUpDue(records[0].occurredOn, account.dueDay, today, account.cutoffDay) });
+    else
+      notOnBill.push({
+        ...toSplitBill(splitId, records),
+        dueOn: catchUpDue(records[0].occurredOn, account.dueDay, today, account.cutoffDay),
+      });
   }
   notOnBill.sort((a, b) => b.occurredOn.localeCompare(a.occurredOn));
   const notOnBillTotal = roundCents(notOnBill.reduce((s, b) => s + b.total, 0));
@@ -71,10 +96,18 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
   };
   // Unpaid installments, late ones first, as forecast items for Mark paid.
   // On a credit line, also what you plan to buy on it (Plan › Scheduled), on the bill it lands on.
-  const planned = account.type === "credit_line" ? (await getScheduledFor(account.id, today, 90)).filter((i) => i.boughtOn && !i.transactionId) : [];
+  const planned =
+    account.type === "credit_line"
+      ? (await getScheduledFor(account.id, today, 90)).filter((i) => i.boughtOn && !i.transactionId)
+      : [];
   const upcoming = sortItems([
     ...scheduledItems(
-      { recurring: [], billPayments: [], planned: [], installments: installmentInputs(plans).filter((p) => !p.transactionId) },
+      {
+        recurring: [],
+        billPayments: [],
+        planned: [],
+        installments: installmentInputs(plans).filter((p) => !p.transactionId),
+      },
       today,
       "9999-12-31",
     ),
@@ -93,17 +126,27 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
   // Pay bill is your part; each person pays theirs. Something you haven't bought yet isn't on it.
   const nextMine = nextBill.filter((p) => !payerOf(p.id) && !p.boughtOn);
   const nextMineTotal = roundCents(nextMine.reduce((sum, p) => sum + (p.amount ?? 0), 0));
-  const nextTheirs = [...new Map(nextBill.flatMap((p) => {
-    const payer = payerOf(p.id);
-    return payer ? [[payer.id, payer] as const] : [];
-  })).values()].map((payer) => {
+  const nextTheirs = [
+    ...new Map(
+      nextBill.flatMap((p) => {
+        const payer = payerOf(p.id);
+        return payer ? [[payer.id, payer] as const] : [];
+      }),
+    ).values(),
+  ].map((payer) => {
     const items = nextBill.filter((p) => payerOf(p.id)?.id === payer.id);
-    return { ...payer, ids: items.map((p) => p.id), total: roundCents(items.reduce((sum, p) => sum + (p.amount ?? 0), 0)) };
+    return {
+      ...payer,
+      ids: items.map((p) => p.id),
+      total: roundCents(items.reduce((sum, p) => sum + (p.amount ?? 0), 0)),
+    };
   });
   const credit = account.type === "credit_line";
   // Installments: a credit line's plans of more than one payment with something left to pay. One-payment
   // bills are only under Bills by due date, so nothing shows twice. Paid ones stay in Activity.
-  const listed = credit ? plans.filter((p) => p.months > 1 && p.payments.some((x) => !x.transactionId)) : plans;
+  const listed = credit
+    ? plans.filter((p) => p.months > 1 && p.payments.some((x) => !x.transactionId))
+    : plans;
   const planOf = (paymentId: string) => plans.find((p) => p.id === planOfPayment.get(paymentId));
   const editPlan = (plan: (typeof plans)[number]) => {
     const unpaid = plan.payments.filter((p) => !p.transactionId);
@@ -115,7 +158,13 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
         byHand={!plan.sourceTxnId}
         unpaid={
           unpaid.length
-            ? { count: unpaid.length, amount: unpaid[0].amount, dueOn: unpaid[0].dueOn, fee: unpaid[0].feePart, principal: unpaid[0].principalPart }
+            ? {
+                count: unpaid.length,
+                amount: unpaid[0].amount,
+                dueOn: unpaid[0].dueOn,
+                fee: unpaid[0].feePart,
+                principal: unpaid[0].principalPart,
+              }
             : null
         }
       />
@@ -124,7 +173,13 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
   // What you owe that no upcoming payment covers yet.
   const unscheduled = Math.max(
     0,
-    roundCents(owed - plans.flatMap((p) => p.payments).filter((p) => !p.transactionId).reduce((sum, p) => sum + p.principalPart, 0)),
+    roundCents(
+      owed -
+        plans
+          .flatMap((p) => p.payments)
+          .filter((p) => !p.transactionId)
+          .reduce((sum, p) => sum + p.principalPart, 0),
+    ),
   );
   // A loan's interest isn't in its balance until you pay it, so the card adds what's ahead to show the whole amount.
   const unpaidPayments = plans.flatMap((p) => p.payments).filter((p) => !p.transactionId);
@@ -136,12 +191,20 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
   // Purchases on the wrong bill for the cutoff: logged before it was saved, when Pong had to guess.
   const misdated =
     credit && account.cutoffDay && account.dueDay
-      ? misdatedPlans(plans, await getTransactionDates(plans.flatMap((p) => (p.sourceTxnId ? [p.sourceTxnId] : []))), account, today)
+      ? misdatedPlans(
+          plans,
+          await getTransactionDates(plans.flatMap((p) => (p.sourceTxnId ? [p.sourceTxnId] : []))),
+          account,
+          today,
+        )
       : [];
   // With a cutoff day: when this statement closes, and which bill a purchase today lands on.
   const cutoff =
     credit && account.cutoffDay && account.dueDay
-      ? { closes: statementFor(today, account.cutoffDay), due: bnplFirstDue(today, account.dueDay, account.cutoffDay) }
+      ? {
+          closes: statementFor(today, account.cutoffDay),
+          due: bnplFirstDue(today, account.dueDay, account.cutoffDay),
+        }
       : null;
 
   return (
@@ -178,17 +241,30 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
 
       {cutoff && (
         <p className="-mt-1 rounded-[16px] bg-sea-tint px-4 py-2.5 text-[15px] leading-snug">
-          {cutoff.closes === today ? "Statement closes today. " : `Statement closes ${formatShortDay(cutoff.closes, today)} (${dueText(cutoff.closes, today).replace("Due ", "").toLowerCase()}). `}
-          Buy now and you pay on <strong>{formatShortDay(cutoff.due, today)}</strong>; after the cutoff, it waits for
-          the {formatShortDay(bnplFirstDue(addDays(cutoff.closes, 1), account.dueDay!, account.cutoffDay!), today)} bill.
+          {cutoff.closes === today
+            ? "Statement closes today. "
+            : `Statement closes ${formatShortDay(cutoff.closes, today)} (${dueText(cutoff.closes, today).replace("Due ", "").toLowerCase()}). `}
+          Buy now and you pay on <strong>{formatShortDay(cutoff.due, today)}</strong>; after the
+          cutoff, it waits for the{" "}
+          {formatShortDay(
+            bnplFirstDue(addDays(cutoff.closes, 1), account.dueDay!, account.cutoffDay!),
+            today,
+          )}{" "}
+          bill.
         </p>
       )}
 
       {misdated.length > 0 && (
-        <section aria-label="On the wrong bill" className="flex flex-col gap-2 rounded-[20px] bg-sun-tint px-4 py-3.5">
+        <section
+          aria-label="On the wrong bill"
+          className="flex flex-col gap-2 rounded-[20px] bg-sun-tint px-4 py-3.5"
+        >
           <p className="text-[15px] leading-snug">
-            <strong>{misdated.length === 1 ? "This is" : `These ${misdated.length} are`} on the wrong bill</strong> for your
-            cutoff on the {ordinal(account.cutoffDay!)}. Logged before the cutoff was saved, I had to guess.
+            <strong>
+              {misdated.length === 1 ? "This is" : `These ${misdated.length} are`} on the wrong bill
+            </strong>{" "}
+            for your cutoff on the {ordinal(account.cutoffDay!)}. Logged before the cutoff was
+            saved, I had to guess.
           </p>
           <ul className="flex flex-col gap-1 text-[15px]">
             {misdated.map((m) => (
@@ -205,10 +281,15 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
       <section className="flex flex-col gap-2 rounded-[28px] bg-sea p-6 text-white">
         {credit && account.creditLimit ? (
           <>
-            <div className="flex justify-between text-sm font-bold text-sea-text"><span>USED</span><span>LIMIT</span></div>
+            <div className="flex justify-between text-sm font-bold text-sea-text">
+              <span>USED</span>
+              <span>LIMIT</span>
+            </div>
             <div className="flex items-baseline justify-between">
               <span className="font-display text-4xl font-semibold">{formatPeso(owed)}</span>
-              <span className="font-display text-xl font-semibold">{formatPeso(account.creditLimit)}</span>
+              <span className="font-display text-xl font-semibold">
+                {formatPeso(account.creditLimit)}
+              </span>
             </div>
             <div
               role="progressbar"
@@ -218,7 +299,10 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
               aria-valuenow={Math.min(100, Math.round((owed / account.creditLimit) * 100))}
               className="h-2.5 overflow-hidden rounded-full bg-sea-deep"
             >
-              <div className="h-full rounded-full bg-sun" style={{ width: `${Math.min(100, (owed / account.creditLimit) * 100)}%` }} />
+              <div
+                className="h-full rounded-full bg-sun"
+                style={{ width: `${Math.min(100, (owed / account.creditLimit) * 100)}%` }}
+              />
             </div>
             <span className="text-[15px] text-sea-text">
               Available: {formatPeso(Math.max(0, account.creditLimit - owed))}
@@ -229,7 +313,8 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
             <h2 className="text-sm font-bold text-sea-text">LEFT TO PAY</h2>
             <span className="font-display text-4xl font-semibold">{formatPeso(leftToPay)}</span>
             <span className="text-[15px] text-sea-text">
-              {formatPeso(owed)} loan + {formatPeso(interestLeft)} interest · {unpaidPayments.length} payment
+              {formatPeso(owed)} loan + {formatPeso(interestLeft)} interest ·{" "}
+              {unpaidPayments.length} payment
               {unpaidPayments.length === 1 ? "" : "s"} left
             </span>
           </>
@@ -247,15 +332,22 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
       {next && (
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] bg-card px-4 py-3.5">
           <div className="flex flex-col">
-            <span className={`text-[13px] font-bold ${next.dueOn < today ? "text-coral-text" : "text-muted"}`}>
+            <span
+              className={`text-[13px] font-bold ${next.dueOn < today ? "text-coral-text" : "text-muted"}`}
+            >
               Next bill · {formatShortDay(next.dueOn, today)} · {dueText(next.dueOn, today)}
               {nextBill.length > 1 && ` · ${nextBill.length} items`}
             </span>
             <span className="font-display text-2xl font-semibold">{formatPeso(nextTotal)}</span>
           </div>
-          {nextMine.length > 0 && <PayBillButton ids={nextMine.map((p) => p.id)} total={nextMineTotal} />}
+          {nextMine.length > 0 && (
+            <PayBillButton ids={nextMine.map((p) => p.id)} total={nextMineTotal} />
+          )}
           {nextTheirs.map((t) => (
-            <div key={t.id} className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-line-soft pt-2.5">
+            <div
+              key={t.id}
+              className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-line-soft pt-2.5"
+            >
               <span className="min-w-0 flex-1 basis-40 text-[15px]">
                 <strong>{t.name}</strong> pays {formatPeso(t.total)} of this bill
               </span>
@@ -266,8 +358,8 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
       )}
       <p className="-mt-2 text-xs leading-relaxed text-muted">
         Pay bill = a transfer from your wallet to {account.name}. It&apos;s not a new expense: the
-        expense was logged when you {credit ? "bought the item" : "spent the money"}. Only the fee or
-        interest part is an expense.
+        expense was logged when you {credit ? "bought the item" : "spent the money"}. Only the fee
+        or interest part is an expense.
       </p>
 
       {credit && !account.archived && (
@@ -281,75 +373,92 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
       )}
 
       {(!credit || listed.length > 0 || !plans.length) && (
-      <section aria-labelledby="plans-heading" className="flex flex-col gap-2">
-        <h2 id="plans-heading" className="font-display text-xl font-semibold">{credit ? "Installments" : "Payment plan"}</h2>
-        <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
-          {listed.map((plan) => {
-            const unpaid = plan.payments.filter((p) => !p.transactionId);
-            const paidCount = plan.months - unpaid.length;
-            const each = plan.payments[0]?.amount ?? 0;
-            const payer = plan.personId ? (personName.get(plan.personId) ?? "Someone") : null;
-            const left = roundCents(unpaid.reduce((sum, p) => sum + p.principalPart, 0));
-            return (
-              <li key={plan.id} className="flex flex-col gap-2 border-b border-line-soft py-2.5 last:border-0">
-                {/* Name and details get the width; the amount and Remove stack on the right. */}
-                <div className="flex items-start gap-3">
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="font-bold break-words">{plan.name}</span>
-                    <span className="text-[13px] text-muted">
-                      {plan.months === 1 ? "One payment" : `${plan.months} months`} · {paidCount} of {plan.months} paid
-                      {plan.feeTotal > 0 && ` · fees ${formatPeso(plan.feeTotal)}`}
-                      {splitOfPlan.has(plan.id) && ` · split bill`}
+        <section aria-labelledby="plans-heading" className="flex flex-col gap-2">
+          <h2 id="plans-heading" className="font-display text-xl font-semibold">
+            {credit ? "Installments" : "Payment plan"}
+          </h2>
+          <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
+            {listed.map((plan) => {
+              const unpaid = plan.payments.filter((p) => !p.transactionId);
+              const paidCount = plan.months - unpaid.length;
+              const each = plan.payments[0]?.amount ?? 0;
+              const payer = plan.personId ? (personName.get(plan.personId) ?? "Someone") : null;
+              const left = roundCents(unpaid.reduce((sum, p) => sum + p.principalPart, 0));
+              return (
+                <li
+                  key={plan.id}
+                  className="flex flex-col gap-2 border-b border-line-soft py-2.5 last:border-0"
+                >
+                  {/* Name and details get the width; the amount and Remove stack on the right. */}
+                  <div className="flex items-start gap-3">
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="font-bold break-words">{plan.name}</span>
+                      <span className="text-[13px] text-muted">
+                        {plan.months === 1 ? "One payment" : `${plan.months} months`} · {paidCount}{" "}
+                        of {plan.months} paid
+                        {plan.feeTotal > 0 && ` · fees ${formatPeso(plan.feeTotal)}`}
+                        {splitOfPlan.has(plan.id) && ` · split bill`}
+                      </span>
+                      {payer && plan.personId && (
+                        <Link
+                          href={`/money/people/${plan.personId}`}
+                          className="w-fit text-[13px] font-extrabold text-sea-dark"
+                        >
+                          {payer} pays this · not in your forecast
+                        </Link>
+                      )}
                     </span>
-                    {payer && plan.personId && (
-                      <Link href={`/money/people/${plan.personId}`} className="w-fit text-[13px] font-extrabold text-sea-dark">
-                        {payer} pays this · not in your forecast
-                      </Link>
-                    )}
-                  </span>
-                  <span className="flex shrink-0 flex-col items-end">
-                    <span className="font-display text-[17px] font-semibold whitespace-nowrap">
-                      {formatPeso(each)}{plan.months > 1 && <span className="text-sm text-muted">/mo</span>}
+                    <span className="flex shrink-0 flex-col items-end">
+                      <span className="font-display text-[17px] font-semibold whitespace-nowrap">
+                        {formatPeso(each)}
+                        {plan.months > 1 && <span className="text-sm text-muted">/mo</span>}
+                      </span>
+                      <span className="flex items-center">
+                        {plan.kind === "bnpl" && editPlan(plan)}
+                        <RemovePlanButton id={plan.id} name={plan.name} />
+                      </span>
                     </span>
-                    <span className="flex items-center">
-                      {plan.kind === "bnpl" && editPlan(plan)}
-                      <RemovePlanButton id={plan.id} name={plan.name} />
-                    </span>
-                  </span>
-                </div>
-                {!payer && !splitOfPlan.has(plan.id) && left > 0 && (
-                  <AssignPlanButton
-                    planId={plan.id}
-                    name={plan.name}
-                    left={left}
-                    interest={roundCents(unpaid.reduce((sum, p) => sum + p.feePart, 0))}
-                    loan={plan.kind === "loan" ? { movesMoney: Boolean(plan.sourceTxnId) && paidCount === 0 } : null}
-                    people={people.map((p) => ({ id: p.id, name: p.name }))}
-                  />
-                )}
+                  </div>
+                  {!payer && !splitOfPlan.has(plan.id) && left > 0 && (
+                    <AssignPlanButton
+                      planId={plan.id}
+                      name={plan.name}
+                      left={left}
+                      interest={roundCents(unpaid.reduce((sum, p) => sum + p.feePart, 0))}
+                      loan={
+                        plan.kind === "loan"
+                          ? { movesMoney: Boolean(plan.sourceTxnId) && paidCount === 0 }
+                          : null
+                      }
+                      people={people.map((p) => ({ id: p.id, name: p.name }))}
+                    />
+                  )}
+                </li>
+              );
+            })}
+            {!listed.length && (
+              <li className="py-3 text-[15px] text-muted">
+                {plans.length
+                  ? "Nothing left to pay."
+                  : credit
+                    ? "No plans yet. Log a purchase with + and pay with this credit line, or add a bill you expect with + Upcoming payment."
+                    : "No payments scheduled."}
               </li>
-            );
-          })}
-          {!listed.length && (
-            <li className="py-3 text-[15px] text-muted">
-              {plans.length
-                ? "Nothing left to pay."
-                : credit
-                ? "No plans yet. Log a purchase with + and pay with this credit line, or add a bill you expect with + Upcoming payment."
-                : "No payments scheduled."}
-            </li>
-          )}
-        </ul>
-      </section>
+            )}
+          </ul>
+        </section>
       )}
 
       {credit && notOnBill.length > 0 && (
         <section aria-labelledby="splits-heading" className="flex flex-col gap-2">
-          <h2 id="splits-heading" className="font-display text-xl font-semibold">Split bills not on a bill yet</h2>
+          <h2 id="splits-heading" className="font-display text-xl font-semibold">
+            Split bills not on a bill yet
+          </h2>
           <div className="flex flex-col gap-3 rounded-[20px] bg-card px-4 py-3.5">
             <p className="text-sm leading-snug text-muted">
-              You split {notOnBill.length === 1 ? "this" : `these ${notOnBill.length}`} with {account.name} before splits
-              went on its bill. {formatPeso(notOnBillTotal)} is in what you owe, but not in Pay bill or your forecast yet.
+              You split {notOnBill.length === 1 ? "this" : `these ${notOnBill.length}`} with{" "}
+              {account.name} before splits went on its bill. {formatPeso(notOnBillTotal)} is in what
+              you owe, but not in Pay bill or your forecast yet.
             </p>
             <ul className="flex flex-col gap-3">
               {notOnBill.map((split) => (
@@ -357,8 +466,8 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
                   <span className="flex flex-col">
                     <span className="truncate font-bold">{split.title}</span>
                     <span className="text-[13px] text-muted">
-                      {formatShortDay(split.occurredOn, today)} · split with {split.others.length} · goes on the{" "}
-                      {formatShortDay(split.dueOn, today)} bill
+                      {formatShortDay(split.occurredOn, today)} · split with {split.others.length} ·
+                      goes on the {formatShortDay(split.dueOn, today)} bill
                     </span>
                   </span>
                   <SplitBreakdown split={split} />
@@ -391,15 +500,21 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
               {/* The total only when it adds up more than one item: one item's amount is on its row. */}
               <div className="flex items-baseline justify-between gap-3 border-b border-line-soft py-2.5">
                 <span className="flex items-baseline gap-2">
-                  <span className="font-display text-lg font-semibold">{formatShortDay(bill.dueOn, today)}</span>
-                  <span className={`text-[13px] ${bill.dueOn < today ? "font-bold text-coral-text" : "text-muted"}`}>
+                  <span className="font-display text-lg font-semibold">
+                    {formatShortDay(bill.dueOn, today)}
+                  </span>
+                  <span
+                    className={`text-[13px] ${bill.dueOn < today ? "font-bold text-coral-text" : "text-muted"}`}
+                  >
                     {dueText(bill.dueOn, today)}
                   </span>
                 </span>
                 {bill.items.length > 1 && (
                   <span className="flex items-baseline gap-1.5">
                     <span className="text-[13px] text-muted">Total</span>
-                    <span className="font-display text-xl font-semibold">{formatPeso(bill.total)}</span>
+                    <span className="font-display text-xl font-semibold">
+                      {formatPeso(bill.total)}
+                    </span>
                   </span>
                 )}
               </div>
@@ -411,7 +526,10 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
                   // A one-payment bill is only here, so it's edited here.
                   const single = credit && plan?.months === 1 ? plan : null;
                   return (
-                    <li key={item.key} className="flex flex-col gap-2 border-b border-line-soft py-2.5 last:border-0">
+                    <li
+                      key={item.key}
+                      className="flex flex-col gap-2 border-b border-line-soft py-2.5 last:border-0"
+                    >
                       <div className="flex items-center gap-3">
                         <span className="flex min-w-0 flex-1 flex-col">
                           <span className="truncate font-bold">{item.name}</span>
@@ -421,16 +539,27 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
                               <RemovePlanButton id={single.id} name={single.name} />
                             </span>
                           )}
-                          {split && <span className="text-[13px] text-muted">Split bill · {split.others.length + (split.mine ? 1 : 0)} people</span>}
-                          {payer && <span className="text-[13px] font-bold text-sea-dark">{payer.name} pays this</span>}
+                          {split && (
+                            <span className="text-[13px] text-muted">
+                              Split bill · {split.others.length + (split.mine ? 1 : 0)} people
+                            </span>
+                          )}
+                          {payer && (
+                            <span className="text-[13px] font-bold text-sea-dark">
+                              {payer.name} pays this
+                            </span>
+                          )}
                           {item.boughtOn && (
                             <span className="text-[13px] text-muted">
-                              {item.kind === "planned" ? "Planned" : "Repeating bill"} · {item.boughtOn < today ? "bought" : "buying"}{" "}
+                              {item.kind === "planned" ? "Planned" : "Repeating bill"} ·{" "}
+                              {item.boughtOn < today ? "bought" : "buying"}{" "}
                               {formatShortDay(item.boughtOn, today)}
                             </span>
                           )}
                         </span>
-                        <span className="font-display text-[17px] font-semibold">{formatPeso(item.amount ?? 0)}</span>
+                        <span className="font-display text-[17px] font-semibold">
+                          {formatPeso(item.amount ?? 0)}
+                        </span>
                         {item.boughtOn ? (
                           // Not bought yet: once you do, log it with + on this line and remove the plan.
                           <Link
@@ -481,9 +610,13 @@ function SplitBreakdown({ split }: { split: SplitBill }) {
       <span className="flex items-center justify-between gap-3 py-2">
         <span className="flex flex-col">
           <span className="text-[15px] font-bold">My share</span>
-          <span className="text-xs text-muted">The other {formatPeso(roundCents(split.total - mine))} is pautang</span>
+          <span className="text-xs text-muted">
+            The other {formatPeso(roundCents(split.total - mine))} is pautang
+          </span>
         </span>
-        <span className="font-display text-[17px] font-semibold text-sea-dark">{formatPeso(mine)}</span>
+        <span className="font-display text-[17px] font-semibold text-sea-dark">
+          {formatPeso(mine)}
+        </span>
       </span>
     </Link>
   );

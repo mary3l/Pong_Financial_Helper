@@ -9,7 +9,8 @@ import { amountOn, nextOccurrence, occurrences, type Schedule } from "@/lib/sche
 // they're logged ("Mark paid" or "Add income"): then the wallet balance
 // already reflects them and the item drops out.
 
-export type ForecastKind = "payday" | "income" | "bill" | "planned" | "installment" | "utang" | "pautang";
+export type ForecastKind =
+  "payday" | "income" | "bill" | "planned" | "installment" | "utang" | "pautang";
 
 /** Something scheduled to move money on a date. */
 export type ForecastItem = {
@@ -96,7 +97,10 @@ export type ScheduleInputs = {
 };
 
 /** The category a recurring item logs under when it has none saved. */
-export function recurringCategory(r: { kind: "payday" | "bill" | "income"; category: string | null }): string {
+export function recurringCategory(r: {
+  kind: "payday" | "bill" | "income";
+  category: string | null;
+}): string {
   if (r.category) return r.category;
   return r.kind === "bill" ? "bills" : r.kind === "payday" ? "salary" : "other_income";
 }
@@ -111,7 +115,9 @@ export function scheduledItems(
   from: string,
   until: string,
 ): ForecastItem[] {
-  const logged = new Map(billPayments.map((p) => [`${p.recurringItemId}|${p.dueOn}`, p.transactionId]));
+  const logged = new Map(
+    billPayments.map((p) => [`${p.recurringItemId}|${p.dueOn}`, p.transactionId]),
+  );
   const items: ForecastItem[] = [];
 
   for (const r of recurring) {
@@ -193,8 +199,15 @@ export function itemEffect(item: ForecastItem): number {
 }
 
 /** Money going out that you paid before its due date. */
-export function paidInAdvance(item: Pick<ForecastItem, "flow" | "transactionId" | "paidOn" | "dueOn">): boolean {
-  return item.flow === "out" && Boolean(item.transactionId) && Boolean(item.paidOn) && item.paidOn! < item.dueOn;
+export function paidInAdvance(
+  item: Pick<ForecastItem, "flow" | "transactionId" | "paidOn" | "dueOn">,
+): boolean {
+  return (
+    item.flow === "out" &&
+    Boolean(item.transactionId) &&
+    Boolean(item.paidOn) &&
+    item.paidOn! < item.dueOn
+  );
 }
 
 /** Unlogged money going out: what you still owe. */
@@ -244,8 +257,15 @@ export function project(
 ): Projection {
   const until = addDays(from, length);
   const events = items
-    .map((item) => ({ item, date: item.dueOn < from ? from : item.dueOn, change: itemEffect(item) }))
-    .filter((e) => e.date < until && (e.change !== 0 || (e.item.kind === "payday" && e.item.amount === null)))
+    .map((item) => ({
+      item,
+      date: item.dueOn < from ? from : item.dueOn,
+      change: itemEffect(item),
+    }))
+    .filter(
+      (e) =>
+        e.date < until && (e.change !== 0 || (e.item.kind === "payday" && e.item.amount === null)),
+    )
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const rows: Projection["rows"] = [];
@@ -260,7 +280,8 @@ export function project(
   let i = 0;
   for (let d = 0; d < length; d++) {
     const date = addDays(from, d);
-    while (i < events.length && events[i].date === date) balance = roundCents(balance + events[i++].change);
+    while (i < events.length && events[i].date === date)
+      balance = roundCents(balance + events[i++].change);
     days.push({ date, balance });
   }
 
@@ -307,9 +328,15 @@ export type SafeToSpend = {
  * to spend lasts until the one after it. Undo it and it counts again. Paydays
  * moved to another day match by their usual date.
  */
-export function nextUnreceivedPayday(payday: Schedule, items: ForecastItem[], today: string): string {
+export function nextUnreceivedPayday(
+  payday: Schedule,
+  items: ForecastItem[],
+  today: string,
+): string {
   const received = new Set(
-    items.filter((i) => i.kind === "payday" && i.transactionId).map((i) => i.scheduledOn ?? i.dueOn),
+    items
+      .filter((i) => i.kind === "payday" && i.transactionId)
+      .map((i) => i.scheduledOn ?? i.dueOn),
   );
   let next = nextOccurrence(payday, today);
   // Items only reach so far ahead, so this always stops; the cap is a guard.
@@ -359,7 +386,14 @@ export function safeToSpend({
   const freeUntilPayday = Math.max(0, roundCents(inWallets + spentToday - dueBeforePayday));
   const setAsideLater =
     payday.frequency === "weekly" || payday.frequency === "daily"
-      ? heldBackForLater({ freeUntilPayday, startOfDay: roundCents(inWallets + spentToday), daysLeft, items, today, nextPayday })
+      ? heldBackForLater({
+          freeUntilPayday,
+          startOfDay: roundCents(inWallets + spentToday),
+          daysLeft,
+          items,
+          today,
+          nextPayday,
+        })
       : 0;
   const free = roundCents(freeUntilPayday - setAsideLater);
   const perDay = Math.floor(free / daysLeft);
@@ -414,7 +448,9 @@ function heldBackForLater({
     .filter((e) => e.change !== 0);
   const last = addDays(today, WEEKLY_LOOK_AHEAD_DAYS - 1);
   for (let t = nextPayday; t <= last; t = addDays(t, 1)) {
-    const balance = after.filter((e) => e.date <= t && (e.change < 0 || e.date >= nextPayday)).reduce((sum, e) => sum + e.change, startOfDay);
+    const balance = after
+      .filter((e) => e.date <= t && (e.change < 0 || e.date >= nextPayday))
+      .reduce((sum, e) => sum + e.change, startOfDay);
     limit = Math.min(limit, Math.max(0, balance) / (daysBetween(today, t) + 1));
   }
   // Only later bills hold anything back; the cents left over from ÷ days stay free.
@@ -491,7 +527,9 @@ export function walletCheck({
   for (const p of payments) {
     const before = roundCents(
       balance +
-        own.filter((i) => (i.dueOn < today ? today : i.dueOn) <= p.dueOn).reduce((sum, i) => sum + itemEffect(i), 0) -
+        own
+          .filter((i) => (i.dueOn < today ? today : i.dueOn) <= p.dueOn)
+          .reduce((sum, i) => sum + itemEffect(i), 0) -
         payments.filter((x) => x.dueOn < p.dueOn).reduce((sum, x) => sum + (x.amount ?? 0), 0),
     );
     const after = roundCents(before - (p.amount ?? 0));
@@ -534,10 +572,20 @@ export function affordVerdict({
 
   if (low >= 0) {
     const tight = low === 0 || low < before.lowest.balance * 0.5;
-    return { tone: tight ? "tight" : "comfortable", title: tight ? "Yes, but tight" : "Yes, comfortably", before, after };
+    return {
+      tone: tight ? "tight" : "comfortable",
+      title: tight ? "Yes, but tight" : "Yes, comfortably",
+      before,
+      after,
+    };
   }
   if (nextPayday && purchase.first < nextPayday && before.lowest.balance >= 0) {
-    const later = project(start, [...items, ...purchaseItems({ ...purchase, first: nextPayday })], today, length);
+    const later = project(
+      start,
+      [...items, ...purchaseItems({ ...purchase, first: nextPayday })],
+      today,
+      length,
+    );
     if (later.lowest.balance >= 0) {
       return { tone: "wait", title: "Wait until payday", before, after, waitUntil: nextPayday };
     }

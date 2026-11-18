@@ -38,7 +38,9 @@ export function WidgetSetup({ keyMadeOn }: { keyMadeOn: string | null }) {
       </p>
 
       <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-[15px]">
-        <li>Install Scriptable, open it and tap <strong>+</strong> to make a new script.</li>
+        <li>
+          Install Scriptable, open it and tap <strong>+</strong> to make a new script.
+        </li>
         <li>
           Copy the widget script and paste it in. Name it <strong>Pong Money</strong>.
         </li>
@@ -117,7 +119,10 @@ export function WidgetSetup({ keyMadeOn }: { keyMadeOn: string | null }) {
         )}
       </div>
 
-      <p role={error ? "alert" : "status"} className={`text-sm ${error ? "font-bold text-coral-text" : "text-muted"}`}>
+      <p
+        role={error ? "alert" : "status"}
+        className={`text-sm ${error ? "font-bold text-coral-text" : "text-muted"}`}
+      >
         {error ??
           (keyMadeOn
             ? `Widget key made ${keyMadeOn}. A new key stops the old one from working.`

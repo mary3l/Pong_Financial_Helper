@@ -4,11 +4,24 @@ import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
 import { SUBCATEGORY_MAX, cleanSubcategory, isCategoryFor } from "@/lib/categories";
 import { isValidDate, today } from "@/lib/dates";
-import { bnplFee, bnplFirstDue, buildSchedule, catchUpDue, loanSchedule, upcomingSchedule } from "@/lib/installments";
+import {
+  bnplFee,
+  bnplFirstDue,
+  buildSchedule,
+  catchUpDue,
+  loanSchedule,
+  upcomingSchedule,
+} from "@/lib/installments";
 import { checkLoan, exactRate } from "@/lib/loan-edit";
 import { MAX_AMOUNT, formatPeso, isSpendable, roundCents, type AccountType } from "@/lib/money";
 import type { EntryKind } from "@/lib/people";
-import { creditTerms, isMissingColumn, pickWallet, savePlan, type Client } from "@/lib/server-writes";
+import {
+  creditTerms,
+  isMissingColumn,
+  pickWallet,
+  savePlan,
+  type Client,
+} from "@/lib/server-writes";
 import { newSharesProblem, typedNote } from "@/lib/splits";
 
 // Phase 4: utang, pautang and split bills. Every one of these is a transfer
@@ -20,11 +33,18 @@ const FAILED = { error: "Couldn't save that. Please try again." };
 const NOTE_MAX = 120;
 
 function cleanName(name: unknown) {
-  return String(name ?? "").replace(/\s+/g, " ").trim();
+  return String(name ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function cleanNote(note: unknown) {
-  return String(note ?? "").replace(/\s+/g, " ").trim().slice(0, NOTE_MAX) || null;
+  return (
+    String(note ?? "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, NOTE_MAX) || null
+  );
 }
 
 function validAmount(value: number) {
@@ -37,7 +57,12 @@ export type Who = { personId: string } | { name: string };
 /** The person's account id, adding them first if they're new. */
 async function personFor(supabase: Client, who: Who): Promise<string | null> {
   if ("personId" in who) {
-    const { data } = await supabase.from("accounts").select("id").eq("id", who.personId).eq("type", "person").maybeSingle();
+    const { data } = await supabase
+      .from("accounts")
+      .select("id")
+      .eq("id", who.personId)
+      .eq("type", "person")
+      .maybeSingle();
     return data?.id ?? null;
   }
   const name = cleanName(who.name);
@@ -47,11 +72,15 @@ async function personFor(supabase: Client, who: Who): Promise<string | null> {
     .from("accounts")
     .select("id, archived")
     .eq("type", "person")
-    .ilike("name", name.replace(/[%_\\]/g, (c) => `\\${c}`))
+    .ilike(
+      "name",
+      name.replace(/[%_\\]/g, (c) => `\\${c}`),
+    )
     .limit(1)
     .maybeSingle();
   if (existing) {
-    if (existing.archived) await supabase.from("accounts").update({ archived: false }).eq("id", existing.id);
+    if (existing.archived)
+      await supabase.from("accounts").update({ archived: false }).eq("id", existing.id);
     return existing.id;
   }
   const { data, error } = await supabase
@@ -71,7 +100,11 @@ async function isWallet(supabase: Client, id: string, { credit = false } = {}): 
 }
 
 async function balanceOf(supabase: Client, personId: string): Promise<number | null> {
-  const { data } = await supabase.from("account_balances").select("balance").eq("account_id", personId).maybeSingle();
+  const { data } = await supabase
+    .from("account_balances")
+    .select("balance")
+    .eq("account_id", personId)
+    .maybeSingle();
   return data ? Number(data.balance) : null;
 }
 
@@ -79,7 +112,13 @@ async function balanceOf(supabase: Client, personId: string): Promise<number | n
 async function record(
   supabase: Client,
   row: Record<string, unknown>,
-  entry: { personId: string; kind: EntryKind; dueOn?: string | null; countInForecast?: boolean; splitTotal?: number | null },
+  entry: {
+    personId: string;
+    kind: EntryKind;
+    dueOn?: string | null;
+    countInForecast?: boolean;
+    splitTotal?: number | null;
+  },
 ): Promise<string | null> {
   const { data, error } = await supabase.from("transactions").insert(row).select("id").single();
   if (error) return null;
@@ -126,12 +165,14 @@ export async function lendOrBorrow(input: LendInput): Promise<PeopleResult> {
   const amount = roundCents(Number(input.amount));
   if (!validAmount(amount)) return { error: "Enter an amount above ₱0." };
   if (!isValidDate(input.occurredOn)) return { error: "Pick a date." };
-  if (input.dueOn !== null && !isValidDate(input.dueOn)) return { error: "Check the due date, or leave it blank." };
+  if (input.dueOn !== null && !isValidDate(input.dueOn))
+    return { error: "Check the due date, or leave it blank." };
   if ("name" in input.who && !cleanName(input.who.name)) return { error: "Who is it?" };
 
   const lend = input.direction === "lend";
   const paidFor = !lend ? (input.paidForMe ?? null) : null;
-  if (paidFor && !isCategoryFor("expense", paidFor.category)) return { error: "Pick what it was for." };
+  if (paidFor && !isCategoryFor("expense", paidFor.category))
+    return { error: "Pick what it was for." };
 
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
@@ -186,8 +227,13 @@ export async function lendOrBorrow(input: LendInput): Promise<PeopleResult> {
  * their account. What you owe them stays the same; the wallet goes back
  * down by the amount, since that money never reached it.
  */
-export async function borrowWasPaidForMe(personId: string, txnId: string, category: string): Promise<PeopleResult> {
-  if (!/^[0-9a-f-]{36}$/i.test(personId) || !/^[0-9a-f-]{36}$/i.test(txnId)) return { error: "Couldn't find that." };
+export async function borrowWasPaidForMe(
+  personId: string,
+  txnId: string,
+  category: string,
+): Promise<PeopleResult> {
+  if (!/^[0-9a-f-]{36}$/i.test(personId) || !/^[0-9a-f-]{36}$/i.test(txnId))
+    return { error: "Couldn't find that." };
   if (!isCategoryFor("expense", category)) return { error: "Pick what it was for." };
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
@@ -197,7 +243,8 @@ export async function borrowWasPaidForMe(personId: string, txnId: string, catego
     .eq("transaction_id", txnId)
     .eq("person_id", personId)
     .maybeSingle();
-  if (entry?.kind !== "borrow") return { error: "Only money you borrowed can be changed this way." };
+  if (entry?.kind !== "borrow")
+    return { error: "Only money you borrowed can be changed this way." };
   const { data, error } = await supabase
     .from("transactions")
     .update({ type: "expense", to_account_id: null, category })
@@ -214,7 +261,12 @@ export async function borrowWasPaidForMe(personId: string, txnId: string, catego
  * Money back: they paid you (into `walletId`) or you paid them (from it).
  * Partial payments are fine; more than the balance isn't.
  */
-export async function recordPayment(personId: string, amount: number, walletId: string, occurredOn = today()): Promise<PeopleResult> {
+export async function recordPayment(
+  personId: string,
+  amount: number,
+  walletId: string,
+  occurredOn = today(),
+): Promise<PeopleResult> {
   const value = roundCents(Number(amount));
   if (!validAmount(value)) return { error: "Enter an amount above ₱0." };
   if (!isValidDate(occurredOn)) return { error: "Pick a date." };
@@ -249,8 +301,12 @@ export async function recordPayment(personId: string, amount: number, walletId: 
 export async function settlePerson(personId: string, walletId?: string): Promise<PeopleResult> {
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
-  const [balance, wallet] = await Promise.all([balanceOf(supabase, personId), pickWallet(supabase, null, walletId)]);
-  if (!wallet) return { error: walletId ? "Pick a cash, bank or e-wallet." : "Add a wallet first." };
+  const [balance, wallet] = await Promise.all([
+    balanceOf(supabase, personId),
+    pickWallet(supabase, null, walletId),
+  ]);
+  if (!wallet)
+    return { error: walletId ? "Pick a cash, bank or e-wallet." : "Add a wallet first." };
   if (!balance) return {};
   return recordPayment(personId, Math.abs(balance), wallet);
 }
@@ -328,7 +384,8 @@ export async function saveSplit(input: SplitInput): Promise<PeopleResult> {
   if (!isCategoryFor("expense", input.category)) return { error: "Pick a category." };
   if (!isValidDate(input.occurredOn)) return { error: "Pick a date." };
   if (!input.others.length) return { error: "Pick who you split it with." };
-  if (!(mine >= 0) || input.others.some((o) => !(o.amount >= 0))) return { error: "Check the shares." };
+  if (!(mine >= 0) || input.others.some((o) => !(o.amount >= 0)))
+    return { error: "Check the shares." };
   const sum = roundCents(mine + input.others.reduce((s, o) => s + roundCents(o.amount), 0));
   if (sum !== total) return { error: `The shares add up to ₱${sum}, not ₱${total}.` };
   const subcategory = cleanSubcategory(input.subcategory);
@@ -342,7 +399,11 @@ export async function saveSplit(input: SplitInput): Promise<PeopleResult> {
   const sub = subcategory ? { subcategory } : {};
   if (subcategory) {
     const { error } = await supabase.from("transactions").select("subcategory").limit(1);
-    if (error) return { error: "To save subcategories, run step 15 in supabase/SQL_GUIDE.md first. Or clear the subcategory." };
+    if (error)
+      return {
+        error:
+          "To save subcategories, run step 15 in supabase/SQL_GUIDE.md first. Or clear the subcategory.",
+      };
   }
   const note = cleanNote(input.note);
   const created: string[] = [];
@@ -351,7 +412,8 @@ export async function saveSplit(input: SplitInput): Promise<PeopleResult> {
   };
 
   if (input.paidBy === null) {
-    if (!input.walletId || !(await isWallet(supabase, input.walletId, { credit: true }))) return { error: "Pick the wallet you paid with." };
+    if (!input.walletId || !(await isWallet(supabase, input.walletId, { credit: true })))
+      return { error: "Pick the wallet you paid with." };
     // Paid with SPayLater, Atome or a bank credit line: the whole bill goes on its bill.
     const [wallet] = await creditTerms(supabase, [input.walletId]);
     const credit = wallet?.type === "credit_line";
@@ -362,8 +424,10 @@ export async function saveSplit(input: SplitInput): Promise<PeopleResult> {
       payFromAccountId: null,
     };
     if (credit) {
-      if (!Number.isInteger(plan.months) || plan.months < 1 || plan.months > 24) return { error: "Pick how many months." };
-      if (!(plan.ratePerMonth >= 0 && plan.ratePerMonth <= 10)) return { error: "Check the monthly fee (0 to 10%)." };
+      if (!Number.isInteger(plan.months) || plan.months < 1 || plan.months > 24)
+        return { error: "Pick how many months." };
+      if (!(plan.ratePerMonth >= 0 && plan.ratePerMonth <= 10))
+        return { error: "Check the monthly fee (0 to 10%)." };
       if (!isValidDate(plan.firstDue) || plan.firstDue < input.occurredOn) {
         return { error: "The first payment can't be before the bill." };
       }
@@ -414,7 +478,10 @@ export async function saveSplit(input: SplitInput): Promise<PeopleResult> {
       created.push(txnId);
     }
     if (credit) {
-      const payFrom = plan.payFromAccountId && (await isWallet(supabase, plan.payFromAccountId)) ? plan.payFromAccountId : null;
+      const payFrom =
+        plan.payFromAccountId && (await isWallet(supabase, plan.payFromAccountId))
+          ? plan.payFromAccountId
+          : null;
       const saved = await savePlan(supabase, {
         kind: "bnpl",
         accountId: input.walletId,
@@ -424,7 +491,12 @@ export async function saveSplit(input: SplitInput): Promise<PeopleResult> {
         payFromAccountId: payFrom,
         // Your share if you had one: deleting the split deletes the plan too.
         sourceTxnId: created[0],
-        rows: buildSchedule({ principal: total, feeTotal: bnplFee(total, plan.ratePerMonth, plan.months), months: plan.months, firstDue: plan.firstDue }),
+        rows: buildSchedule({
+          principal: total,
+          feeTotal: bnplFee(total, plan.ratePerMonth, plan.months),
+          months: plan.months,
+          firstDue: plan.firstDue,
+        }),
       });
       if (!saved) {
         await undo();
@@ -466,7 +538,9 @@ async function hasSplitIds(supabase: Client): Promise<boolean> {
 async function splitPlanOf(supabase: Client, recordIds: string[]) {
   const { data: plan } = await supabase
     .from("installment_plans")
-    .select("id, account_id, name, principal, fee_total, months, first_due, pay_from_account_id, source_txn_id")
+    .select(
+      "id, account_id, name, principal, fee_total, months, first_due, pay_from_account_id, source_txn_id",
+    )
     .in("source_txn_id", recordIds)
     .limit(1)
     .maybeSingle();
@@ -505,14 +579,25 @@ export async function updateSplit(splitId: string, input: SplitEdit): Promise<Pe
   return result;
 }
 
-async function editSplit(supabase: Client, splitId: string, input: SplitEdit): Promise<PeopleResult> {
+async function editSplit(
+  supabase: Client,
+  splitId: string,
+  input: SplitEdit,
+): Promise<PeopleResult> {
   if (!/^[0-9a-f-]{36}$/i.test(splitId)) return { error: "Couldn't find that split." };
   if (!isValidDate(input.occurredOn)) return { error: "Pick a date." };
   const amounts = new Map(input.shares.map((s) => [s.id, roundCents(Number(s.amount))]));
-  const added = (input.added ?? []).map((a) => ({ who: a.who, amount: roundCents(Number(a.amount)) }));
-  if ([...amounts.values()].some((a) => !(a >= 0) || a > MAX_AMOUNT)) return { error: "Check the shares." };
-  if (added.some((a) => !validAmount(a.amount))) return { error: "Enter a share above ₱0 for each person you add." };
-  const total = roundCents([...amounts.values(), ...added.map((a) => a.amount)].reduce((s, a) => s + a, 0));
+  const added = (input.added ?? []).map((a) => ({
+    who: a.who,
+    amount: roundCents(Number(a.amount)),
+  }));
+  if ([...amounts.values()].some((a) => !(a >= 0) || a > MAX_AMOUNT))
+    return { error: "Check the shares." };
+  if (added.some((a) => !validAmount(a.amount)))
+    return { error: "Enter a share above ₱0 for each person you add." };
+  const total = roundCents(
+    [...amounts.values(), ...added.map((a) => a.amount)].reduce((s, a) => s + a, 0),
+  );
   if (!validAmount(total)) return { error: "The shares need to add up to more than ₱0." };
 
   const { data: records, error } = await supabase
@@ -530,9 +615,18 @@ async function editSplit(supabase: Client, splitId: string, input: SplitEdit): P
   let toCredit = false;
   if (moveTo) {
     if (!/^[0-9a-f-]{36}$/i.test(moveTo)) return { error: "Pick a wallet." };
-    const { data: target } = await supabase.from("accounts").select("*").eq("id", moveTo).eq("archived", false).maybeSingle();
+    const { data: target } = await supabase
+      .from("accounts")
+      .select("*")
+      .eq("id", moveTo)
+      .eq("archived", false)
+      .maybeSingle();
     const type = target?.type as AccountType | undefined;
-    if (!target || !type || !(type === "credit_line" || (isSpendable(type) && target.currency !== "USD"))) {
+    if (
+      !target ||
+      !type ||
+      !(type === "credit_line" || (isSpendable(type) && target.currency !== "USD"))
+    ) {
       return { error: "Pick a cash, bank or e-wallet account, or a credit line." };
     }
     toCredit = type === "credit_line";
@@ -547,12 +641,22 @@ async function editSplit(supabase: Client, splitId: string, input: SplitEdit): P
     const { data: names } = await supabase
       .from("accounts")
       .select("id, name")
-      .in("id", records.map((r) => r.to_account_id).filter((id): id is string => Boolean(id)));
+      .in(
+        "id",
+        records.map((r) => r.to_account_id).filter((id): id is string => Boolean(id)),
+      );
     const onBill = records
       .filter((r) => r.type === "transfer" && r.to_account_id && amounts.get(r.id))
-      .map((r) => ({ personId: r.to_account_id as string, name: names?.find((n) => n.id === r.to_account_id)?.name ?? "" }));
+      .map((r) => ({
+        personId: r.to_account_id as string,
+        name: names?.find((n) => n.id === r.to_account_id)?.name ?? "",
+      }));
     const problem = newSharesProblem(
-      added.map((a) => ("personId" in a.who ? { personId: a.who.personId, name: "", amount: a.amount } : { personId: null, name: a.who.name, amount: a.amount })),
+      added.map((a) =>
+        "personId" in a.who
+          ? { personId: a.who.personId, name: "", amount: a.amount }
+          : { personId: null, name: a.who.name, amount: a.amount },
+      ),
       onBill,
     );
     if (problem) return { error: problem };
@@ -566,7 +670,11 @@ async function editSplit(supabase: Client, splitId: string, input: SplitEdit): P
       const personId = await personFor(supabase, a.who);
       if (!personId || taken.has(personId)) {
         await undo();
-        return { error: personId ? "They're already on this bill." : "Check the name (up to 60 characters)." };
+        return {
+          error: personId
+            ? "They're already on this bill."
+            : "Check the name (up to 60 characters).",
+        };
       }
       taken.add(personId);
       const txnId = await record(
@@ -590,17 +698,26 @@ async function editSplit(supabase: Client, splitId: string, input: SplitEdit): P
     }
   }
 
-  const plan = await splitPlanOf(supabase, records.map((r) => r.id));
+  const plan = await splitPlanOf(
+    supabase,
+    records.map((r) => r.id),
+  );
   // Moving it off a credit line takes it off that bill; part of it already paid can't move.
   if (moveTo && plan?.paid) {
     if (created.length) await supabase.from("transactions").delete().in("id", created);
-    return { error: "Part of this bill is already paid on its credit line, so it can't move. Undo that payment first." };
+    return {
+      error:
+        "Part of this bill is already paid on its credit line, so it can't move. Undo that payment first.",
+    };
   }
   // The plan hangs on one record: move it to one that stays, so taking that share off keeps the plan.
   if (plan && !amounts.get(plan.source_txn_id!)) {
     const kept = records.filter((r) => amounts.get(r.id));
     const to = (kept.find((r) => r.type === "expense") ?? kept[0])?.id ?? created[0];
-    const { error: moved } = await supabase.from("installment_plans").update({ source_txn_id: to }).eq("id", plan.id);
+    const { error: moved } = await supabase
+      .from("installment_plans")
+      .update({ source_txn_id: to })
+      .eq("id", plan.id);
     if (moved) return FAILED;
     plan.source_txn_id = to;
   }
@@ -621,19 +738,29 @@ async function editSplit(supabase: Client, splitId: string, input: SplitEdit): P
   }
   const kept = records.filter((r) => amounts.get(r.id) && r.type === "transfer").map((r) => r.id);
   if (kept.length) {
-    const { error: entries } = await supabase.from("person_entries").update({ split_total: total }).in("transaction_id", kept);
+    const { error: entries } = await supabase
+      .from("person_entries")
+      .update({ split_total: total })
+      .in("transaction_id", kept);
     if (entries) return FAILED;
   }
 
   if (moveTo) {
     // Off the old line's bill, and onto the new line's (by its statement cutoff), like Add to bill.
     if (plan) {
-      const { error: dropped } = await supabase.from("installment_plans").delete().eq("id", plan.id);
-      if (dropped) return { error: "The split moved, but its old credit line bill didn't update. Please try again." };
+      const { error: dropped } = await supabase
+        .from("installment_plans")
+        .delete()
+        .eq("id", plan.id);
+      if (dropped)
+        return {
+          error: "The split moved, but its old credit line bill didn't update. Please try again.",
+        };
     }
     if (toCredit) {
       const onBill = await addSplitsToBill([splitId]);
-      if (onBill.error) return { error: `The split moved, but it isn't on the new bill yet: ${onBill.error}` };
+      if (onBill.error)
+        return { error: `The split moved, but it isn't on the new bill yet: ${onBill.error}` };
     }
   } else if (plan) {
     const principal = Number(plan.principal);
@@ -654,10 +781,16 @@ async function editSplit(supabase: Client, splitId: string, input: SplitEdit): P
           firstDue: plan.first_due,
         }),
       });
-      if (!saved) return { error: "The split is saved, but its credit line bill didn't update. Please try again." };
+      if (!saved)
+        return {
+          error: "The split is saved, but its credit line bill didn't update. Please try again.",
+        };
       await supabase.from("installment_plans").delete().eq("id", plan.id);
     } else if (plan.name !== planName(note)) {
-      await supabase.from("installment_plans").update({ name: planName(note) }).eq("id", plan.id);
+      await supabase
+        .from("installment_plans")
+        .update({ name: planName(note) })
+        .eq("id", plan.id);
     }
   }
 
@@ -671,7 +804,8 @@ async function editSplit(supabase: Client, splitId: string, input: SplitEdit): P
  * still in what you owe, so it wasn't paid).
  */
 export async function addSplitsToBill(splitIds: string[]): Promise<PeopleResult> {
-  if (!splitIds.length || splitIds.some((id) => !/^[0-9a-f-]{36}$/i.test(id))) return { error: "Couldn't find that split." };
+  if (!splitIds.length || splitIds.some((id) => !/^[0-9a-f-]{36}$/i.test(id)))
+    return { error: "Couldn't find that split." };
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
   const { data: records } = await supabase
@@ -685,10 +819,18 @@ export async function addSplitsToBill(splitIds: string[]): Promise<PeopleResult>
   const now = today();
   for (const splitId of splitIds) {
     const bill = records.filter((r) => r.split_id === splitId);
-    if (!bill.length || (await splitPlanOf(supabase, bill.map((r) => r.id)))) continue;
+    if (
+      !bill.length ||
+      (await splitPlanOf(
+        supabase,
+        bill.map((r) => r.id),
+      ))
+    )
+      continue;
     const walletId = bill[0].account_id;
     const wallet = wallets.find((w) => w.id === walletId);
-    if (wallet?.type !== "credit_line") return { error: "That split wasn't paid with a credit line." };
+    if (wallet?.type !== "credit_line")
+      return { error: "That split wasn't paid with a credit line." };
     const total = roundCents(bill.reduce((s, r) => s + Number(r.amount), 0));
     const mine = bill.find((r) => r.type === "expense");
     const saved = await savePlan(supabase, {
@@ -699,7 +841,12 @@ export async function addSplitsToBill(splitIds: string[]): Promise<PeopleResult>
       months: 1,
       payFromAccountId: null,
       sourceTxnId: (mine ?? bill[0]).id,
-      rows: buildSchedule({ principal: total, feeTotal: 0, months: 1, firstDue: catchUpDue(bill[0].occurred_on, wallet.dueDay, now, wallet.cutoffDay) }),
+      rows: buildSchedule({
+        principal: total,
+        feeTotal: 0,
+        months: 1,
+        firstDue: catchUpDue(bill[0].occurred_on, wallet.dueDay, now, wallet.cutoffDay),
+      }),
     });
     if (!saved) {
       refresh();
@@ -716,13 +863,21 @@ export async function deleteSplit(splitId: string): Promise<PeopleResult> {
   if (!/^[0-9a-f-]{36}$/i.test(splitId)) return { error: "Couldn't find that split." };
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
-  const { data, error } = await supabase.from("transactions").delete().eq("split_id", splitId).select("id");
+  const { data, error } = await supabase
+    .from("transactions")
+    .delete()
+    .eq("split_id", splitId)
+    .select("id");
   if (error || !data?.length) return { error: "Couldn't delete that. Please try again." };
   refresh();
   return {};
 }
 
-export async function renamePerson(personId: string, name: string, contact: string): Promise<PeopleResult> {
+export async function renamePerson(
+  personId: string,
+  name: string,
+  contact: string,
+): Promise<PeopleResult> {
   const clean = cleanName(name);
   if (!clean || clean.length > 60) return { error: "Check the name (up to 60 characters)." };
   const supabase = await signedInClient();
@@ -743,8 +898,15 @@ export async function renamePerson(personId: string, name: string, contact: stri
  * the bill total goes down and a credit line's bill follows it. The last
  * record of a bill just goes.
  */
-async function removeSplitShare(supabase: Client, splitId: string, txnId: string): Promise<PeopleResult> {
-  const { data: records, error } = await supabase.from("transactions").select("id, amount, note, occurred_on").eq("split_id", splitId);
+async function removeSplitShare(
+  supabase: Client,
+  splitId: string,
+  txnId: string,
+): Promise<PeopleResult> {
+  const { data: records, error } = await supabase
+    .from("transactions")
+    .select("id, amount, note, occurred_on")
+    .eq("split_id", splitId);
   if (error) return FAILED;
   const rest = (records ?? []).filter((r) => r.id !== txnId && Number(r.amount) > 0);
   if (!rest.length) {
@@ -765,7 +927,8 @@ async function removeSplitShare(supabase: Client, splitId: string, txnId: string
  * a payment of theirs on a plan in your name stops counting as paid.
  */
 export async function deletePersonEntry(personId: string, txnId: string): Promise<PeopleResult> {
-  if (!/^[0-9a-f-]{36}$/i.test(personId) || !/^[0-9a-f-]{36}$/i.test(txnId)) return { error: "Couldn't find that." };
+  if (!/^[0-9a-f-]{36}$/i.test(personId) || !/^[0-9a-f-]{36}$/i.test(txnId))
+    return { error: "Couldn't find that." };
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
   const { data: txn } = await supabase
@@ -773,7 +936,8 @@ export async function deletePersonEntry(personId: string, txnId: string): Promis
     .select("id, account_id, to_account_id, split_id")
     .eq("id", txnId)
     .maybeSingle();
-  if (!txn || (txn.account_id !== personId && txn.to_account_id !== personId)) return { error: "Couldn't find that." };
+  if (!txn || (txn.account_id !== personId && txn.to_account_id !== personId))
+    return { error: "Couldn't find that." };
 
   const result = txn.split_id
     ? await removeSplitShare(supabase, txn.split_id, txn.id)
@@ -799,17 +963,28 @@ export async function deletePersonEntry(personId: string, txnId: string): Promis
  *   be without them. Not while they pay a loan or credit line in your name:
  *   that debt would be left with no one paying it.
  */
-export async function deletePerson(personId: string, how: "remove" | "forever"): Promise<PeopleResult & { archived?: boolean }> {
+export async function deletePerson(
+  personId: string,
+  how: "remove" | "forever",
+): Promise<PeopleResult & { archived?: boolean }> {
   // It goes into a filter string below, so only a plain id.
   if (!/^[0-9a-f-]{36}$/i.test(personId)) return { error: "Couldn't find them." };
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
-  const { data: person } = await supabase.from("accounts").select("id, name").eq("id", personId).eq("type", "person").maybeSingle();
+  const { data: person } = await supabase
+    .from("accounts")
+    .select("id, name")
+    .eq("id", personId)
+    .eq("type", "person")
+    .maybeSingle();
   if (!person) return { error: "Couldn't find them." };
 
   if (how === "forever") {
     if (await hasPlanPeople(supabase)) {
-      const { data: plans, error } = await supabase.from("installment_plans").select("name").eq("person_id", personId);
+      const { data: plans, error } = await supabase
+        .from("installment_plans")
+        .select("name")
+        .eq("person_id", personId);
       if (error) return FAILED;
       if (plans.length) {
         return {
@@ -845,7 +1020,8 @@ export async function deletePerson(personId: string, how: "remove" | "forever"):
     return {};
   }
   // 23503: records still point at them, so keep those and archive instead.
-  if (how === "forever" || deleted.error?.code !== "23503") return { error: "Couldn't delete them. Please try again." };
+  if (how === "forever" || deleted.error?.code !== "23503")
+    return { error: "Couldn't delete them. Please try again." };
   const { error } = await supabase.from("accounts").update({ archived: true }).eq("id", personId);
   if (error) return FAILED;
   refresh();
@@ -872,7 +1048,8 @@ export async function restorePerson(personId: string): Promise<PeopleResult> {
 // and she pays the installments straight to its bill. See
 // 0019_cutoff_and_borrowed_lines.sql.
 
-const STEP_19 = "For a credit line or loan someone else pays, run step 19 in supabase/SQL_GUIDE.md first.";
+const STEP_19 =
+  "For a credit line or loan someone else pays, run step 19 in supabase/SQL_GUIDE.md first.";
 
 /** False while migration 0019 (installment_plans.person_id) hasn't been run. */
 async function hasPlanPeople(supabase: Client): Promise<boolean> {
@@ -881,12 +1058,21 @@ async function hasPlanPeople(supabase: Client): Promise<boolean> {
 }
 
 async function debtAccount(supabase: Client, id: string, type: "credit_line" | "loan") {
-  const { data } = await supabase.from("accounts").select("id, name, starting_balance").eq("id", id).eq("type", type).maybeSingle();
+  const { data } = await supabase
+    .from("accounts")
+    .select("id, name, starting_balance")
+    .eq("id", id)
+    .eq("type", type)
+    .maybeSingle();
   return data;
 }
 
 /** Raises what a credit line or loan starts at, so what you owe on it stays the same after `amount` moves out of it. */
-async function keepOwed(supabase: Client, line: { id: string; starting_balance: number | string }, amount: number) {
+async function keepOwed(
+  supabase: Client,
+  line: { id: string; starting_balance: number | string },
+  amount: number,
+) {
   const { error } = await supabase
     .from("accounts")
     .update({ starting_balance: roundCents(Number(line.starting_balance) + amount) })
@@ -923,14 +1109,21 @@ export type CreditLendInput = {
  */
 export async function lendFromCreditLine(input: CreditLendInput): Promise<PeopleResult> {
   if (!validAmount(input.amount)) return { error: "Enter each payment." };
-  if (!(input.fee >= 0) || input.fee >= input.amount) return { error: "The fee has to be less than each payment." };
-  if (!Number.isInteger(input.months) || input.months < 1 || input.months > 36) return { error: "Pick how many months." };
-  if (!Number.isInteger(input.alreadyPaid) || input.alreadyPaid < 0 || input.alreadyPaid >= input.months) {
+  if (!(input.fee >= 0) || input.fee >= input.amount)
+    return { error: "The fee has to be less than each payment." };
+  if (!Number.isInteger(input.months) || input.months < 1 || input.months > 36)
+    return { error: "Pick how many months." };
+  if (
+    !Number.isInteger(input.alreadyPaid) ||
+    input.alreadyPaid < 0 ||
+    input.alreadyPaid >= input.months
+  ) {
     return { error: "Check how many payments they've already made." };
   }
   if (!isValidDate(input.occurredOn)) return { error: "Pick when they bought it." };
   if (!isValidDate(input.nextDue)) return { error: "Pick when the next payment is due." };
-  if (roundCents(input.amount * input.months) > MAX_AMOUNT) return { error: "That amount is too big." };
+  if (roundCents(input.amount * input.months) > MAX_AMOUNT)
+    return { error: "That amount is too big." };
   if ("name" in input.who && !cleanName(input.who.name)) return { error: "Who is it?" };
 
   const supabase = await signedInClient();
@@ -1010,7 +1203,10 @@ export async function assignPlanToPerson(planId: string, who: Who): Promise<Peop
   const unpaid = (payments ?? []).filter((p) => !p.transfer_txn_id && !p.fee_txn_id);
   const left = roundCents(unpaid.reduce((sum, p) => sum + Number(p.principal_part), 0));
   if (!(left > 0)) return { error: "Nothing's left to pay on it." };
-  const lastDue = unpaid.map((p) => p.due_on as string).sort().at(-1)!;
+  const lastDue = unpaid
+    .map((p) => p.due_on as string)
+    .sort()
+    .at(-1)!;
 
   // BNPL: the purchase you logged. Loan: the money it brought into a wallet.
   const { data: source } = plan.source_txn_id
@@ -1031,7 +1227,10 @@ export async function assignPlanToPerson(planId: string, who: Who): Promise<Peop
     // Nothing paid yet: it was theirs from the start. A purchase stops being your spending, and
     // loan money went to them instead of your wallet. Either way that record becomes the pautang.
     const changed = loan
-      ? await supabase.from("transactions").update({ to_account_id: personId, note }).eq("id", source.id)
+      ? await supabase
+          .from("transactions")
+          .update({ to_account_id: personId, note })
+          .eq("id", source.id)
       : await clearToTransfer(supabase, source.id, personId, note);
     if (changed.error) return FAILED;
     const linked = await supabase
@@ -1043,7 +1242,12 @@ export async function assignPlanToPerson(planId: string, who: Who): Promise<Peop
         .update(
           loan
             ? { to_account_id: source.to_account_id, note: source.note }
-            : { type: "expense", to_account_id: null, category: source.category, note: source.note },
+            : {
+                type: "expense",
+                to_account_id: null,
+                category: source.category,
+                note: source.note,
+              },
         )
         .eq("id", source.id);
       return FAILED;
@@ -1051,14 +1255,26 @@ export async function assignPlanToPerson(planId: string, who: Who): Promise<Peop
   } else {
     const txnId = await record(
       supabase,
-      { type: "transfer", amount: left, account_id: lender.id, to_account_id: personId, note, occurred_on: today() },
+      {
+        type: "transfer",
+        amount: left,
+        account_id: lender.id,
+        to_account_id: personId,
+        note,
+        occurred_on: today(),
+      },
       { personId, kind: "lend", dueOn: lastDue },
     );
     if (!txnId) return FAILED;
     // A logged purchase now only counts the part already paid; anything else moves the starting balance instead.
     const kept =
       source && !loan
-        ? !(await supabase.from("transactions").update({ amount: roundCents(Number(source.amount) - left) }).eq("id", source.id)).error
+        ? !(
+            await supabase
+              .from("transactions")
+              .update({ amount: roundCents(Number(source.amount) - left) })
+              .eq("id", source.id)
+          ).error
         : await keepOwed(supabase, lender, left);
     if (!kept) {
       await supabase.from("transactions").delete().eq("id", txnId);
@@ -1066,8 +1282,12 @@ export async function assignPlanToPerson(planId: string, who: Who): Promise<Peop
     }
   }
 
-  const { error } = await supabase.from("installment_plans").update({ person_id: personId }).eq("id", plan.id);
-  if (error) return { error: "They owe you now, but the plan didn't switch to them. Please try again." };
+  const { error } = await supabase
+    .from("installment_plans")
+    .update({ person_id: personId })
+    .eq("id", plan.id);
+  if (error)
+    return { error: "They owe you now, but the plan didn't switch to them. Please try again." };
 
   refresh();
   return { personId };
@@ -1076,8 +1296,13 @@ export async function assignPlanToPerson(planId: string, who: Who): Promise<Peop
 /** A purchase expense turned into a transfer to someone (subcategory cleared once migration 0015 is run). */
 async function clearToTransfer(supabase: Client, id: string, personId: string, note: string) {
   const cleared = { type: "transfer", to_account_id: personId, category: null, note };
-  const first = await supabase.from("transactions").update({ ...cleared, subcategory: null }).eq("id", id);
-  return isMissingColumn(first.error) ? supabase.from("transactions").update(cleared).eq("id", id) : first;
+  const first = await supabase
+    .from("transactions")
+    .update({ ...cleared, subcategory: null })
+    .eq("id", id);
+  return isMissingColumn(first.error)
+    ? supabase.from("transactions").update(cleared).eq("id", id)
+    : first;
 }
 
 export type PersonLoanInput = {
@@ -1101,7 +1326,9 @@ export type PersonLoanInput = {
  * and every payment, interest included, is theirs. Never in your forecast
  * or Safe to spend; They paid sends their money straight to the loan.
  */
-export async function addLoanForPerson(input: PersonLoanInput): Promise<PeopleResult & { loanId?: string }> {
+export async function addLoanForPerson(
+  input: PersonLoanInput,
+): Promise<PeopleResult & { loanId?: string }> {
   const problem = checkLoan({ ...input, intoAccountId: null });
   if (problem) return { error: problem };
   if (!isValidDate(input.receivedOn)) return { error: "Pick when they got the money." };
@@ -1114,11 +1341,19 @@ export async function addLoanForPerson(input: PersonLoanInput): Promise<PeopleRe
   if (!personId) return { error: "Check the name (up to 60 characters)." };
 
   const received = roundCents(input.received);
-  const rows = loanSchedule({ received, monthly: exactRate(input.monthly), months: input.months }, input.nextDue, input.alreadyPaid);
+  const rows = loanSchedule(
+    { received, monthly: exactRate(input.monthly), months: input.months },
+    input.nextDue,
+    input.alreadyPaid,
+  );
   const owed = roundCents(rows.reduce((sum, r) => sum + r.principalPart, 0));
   const name = cleanName(input.name);
 
-  const account = await supabase.from("accounts").insert({ name, type: "loan", starting_balance: 0 }).select("id").single();
+  const account = await supabase
+    .from("accounts")
+    .insert({ name, type: "loan", starting_balance: 0 })
+    .select("id")
+    .single();
   if (account.error) return FAILED;
   const loanId = account.data.id;
   const undo = () => supabase.from("accounts").delete().eq("id", loanId);
@@ -1167,7 +1402,10 @@ export async function addLoanForPerson(input: PersonLoanInput): Promise<PeopleRe
  * what they owe you goes down. The fee was theirs too, so it isn't an
  * expense of yours.
  */
-export async function theyPaidInstallments(ids: string[], occurredOn = today()): Promise<PeopleResult> {
+export async function theyPaidInstallments(
+  ids: string[],
+  occurredOn = today(),
+): Promise<PeopleResult> {
   if (!ids.length) return {};
   if (!isValidDate(occurredOn)) return { error: "Pick a date." };
   const supabase = await signedInClient();

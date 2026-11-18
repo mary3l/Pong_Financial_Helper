@@ -28,7 +28,8 @@ export type PeriodPayments = {
   byLender: { lenderId: string | null; total: number }[];
 };
 
-const sum = (items: ForecastItem[]) => roundCents(items.reduce((total, i) => total + (i.amount ?? 0), 0));
+const sum = (items: ForecastItem[]) =>
+  roundCents(items.reduce((total, i) => total + (i.amount ?? 0), 0));
 
 function isIncome(i: ForecastItem): boolean {
   return i.kind === "payday" || i.kind === "income" || (i.kind === "planned" && i.flow === "in");
@@ -62,7 +63,8 @@ export function paymentsByPeriod({
     const total = sum(payments);
     const income = sum(items.filter((i) => isIncome(i) && inWindow(i)));
     const lenders = new Map<string | null, number>();
-    for (const p of payments) lenders.set(p.lenderId ?? null, (lenders.get(p.lenderId ?? null) ?? 0) + (p.amount ?? 0));
+    for (const p of payments)
+      lenders.set(p.lenderId ?? null, (lenders.get(p.lenderId ?? null) ?? 0) + (p.amount ?? 0));
     return {
       from,
       to: addDays(until, -1),
@@ -76,7 +78,9 @@ export function paymentsByPeriod({
     };
   });
   // The days before payday only when something's due in them.
-  return nextPayday && nextPayday > today && !periods[0].payments.length ? periods.slice(1) : periods;
+  return nextPayday && nextPayday > today && !periods[0].payments.length
+    ? periods.slice(1)
+    : periods;
 }
 
 /** Where a group of payments goes: one credit line or loan, a person you owe, or one bill. */
@@ -104,17 +108,33 @@ export type PayTo = {
  * together, every SLoan payment together, and each other bill on its own.
  * Soonest first.
  */
-export function groupByPayee(items: ForecastItem[], lenderName: (id: string) => string | undefined, today: string): PayTo[] {
+export function groupByPayee(
+  items: ForecastItem[],
+  lenderName: (id: string) => string | undefined,
+  today: string,
+): PayTo[] {
   const groups = new Map<string, PayTo>();
   for (const i of items) {
     // Installments and anything bought on a credit line go with that line's bill.
     const lender = (i.kind === "installment" || i.boughtOn) && i.lenderId ? i.lenderId : null;
-    const key = lender ? `lender|${lender}` : i.kind === "utang" ? `utang|${i.id}` : `item|${i.name}`;
+    const key = lender
+      ? `lender|${lender}`
+      : i.kind === "utang"
+        ? `utang|${i.id}`
+        : `item|${i.name}`;
     const name = (lender && lenderName(lender)) || i.name;
     const editable = i.kind === "bill" || i.kind === "planned" || i.kind === "income";
-    const g =
-      groups.get(key) ??
-      { key, name, lenderId: lender, total: 0, count: 0, firstDue: i.dueOn, lastDue: i.dueOn, late: false, editId: editable ? i.id : null };
+    const g = groups.get(key) ?? {
+      key,
+      name,
+      lenderId: lender,
+      total: 0,
+      count: 0,
+      firstDue: i.dueOn,
+      lastDue: i.dueOn,
+      late: false,
+      editId: editable ? i.id : null,
+    };
     // Two planned items with the same name are two rows in Scheduled: nothing single to edit.
     if (!editable || g.editId !== i.id) g.editId = null;
     g.total = roundCents(g.total + (i.amount ?? 0));
@@ -124,5 +144,7 @@ export function groupByPayee(items: ForecastItem[], lenderName: (id: string) => 
     g.late ||= i.dueOn < today;
     groups.set(key, g);
   }
-  return [...groups.values()].sort((a, b) => a.firstDue.localeCompare(b.firstDue) || b.total - a.total);
+  return [...groups.values()].sort(
+    (a, b) => a.firstDue.localeCompare(b.firstDue) || b.total - a.total,
+  );
 }

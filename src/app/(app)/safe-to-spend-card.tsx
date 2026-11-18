@@ -39,23 +39,42 @@ export function SafeToSpendCard({
   const scale = Math.max(plan.perDay, spent) || 1;
   return (
     <section className="relative flex flex-col gap-1.5 overflow-hidden rounded-[28px] bg-sea p-6 text-white lg:p-7">
-      <div aria-hidden="true" className="absolute -top-12 -right-10 h-40 w-40 rounded-full bg-sea-light" />
+      <div
+        aria-hidden="true"
+        className="absolute -top-12 -right-10 h-40 w-40 rounded-full bg-sea-light"
+      />
       <div className="relative flex items-start gap-2">
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <h2 className="text-sm font-bold text-sea-text">SAFE TO SPEND TODAY</h2>
-          <p className={`font-display leading-none font-semibold whitespace-nowrap ${amountSize} ${left < 0 ? "text-sun" : ""}`}>{amount}</p>
+          <p
+            className={`font-display leading-none font-semibold whitespace-nowrap ${amountSize} ${left < 0 ? "text-sun" : ""}`}
+          >
+            {amount}
+          </p>
           {spent > 0 && (
             <>
               <p className="text-[15px] leading-snug font-extrabold">
-                {left < 0 ? `Over by ${formatPeso(-left)}` : `Spent ${formatPeso(spent)} of ${formatPeso(plan.perDay)}`}
+                {left < 0
+                  ? `Over by ${formatPeso(-left)}`
+                  : `Spent ${formatPeso(spent)} of ${formatPeso(plan.perDay)}`}
               </p>
-              <span aria-hidden="true" className="mt-0.5 flex h-2.5 overflow-hidden rounded-full bg-sea-deep">
-                <span className={`block h-full ${left < 0 ? "bg-sun" : "bg-sea-text"}`} style={{ width: `${(spent / scale) * 100}%` }} />
+              <span
+                aria-hidden="true"
+                className="mt-0.5 flex h-2.5 overflow-hidden rounded-full bg-sea-deep"
+              >
+                <span
+                  className={`block h-full ${left < 0 ? "bg-sun" : "bg-sea-text"}`}
+                  style={{ width: `${(spent / scale) * 100}%` }}
+                />
               </span>
             </>
           )}
         </div>
-        <Pong mood={pong.mood} size={84} className="pong-peek -mt-1 -mr-2 shrink-0 drop-shadow-[0_3px_0_rgba(0,0,0,0.18)]" />
+        <Pong
+          mood={pong.mood}
+          size={84}
+          className="pong-peek -mt-1 -mr-2 shrink-0 drop-shadow-[0_3px_0_rgba(0,0,0,0.18)]"
+        />
       </div>
       {pong.message && (
         <p className="relative mt-1 rounded-[18px_6px_18px_18px] bg-sea-deep/60 px-3.5 py-2.5 text-[15px] leading-snug text-sea-text">
@@ -63,7 +82,10 @@ export function SafeToSpendCard({
           {pong.link && (
             <>
               {" "}
-              <Link href={pong.link.href} className="font-extrabold text-white underline underline-offset-4">
+              <Link
+                href={pong.link.href}
+                className="font-extrabold text-white underline underline-offset-4"
+              >
                 {pong.link.label}
               </Link>
             </>
@@ -77,14 +99,18 @@ export function SafeToSpendCard({
             {current.map((c) => (
               <li key={c.lineId} className="flex flex-col rounded-[14px] bg-sea-deep px-3 py-2">
                 <span className="text-xs font-extrabold text-sea-text">{c.name}</span>
-                <span className="font-display text-lg font-semibold">{c.left > 0 ? `Up to ${formatPeso(c.left)}` : "None"}</span>
+                <span className="font-display text-lg font-semibold">
+                  {c.left > 0 ? `Up to ${formatPeso(c.left)}` : "None"}
+                </span>
                 <span className="text-[11px] text-sea-text">
                   {formatPeso(c.used)} of {formatPeso(c.cap)} · bill {formatShortDay(c.due, today)}
                 </span>
               </li>
             ))}
           </ul>
-          {limitLeft > 0 && <p className="text-xs text-sea-text">Limit left {formatPeso(limitLeft)}</p>}
+          {limitLeft > 0 && (
+            <p className="text-xs text-sea-text">Limit left {formatPeso(limitLeft)}</p>
+          )}
         </div>
       )}
       <details className="group relative">
@@ -104,10 +130,15 @@ export function SafeToSpendCard({
           <BreakdownLine label="= Left for today" value={formatPeso(left)} strong divider />
         </dl>
         <p className="pt-2 text-[13px] leading-snug text-sea-text">
-          Every bill, loan, BNPL bill and payday in the next {PLAN_DAYS} days counts, and each BNPL cap is held on its
-          bill day.
+          Every bill, loan, BNPL bill and payday in the next {PLAN_DAYS} days counts, and each BNPL
+          cap is held on its bill day.
           {setAside > 0 && <> Your {formatPeso(setAside)} in savings doesn&apos;t.</>}{" "}
-          <Link href="/plan/payments" className="font-extrabold text-white underline underline-offset-4">Payments</Link>
+          <Link
+            href="/plan/payments"
+            className="font-extrabold text-white underline underline-offset-4"
+          >
+            Payments
+          </Link>
         </p>
       </details>
     </section>
@@ -126,18 +157,24 @@ function BreakdownLine({
   divider?: boolean;
 }) {
   return (
-    <div className={`flex justify-between gap-3 ${strong ? "font-extrabold" : ""} ${divider ? "border-t border-sea-light pt-1.5" : ""}`}>
+    <div
+      className={`flex justify-between gap-3 ${strong ? "font-extrabold" : ""} ${divider ? "border-t border-sea-light pt-1.5" : ""}`}
+    >
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
   );
 }
 
-export function pongSays(day: PlanToday, { hasWallets, hasPayday }: { hasWallets: boolean; hasPayday: boolean }): PongLine {
+export function pongSays(
+  day: PlanToday,
+  { hasWallets, hasPayday }: { hasWallets: boolean; hasPayday: boolean },
+): PongLine {
   if (!hasWallets) {
     return {
       mood: "ask",
-      message: "Add your wallets and payday, and I'll work out how much you can safely spend each day.",
+      message:
+        "Add your wallets and payday, and I'll work out how much you can safely spend each day.",
       link: { href: "/setup", label: "Set up wallets" },
     };
   }
@@ -160,7 +197,8 @@ export function pongSays(day: PlanToday, { hasWallets, hasPayday }: { hasWallets
   if (spent === 0) return { mood: "peek", message: "" };
   if (left > plan.perDay * 0.2) return { mood: "happy", message: `${formatPeso(left)} left today` };
   if (left > 0) return { mood: "listen", message: `${formatPeso(left)} left · almost there` };
-  if (left === 0) return { mood: "listen", message: `Today's ${formatPeso(plan.perDay)} is used up` };
+  if (left === 0)
+    return { mood: "listen", message: `Today's ${formatPeso(plan.perDay)} is used up` };
   if (tomorrow === null) {
     return {
       mood: "worried",

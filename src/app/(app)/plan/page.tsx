@@ -4,9 +4,21 @@ import { Suspense } from "react";
 import { ForecastChart } from "@/components/forecast-chart";
 import { Pong, type PongMood } from "@/components/pong";
 import { categoryInfo } from "@/lib/categories";
-import { getCapLines, getCashSpentToday, getPayroll, getPlanInputs, getTransactions } from "@/lib/data";
+import {
+  getCapLines,
+  getCashSpentToday,
+  getPayroll,
+  getPlanInputs,
+  getTransactions,
+} from "@/lib/data";
 import { addDays, formatShortDay, today as getToday } from "@/lib/dates";
-import { itemEffect, itemLabel, lowestBetween, nextUnreceivedPayday, type DayBalance } from "@/lib/forecast";
+import {
+  itemEffect,
+  itemLabel,
+  lowestBetween,
+  nextUnreceivedPayday,
+  type DayBalance,
+} from "@/lib/forecast";
 import { formatPeso } from "@/lib/money";
 import { billsByPayday } from "@/lib/office-days";
 import { PERIOD_DAYS, paymentsByPeriod } from "@/lib/pay-periods";
@@ -53,13 +65,18 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
         <p className="max-w-xs text-[15px] text-muted">
           Add your wallets first. I&apos;ll project your balance from there.
         </p>
-        <Link href="/setup" className="font-extrabold text-sea-dark underline">Set up wallets</Link>
+        <Link href="/setup" className="font-extrabold text-sea-dark underline">
+          Set up wallets
+        </Link>
       </div>
     );
   }
 
   // Same plan as Home and Payments: spending its daily amount, BNPL caps held on their bill days.
-  const [cash, lines] = await Promise.all([getCashSpentToday(todays, accounts), getCapLines(accounts, today)]);
+  const [cash, lines] = await Promise.all([
+    getCashSpentToday(todays, accounts),
+    getCapLines(accounts, today),
+  ]);
   const { plan, start, held } = planToday({ inWallets, cash, items, today, lines });
   const end = addDays(today, days);
   const forecastDays = plan.days.slice(0, days);
@@ -70,7 +87,9 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
   const periods = paymentsByPeriod({ items, today, nextPayday });
   // Office days need the payroll calculator, which pays each cutoff on its own payday.
   const records = payroll && payroll !== "missing" ? payroll : null;
-  const byPayday = payday ? billsByPayday({ items, today, payday, inWallets, payroll: records }) : [];
+  const byPayday = payday
+    ? billsByPayday({ items, today, payday, inWallets, payroll: records })
+    : [];
   const weekOut = addDays(today, 7);
   const lowBeforePayday = nextPayday ? lowestBetween(forecastDays, today, nextPayday) : null;
   const headsUp = lowBeforePayday ?? forecastLow;
@@ -81,7 +100,11 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
       <div className="flex flex-col gap-4">
         <SegmentLinks
           label="Forecast range"
-          options={RANGES.map((r) => ({ href: `/plan?days=${r}`, label: `${r} days`, current: r === days }))}
+          options={RANGES.map((r) => ({
+            href: `/plan?days=${r}`,
+            label: `${r} days`,
+            current: r === days,
+          }))}
         />
 
         <section className="flex flex-col gap-2 rounded-[20px] bg-card px-4 pt-4 pb-3">
@@ -102,9 +125,18 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
             <span>{formatShortDay(addDays(today, days - 1), today)}</span>
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
-            <span className="flex items-center gap-1.5"><span aria-hidden="true" className="h-0.5 w-4 bg-sea" />Balance</span>
-            <span className="flex items-center gap-1.5"><span aria-hidden="true" className="h-3 w-0 border-l-2 border-dashed border-sun" />Payday</span>
-            <span className="flex items-center gap-1.5"><span aria-hidden="true" className="w-4 border-t-2 border-dashed border-muted" />{formatPeso(PLAN_FLOOR)}</span>
+            <span className="flex items-center gap-1.5">
+              <span aria-hidden="true" className="h-0.5 w-4 bg-sea" />
+              Balance
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span aria-hidden="true" className="h-3 w-0 border-l-2 border-dashed border-sun" />
+              Payday
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span aria-hidden="true" className="w-4 border-t-2 border-dashed border-muted" />
+              {formatPeso(PLAN_FLOOR)}
+            </span>
           </div>
         </section>
 
@@ -117,19 +149,26 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
               <strong className={headsUp.balance < PLAN_FLOOR ? "text-coral-text" : ""}>
                 {formatPeso(headsUp.balance)} on {formatShortDay(headsUp.date, today)}
               </strong>
-              {nextPayday && headsUp.date === addDays(nextPayday, -1) ? ", the day before payday." : "."}
-              {headsUp.balance < 0 && " You'd run out before then. Move a bill, or wait on big buys."}
+              {nextPayday && headsUp.date === addDays(nextPayday, -1)
+                ? ", the day before payday."
+                : "."}
+              {headsUp.balance < 0 &&
+                " You'd run out before then. Move a bill, or wait on big buys."}
             </p>
             {payday && payday.amount === null && (
               <p className="text-[13px] text-muted">
                 Your net pay isn&apos;t saved, so paydays add nothing here.{" "}
-                <Link href="/settings/payday" className="font-extrabold text-sea-dark underline">Add it</Link>
+                <Link href="/settings/payday" className="font-extrabold text-sea-dark underline">
+                  Add it
+                </Link>
               </p>
             )}
             {!payday && (
               <p className="text-[13px] text-muted">
                 No payday set.{" "}
-                <Link href="/settings/payday" className="font-extrabold text-sea-dark underline">Set payday</Link>
+                <Link href="/settings/payday" className="font-extrabold text-sea-dark underline">
+                  Set payday
+                </Link>
               </p>
             )}
           </div>
@@ -142,7 +181,9 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
           Can I afford this?
         </Link>
 
-        {byPayday.some((p) => p.bills.length || p.paidEarly.length) && <BillsByPayday periods={byPayday} accounts={accounts} today={today} />}
+        {byPayday.some((p) => p.bills.length || p.paidEarly.length) && (
+          <BillsByPayday periods={byPayday} accounts={accounts} today={today} />
+        )}
 
         {periods.some((p) => p.payments.length) && (
           <PaymentsByPeriod periods={periods} accounts={accounts} today={today} />
@@ -150,7 +191,9 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
       </div>
 
       <section aria-labelledby="coming-heading" className="flex flex-col gap-2.5">
-        <h2 id="coming-heading" className="font-display text-xl font-semibold">What&apos;s coming</h2>
+        <h2 id="coming-heading" className="font-display text-xl font-semibold">
+          What&apos;s coming
+        </h2>
         <div className="rounded-[20px] bg-card px-4 py-1.5">
           {rows.length ? (
             <ul className="flex flex-col">
@@ -163,38 +206,60 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
                 const soon = date < weekOut;
                 const payEarly = !cap && !soon && item.flow === "out" && item.amount !== null;
                 return (
-                  <li key={item.key} className="grid grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-b border-line-soft py-2.5 last:border-0">
-                    <span className={`row-span-2 text-xs font-extrabold uppercase ${late ? "text-coral-text" : "text-muted"}`}>
+                  <li
+                    key={item.key}
+                    className="grid grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-b border-line-soft py-2.5 last:border-0"
+                  >
+                    <span
+                      className={`row-span-2 text-xs font-extrabold uppercase ${late ? "text-coral-text" : "text-muted"}`}
+                    >
                       {late ? "Late" : formatShortDay(date, today)}
                     </span>
                     <span className="flex min-w-0 flex-wrap items-center gap-x-2">
-                      <span className={`truncate ${item.kind === "payday" ? "font-extrabold" : "font-bold"}`}>
+                      <span
+                        className={`truncate ${item.kind === "payday" ? "font-extrabold" : "font-bold"}`}
+                      >
                         {item.name}
                         {item.estimate && <span className="font-normal text-muted"> (est.)</span>}
                       </span>
                     </span>
-                    <span className={`text-right font-display text-[17px] font-semibold ${change > 0 ? "text-sea" : ""}`}>
-                      {item.amount === null ? "amount not set" : `${change > 0 ? "+" : "−"}${formatPeso(item.amount)}`}
+                    <span
+                      className={`text-right font-display text-[17px] font-semibold ${change > 0 ? "text-sea" : ""}`}
+                    >
+                      {item.amount === null
+                        ? "amount not set"
+                        : `${change > 0 ? "+" : "−"}${formatPeso(item.amount)}`}
                     </span>
                     <span className="text-[13px] text-muted">
                       {itemLabel(item)}
-                      {item.category && item.kind !== "payday" && ` · ${categoryInfo(item.flow === "in" ? "income" : "expense", item.category).label}`}
+                      {item.category &&
+                        item.kind !== "payday" &&
+                        ` · ${categoryInfo(item.flow === "in" ? "income" : "expense", item.category).label}`}
                       {item.boughtOn &&
                         ` · bought ${formatShortDay(item.boughtOn, today)} on ${accounts.find((a) => a.id === item.lenderId)?.name ?? "your card"}, paid with its bill`}
                       {" · "}balance after{" "}
-                      <span className={balanceAfter < PLAN_FLOOR ? "font-bold text-coral-text" : ""}>{formatPeso(balanceAfter)}</span>
+                      <span
+                        className={balanceAfter < PLAN_FLOOR ? "font-bold text-coral-text" : ""}
+                      >
+                        {formatPeso(balanceAfter)}
+                      </span>
                     </span>
                     <span className="flex items-center justify-end gap-1">
-                      {!cap && (item.kind === "planned" || item.kind === "bill" || item.kind === "income") && (
-                        <Link
-                          href={`/plan/scheduled?edit=${item.id}`}
-                          aria-label={`Edit ${item.name}`}
-                          className="flex h-9 items-center rounded-full px-2.5 text-[13px] font-extrabold text-sea-dark hover:bg-mint"
-                        >
-                          Edit
-                        </Link>
+                      {!cap &&
+                        (item.kind === "planned" ||
+                          item.kind === "bill" ||
+                          item.kind === "income") && (
+                          <Link
+                            href={`/plan/scheduled?edit=${item.id}`}
+                            aria-label={`Edit ${item.name}`}
+                            className="flex h-9 items-center rounded-full px-2.5 text-[13px] font-extrabold text-sea-dark hover:bg-mint"
+                          >
+                            Edit
+                          </Link>
+                        )}
+                      {!cap && (soon || payEarly) && (
+                        <LogButton item={item} accounts={accounts} early={payEarly} />
                       )}
-                      {!cap && (soon || payEarly) && <LogButton item={item} accounts={accounts} early={payEarly} />}
                     </span>
                   </li>
                 );
@@ -203,13 +268,18 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
           ) : (
             <p className="py-3 text-[15px] text-muted">
               Nothing scheduled in the next {days} days.{" "}
-              <Link href="/plan/scheduled" className="font-extrabold text-sea-dark underline">Add income &amp; expenses</Link>
+              <Link href="/plan/scheduled" className="font-extrabold text-sea-dark underline">
+                Add income &amp; expenses
+              </Link>
             </p>
           )}
         </div>
         <p className="text-xs text-muted">
-          Counts cash, bank and e-wallets. Anything you&apos;ve marked paid or added is already in your
-          balance. <Link href="/plan/scheduled" className="font-extrabold text-sea-dark underline">Manage scheduled</Link>
+          Counts cash, bank and e-wallets. Anything you&apos;ve marked paid or added is already in
+          your balance.{" "}
+          <Link href="/plan/scheduled" className="font-extrabold text-sea-dark underline">
+            Manage scheduled
+          </Link>
         </p>
       </section>
     </div>

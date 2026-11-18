@@ -32,7 +32,15 @@ export type Schedule = {
   amounts?: readonly (number | null)[] | null;
 };
 
-export const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+export const WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
 
 export const SHORT_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -71,7 +79,9 @@ function validWeekdays(weekdays: Schedule["weekdays"]): boolean {
   return (
     Array.isArray(weekdays) &&
     weekdays.length >= 1 &&
-    weekdays.every((w, i) => Number.isInteger(w) && w >= 0 && w <= 6 && (i === 0 || w > weekdays[i - 1]))
+    weekdays.every(
+      (w, i) => Number.isInteger(w) && w >= 0 && w <= 6 && (i === 0 || w > weekdays[i - 1]),
+    )
   );
 }
 
@@ -105,7 +115,8 @@ export function occurrences(s: Schedule, from: string, until: string): string[] 
 
   if (s.frequency === "daily") {
     const weekdays = s.weekdays?.length ? s.weekdays : null;
-    for (let d = from; d < until; d = addDays(d, 1)) if (!weekdays || weekdays.includes(weekdayOf(d))) dates.push(d);
+    for (let d = from; d < until; d = addDays(d, 1))
+      if (!weekdays || weekdays.includes(weekdayOf(d))) dates.push(d);
     return dates;
   }
 
@@ -177,7 +188,10 @@ export function payPerMonth(s: Schedule & { amount: number | null }): number | n
   const slots =
     s.frequency === "twice_monthly"
       ? [0, 1].map((i) => ({ i, times: 1 }))
-      : (s.weeks?.length ? s.weeks : WEEKS_OF_MONTH).map((w) => ({ i: w - 1, times: w === 5 ? 52 / 12 - 4 : 1 }));
+      : (s.weeks?.length ? s.weeks : WEEKS_OF_MONTH).map((w) => ({
+          i: w - 1,
+          times: w === 5 ? 52 / 12 - 4 : 1,
+        }));
   let total = 0;
   for (const { i, times } of slots) {
     const amount = s.amounts?.[i] ?? s.amount;
@@ -198,7 +212,8 @@ export function weekdaysText(weekdays: readonly number[] | null | undefined): st
   const days = weekdays?.length ? [...weekdays].sort((a, b) => a - b) : [0, 1, 2, 3, 4, 5, 6];
   if (days.length === 7) return "Every day";
   const consecutive = days.every((d, i) => i === 0 || d === days[i - 1] + 1);
-  if (consecutive && days.length >= 3) return `${SHORT_WEEKDAYS[days[0]]}–${SHORT_WEEKDAYS[days.at(-1)!]}`;
+  if (consecutive && days.length >= 3)
+    return `${SHORT_WEEKDAYS[days[0]]}–${SHORT_WEEKDAYS[days.at(-1)!]}`;
   const names = days.map((d) => SHORT_WEEKDAYS[d]);
   return names.length > 1 ? `${names.slice(0, -1).join(", ")} & ${names.at(-1)}` : names[0];
 }

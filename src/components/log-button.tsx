@@ -11,7 +11,14 @@ import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import { CloseIcon } from "@/components/icons";
 import type { Account } from "@/lib/data";
 import type { ForecastItem } from "@/lib/forecast";
-import { accountTypeLabel, formatPeso, parseAmount, paysInPesos, purposeLabel, roundCents } from "@/lib/money";
+import {
+  accountTypeLabel,
+  formatPeso,
+  parseAmount,
+  paysInPesos,
+  purposeLabel,
+  roundCents,
+} from "@/lib/money";
 
 /** Opens Add prefilled for an item, linked so saving logs that occurrence. */
 export function prefillHref(item: ForecastItem): string {
@@ -61,14 +68,14 @@ export function LogButton({
       const result = await (item.kind === "utang" || item.kind === "pautang"
         ? settlePerson(item.id, walletId)
         : item.kind === "installment"
-        ? paid
-          ? undoInstallment(item.id)
-          : payInstallments([item.id], walletId)
-        : paid
-          ? deleteTransaction(item.transactionId!)
-          : item.kind === "planned"
-            ? logPlanned(item.id, walletId)
-            : logRecurring(item.id, item.dueOn, walletId, amount ?? item.amount ?? undefined));
+          ? paid
+            ? undoInstallment(item.id)
+            : payInstallments([item.id], walletId)
+          : paid
+            ? deleteTransaction(item.transactionId!)
+            : item.kind === "planned"
+              ? logPlanned(item.id, walletId)
+              : logRecurring(item.id, item.dueOn, walletId, amount ?? item.amount ?? undefined));
       if (result.error) setError(result.error);
       else setPicking(false);
     });
@@ -84,7 +91,11 @@ export function LogButton({
   }
 
   const buttonClass = `flex h-10 min-w-[100px] items-center justify-center rounded-full px-3 text-[13px] font-extrabold disabled:opacity-60 ${
-    paid ? "border-2 border-line bg-card text-ink" : incoming ? "bg-sun text-ink" : "bg-sea text-white"
+    paid
+      ? "border-2 border-line bg-card text-ink"
+      : incoming
+        ? "bg-sun text-ink"
+        : "bg-sea text-white"
   }`;
 
   return (
@@ -102,16 +113,28 @@ export function LogButton({
           aria-label={paid ? `Undo ${item.name}` : `${label}: ${item.name}`}
           className={buttonClass}
         >
-          {pending && !picking ? "Saving…" : paid ? `${incoming ? "Received" : "Paid"} · undo` : label}
+          {pending && !picking
+            ? "Saving…"
+            : paid
+              ? `${incoming ? "Received" : "Paid"} · undo`
+              : label}
         </button>
       )}
       {paid && !pending && (
-        <Link href={`/activity/${item.transactionId}`} className="text-xs font-extrabold text-sea-dark underline">
+        <Link
+          href={`/activity/${item.transactionId}`}
+          className="text-xs font-extrabold text-sea-dark underline"
+        >
           Edit amount
         </Link>
       )}
       {!picking && (
-        <p role="alert" className="max-w-40 text-right text-xs font-bold text-coral-text empty:hidden">{error}</p>
+        <p
+          role="alert"
+          className="max-w-40 text-right text-xs font-bold text-coral-text empty:hidden"
+        >
+          {error}
+        </p>
       )}
       {picking && item.amount !== null && (
         <WalletPicker
@@ -157,7 +180,8 @@ function WalletPicker({
   // type what actually came in or went out. Installments, utang and planned
   // items log their own amounts.
   // First asks whether the estimate is right; "No" opens the amount.
-  const editable = item.estimate && (item.kind === "payday" || item.kind === "income" || item.kind === "bill");
+  const editable =
+    item.estimate && (item.kind === "payday" || item.kind === "income" || item.kind === "bill");
   const [changing, setChanging] = useState(false);
   const [typed, setTyped] = useState(() => String(estimate));
   const parsed = editable && changing ? parseAmount(typed) : estimate;
@@ -226,11 +250,16 @@ function WalletPicker({
         </div>
 
         {editable && (
-          <div role="group" aria-labelledby={`log-estimate-${item.key}`} className="flex flex-col gap-2 rounded-[20px] border-2 border-line px-4 py-3">
+          <div
+            role="group"
+            aria-labelledby={`log-estimate-${item.key}`}
+            className="flex flex-col gap-2 rounded-[20px] border-2 border-line px-4 py-3"
+          >
             <p id={`log-estimate-${item.key}`} className="flex flex-col">
               <span className="font-bold">Is the estimate right?</span>
               <span className="text-[13px] text-muted">
-                {formatPeso(estimate)} is {item.kind === "payday" ? "what the payroll calculator expects" : "an estimate"}.
+                {formatPeso(estimate)} is{" "}
+                {item.kind === "payday" ? "what the payroll calculator expects" : "an estimate"}.
               </span>
             </p>
             <div className="flex gap-2">
@@ -260,7 +289,12 @@ function WalletPicker({
                   {incoming ? "How much came in" : "How much you paid"}
                 </label>
                 <div className="relative">
-                  <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted"
+                  >
+                    ₱
+                  </span>
                   <AmountInput
                     id={`log-amount-${item.key}`}
                     value={typed}
@@ -306,10 +340,14 @@ function WalletPicker({
                   </span>
                 </span>
                 <span className="flex shrink-0 flex-col items-end">
-                  <span className={`font-display text-[17px] font-semibold ${w.balance < 0 ? "text-coral-text" : ""}`}>
+                  <span
+                    className={`font-display text-[17px] font-semibold ${w.balance < 0 ? "text-coral-text" : ""}`}
+                  >
                     {formatPeso(w.balance)}
                   </span>
-                  <span className={`text-[13px] ${short ? "font-bold text-coral-text" : "text-muted"}`}>
+                  <span
+                    className={`text-[13px] ${short ? "font-bold text-coral-text" : "text-muted"}`}
+                  >
                     {short ? "Not enough · " : "After: "}
                     {formatPeso(after)}
                   </span>
@@ -319,7 +357,9 @@ function WalletPicker({
           })}
         </fieldset>
 
-        <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{problem ?? error}</p>
+        <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+          {problem ?? error}
+        </p>
 
         <button
           type="submit"

@@ -46,7 +46,9 @@ function choose(choice: ThemeChoice) {
   }
   if (window.__applyTheme) window.__applyTheme();
   else {
-    const dark = choice === "dark" || (choice === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+    const dark =
+      choice === "dark" ||
+      (choice === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
   }
   listeners.forEach((l) => l());
@@ -108,7 +110,9 @@ export function ThemePicker() {
           </button>
         ))}
       </div>
-      <p className="text-[13px] text-muted">System follows your phone&apos;s dark mode setting. Saved on this device.</p>
+      <p className="text-[13px] text-muted">
+        System follows your phone&apos;s dark mode setting. Saved on this device.
+      </p>
     </div>
   );
 }

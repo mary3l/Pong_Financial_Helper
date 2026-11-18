@@ -14,14 +14,20 @@ export type Client = NonNullable<Awaited<ReturnType<typeof signedInClient>>>;
  * saved with it if it's still in use, else your first cash, bank or e-wallet.
  * With `chosen` (picked in Mark paid), that one or null if it isn't a wallet in use.
  */
-export async function pickWallet(supabase: Client, preferred: string | null, chosen?: string): Promise<string | null> {
+export async function pickWallet(
+  supabase: Client,
+  preferred: string | null,
+  chosen?: string,
+): Promise<string | null> {
   const { data } = await supabase
     .from("accounts")
     .select("*")
     .eq("archived", false)
     .order("created_at");
   // Scheduled items are in pesos: never a dollar wallet ("*" works before migration 0017).
-  const wallets = (data ?? []).filter((a) => isSpendable(a.type as AccountType) && a.currency !== "USD");
+  const wallets = (data ?? []).filter(
+    (a) => isSpendable(a.type as AccountType) && a.currency !== "USD",
+  );
   if (chosen) return wallets.find((a) => a.id === chosen)?.id ?? null;
   return wallets.find((a) => a.id === preferred)?.id ?? wallets[0]?.id ?? null;
 }
@@ -82,7 +88,12 @@ export function isMissingColumn(error: { code?: string } | null): boolean {
   return error?.code === "PGRST204" || error?.code === "42703";
 }
 
-export type CreditTerms = { id: string; type: AccountType; dueDay: number | null; cutoffDay: number | null };
+export type CreditTerms = {
+  id: string;
+  type: AccountType;
+  dueDay: number | null;
+  cutoffDay: number | null;
+};
 
 /** Each account's type, due day and statement cutoff (null before migration 0019). */
 export async function creditTerms(supabase: Client, ids: string[]): Promise<CreditTerms[]> {
@@ -90,7 +101,14 @@ export async function creditTerms(supabase: Client, ids: string[]): Promise<Cred
   const read = (columns: string) => supabase.from("accounts").select(columns).in("id", ids);
   const first = await read("id, type, due_day, cutoff_day");
   const { data } = isMissingColumn(first.error) ? await read("id, type, due_day") : first;
-  return ((data ?? []) as unknown as { id: string; type: string; due_day: number | null; cutoff_day?: number | null }[]).map((a) => ({
+  return (
+    (data ?? []) as unknown as {
+      id: string;
+      type: string;
+      due_day: number | null;
+      cutoff_day?: number | null;
+    }[]
+  ).map((a) => ({
     id: a.id,
     type: a.type as AccountType,
     dueDay: a.due_day,

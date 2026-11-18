@@ -21,12 +21,20 @@ export function walletInterest(
   const accrued: Record<string, InterestEstimate> = {};
   for (const a of wallets) {
     if (!a.interestRate) continue;
-    accrued[a.id] = interestEstimate({ ...a, interestRate: a.interestRate }, lastInterest.get(a.id) ?? null, today);
+    accrued[a.id] = interestEstimate(
+      { ...a, interestRate: a.interestRate },
+      lastInterest.get(a.id) ?? null,
+      today,
+    );
   }
   // In pesos; a time deposit stops earning once it matures.
   const perMonth = roundCents(
     wallets.reduce((sum, a) => {
-      if (!a.interestRate || (a.interestPayout === "maturity" && a.maturesOn && a.maturesOn <= today)) return sum;
+      if (
+        !a.interestRate ||
+        (a.interestPayout === "maturity" && a.maturesOn && a.maturesOn <= today)
+      )
+        return sum;
       const month = dailyInterest(a.balance, a.interestRate, interestTax(a.currency)) * 30;
       return sum + pesoValue({ ...a, balance: month });
     }, 0),

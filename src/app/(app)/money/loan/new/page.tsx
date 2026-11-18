@@ -12,7 +12,9 @@ export const metadata = { title: "Add loan · Pong Money" };
 export default function NewLoanPage() {
   return (
     <div className="flex flex-col gap-4 lg:max-w-xl">
-      <Link href="/money" className="flex h-10 w-fit items-center font-extrabold text-sea-dark">‹ Money</Link>
+      <Link href="/money" className="flex h-10 w-fit items-center font-extrabold text-sea-dark">
+        ‹ Money
+      </Link>
       <h1 className="font-display text-3xl font-semibold">Add loan</h1>
       <Suspense fallback={<div className="h-[560px] rounded-[20px] bg-line-soft" />}>
         <Loan />

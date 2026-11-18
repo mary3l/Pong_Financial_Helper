@@ -16,7 +16,13 @@ import {
 const today = "2026-11-15";
 const day = (n: number) => addDays(today, n);
 
-function item(key: string, kind: ForecastItem["kind"], dueIn: number, amount: number, extra: Partial<ForecastItem> = {}): ForecastItem {
+function item(
+  key: string,
+  kind: ForecastItem["kind"],
+  dueIn: number,
+  amount: number,
+  extra: Partial<ForecastItem> = {},
+): ForecastItem {
   return {
     key,
     kind,
@@ -45,7 +51,8 @@ const items = [
   item("C", "installment", 20, -2500),
 ];
 const [, , , A, B, C] = items;
-const planOf = (locks: Record<string, string>) => planWithLocks({ start: 9000, items, held: [], locks, today });
+const planOf = (locks: Record<string, string>) =>
+  planWithLocks({ start: 9000, items, held: [], locks, today });
 
 describe("aheadCandidates", () => {
   it("keeps unpaid loan payments, bills you pay yourself and utang, due after today", () => {
@@ -63,7 +70,14 @@ describe("aheadCandidates", () => {
       item("onCard", "bill", 12, -500, { lenderId: "atome" }),
     ];
     // Rent here is a bill you pay yourself too.
-    expect(aheadCandidates(list, new Set(["atome"]), today).map((i) => i.key)).toEqual(["rent", "A", "B", "C", "phone", "lourdes"]);
+    expect(aheadCandidates(list, new Set(["atome"]), today).map((i) => i.key)).toEqual([
+      "rent",
+      "A",
+      "B",
+      "C",
+      "phone",
+      "lourdes",
+    ]);
   });
 });
 
@@ -76,7 +90,9 @@ describe("locks", () => {
   });
 
   it("drops locks for paid payments, past days and days on or after the due date", () => {
-    expect(cleanLocks({ A: today, B: day(-1), C: day(20), gone: day(2) }, [A, B, C], today)).toEqual({ A: today });
+    expect(
+      cleanLocks({ A: today, B: day(-1), C: day(20), gone: day(2) }, [A, B, C], today),
+    ).toEqual({ A: today });
   });
 
   it("moves a locked payment to its day", () => {
@@ -97,19 +113,31 @@ describe("checkDay", () => {
     const locks = { A: today, B: today };
     const plan = planOf(locks);
     // ₱1,800 on day 9 after A and B, minus C's ₱2,500.
-    expect(checkDay(C, today, plan, locks, today)).toEqual({ safe: false, low: -700, lowOn: day(9) });
+    expect(checkDay(C, today, plan, locks, today)).toEqual({
+      safe: false,
+      low: -700,
+      lowOn: day(9),
+    });
     expect(firstSafeDay(C, plan, locks, today)).toBe(day(10));
   });
 
   it("counts a locked payment once when checking it again", () => {
     const locks = { A: today, B: today };
     const plan = planOf(locks);
-    expect(checkDay(B, today, plan, locks, today)).toEqual({ safe: true, low: 1800, lowOn: day(9) });
+    expect(checkDay(B, today, plan, locks, today)).toEqual({
+      safe: true,
+      low: 1800,
+      lowOn: day(9),
+    });
     expect(firstSafeDay(A, plan, locks, today)).toBe(today);
   });
 
   it("is always safe on the due day", () => {
-    expect(checkDay(C, C.dueOn, planOf({}), {}, today)).toEqual({ safe: true, low: null, lowOn: null });
+    expect(checkDay(C, C.dueOn, planOf({}), {}, today)).toEqual({
+      safe: true,
+      low: null,
+      lowOn: null,
+    });
   });
 });
 

@@ -2,7 +2,13 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LogButton } from "@/components/log-button";
-import { getCapLines, getCashSpentToday, getPlanInputs, getTransactions, type Account } from "@/lib/data";
+import {
+  getCapLines,
+  getCashSpentToday,
+  getPlanInputs,
+  getTransactions,
+  type Account,
+} from "@/lib/data";
 import { addDays, formatRelativeDay, formatShortDay, today as getToday } from "@/lib/dates";
 import type { ForecastItem } from "@/lib/forecast";
 import { formatPeso } from "@/lib/money";
@@ -51,11 +57,16 @@ async function Payments({ searchParams }: Pick<PageProps<"/plan/payments">, "sea
     return (
       <p className="rounded-[20px] bg-card px-4 py-3 text-[15px] text-muted">
         Add your wallets first.{" "}
-        <Link href="/setup" className="font-extrabold text-sea-dark underline">Set up wallets</Link>
+        <Link href="/setup" className="font-extrabold text-sea-dark underline">
+          Set up wallets
+        </Link>
       </p>
     );
   }
-  const [cash, lines] = await Promise.all([getCashSpentToday(todays, accounts), getCapLines(accounts, today)]);
+  const [cash, lines] = await Promise.all([
+    getCashSpentToday(todays, accounts),
+    getCapLines(accounts, today),
+  ]);
   const { plan, held, capPerDay, start } = planToday({ inWallets, cash, items, today, lines });
   const creditLines = new Set(accounts.filter((a) => a.type === "credit_line").map((a) => a.id));
   const views = (
@@ -68,7 +79,13 @@ async function Payments({ searchParams }: Pick<PageProps<"/plan/payments">, "sea
     />
   );
   if (calendar) {
-    const paydays = [...new Set(items.filter((i) => i.kind === "payday" && !i.transactionId && i.dueOn > today).map((i) => i.dueOn))].sort();
+    const paydays = [
+      ...new Set(
+        items
+          .filter((i) => i.kind === "payday" && !i.transactionId && i.dueOn > today)
+          .map((i) => i.dueOn),
+      ),
+    ].sort();
     return (
       <div className="flex flex-col gap-3">
         {views}
@@ -87,7 +104,9 @@ async function Payments({ searchParams }: Pick<PageProps<"/plan/payments">, "sea
   const next = nextSegment(plan);
   const end = addDays(today, PLAN_DAYS);
   // Paid and received items are done: they're off the list (undo is on the wallet's page).
-  const shown = [...items, ...held].filter((i) => i.amount !== null && !i.transactionId && i.dueOn < end);
+  const shown = [...items, ...held].filter(
+    (i) => i.amount !== null && !i.transactionId && i.dueOn < end,
+  );
   const dateOf = (i: ForecastItem) => (i.dueOn < today ? today : i.dueOn);
   const dates = [...new Set(shown.map(dateOf))].sort();
   const balance = new Map(plan.days.map((d) => [d.date, d.balance]));
@@ -99,8 +118,13 @@ async function Payments({ searchParams }: Pick<PageProps<"/plan/payments">, "sea
       {views}
       <section className="flex flex-col gap-2.5 rounded-[20px] bg-sea p-4 text-white">
         <div className="grid grid-cols-2 gap-2">
-          <Stretch label={`Now – ${formatShortDay(addDays(plan.segments[0].until, -1), today)}`} perDay={plan.perDay} />
-          {next && <Stretch label={`From ${formatShortDay(next.from, today)}`} perDay={next.perDay} />}
+          <Stretch
+            label={`Now – ${formatShortDay(addDays(plan.segments[0].until, -1), today)}`}
+            perDay={plan.perDay}
+          />
+          {next && (
+            <Stretch label={`From ${formatShortDay(next.from, today)}`} perDay={next.perDay} />
+          )}
         </div>
         <p className="text-[13px] text-sea-text">
           {plan.short
@@ -115,11 +139,18 @@ async function Payments({ searchParams }: Pick<PageProps<"/plan/payments">, "sea
         const gap = gapAfter(date);
         return (
           <div key={date} className="flex flex-col gap-2">
-            <section aria-label={formatRelativeDay(date, today)} className="rounded-[20px] bg-card px-4 py-2">
+            <section
+              aria-label={formatRelativeDay(date, today)}
+              className="rounded-[20px] bg-card px-4 py-2"
+            >
               <div className="flex items-baseline justify-between gap-3 py-1">
-                <h2 className="font-display text-[17px] font-semibold">{formatRelativeDay(date, today)}</h2>
+                <h2 className="font-display text-[17px] font-semibold">
+                  {formatRelativeDay(date, today)}
+                </h2>
                 {balance.has(date) && (
-                  <span className={`text-[13px] font-bold ${balance.get(date)! < 0 ? "text-coral-text" : "text-muted"}`}>
+                  <span
+                    className={`text-[13px] font-bold ${balance.get(date)! < 0 ? "text-coral-text" : "text-muted"}`}
+                  >
                     {formatPeso(balance.get(date)!)} left
                   </span>
                 )}
@@ -129,7 +160,14 @@ async function Payments({ searchParams }: Pick<PageProps<"/plan/payments">, "sea
                   .filter((i) => dateOf(i) === date)
                   .sort((a, b) => (a.flow === b.flow ? 0 : a.flow === "in" ? -1 : 1))
                   .map((item) => (
-                    <PaymentRow key={item.key} item={item} plan={plan} accounts={accounts} creditLines={creditLines} today={today} />
+                    <PaymentRow
+                      key={item.key}
+                      item={item}
+                      plan={plan}
+                      accounts={accounts}
+                      creditLines={creditLines}
+                      today={today}
+                    />
                   ))}
               </ul>
             </section>
@@ -179,9 +217,13 @@ function PaymentRow({
       <li className="flex items-center gap-3 border-t border-line-soft py-2.5">
         <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
           <span className="truncate font-bold text-muted">{item.name}</span>
-          <span className="rounded-full bg-sun-tint px-2 text-xs font-extrabold text-sun-text">Cap</span>
+          <span className="rounded-full bg-sun-tint px-2 text-xs font-extrabold text-sun-text">
+            Cap
+          </span>
         </span>
-        <span className="font-display text-[17px] font-semibold text-muted">up to {formatPeso(item.amount!)}</span>
+        <span className="font-display text-[17px] font-semibold text-muted">
+          up to {formatPeso(item.amount!)}
+        </span>
       </li>
     );
   }
@@ -189,15 +231,28 @@ function PaymentRow({
   const late = item.dueOn < today;
   const wallet = accounts.find((a) => a.id === item.accountId)?.name;
   // BNPL bills stay on their due day; everything else can go early when there's room.
-  const earliest = incoming || item.dueOn <= today ? today : isBnplBill(item, creditLines) ? item.dueOn : earliestToPay(item, plan, today);
+  const earliest =
+    incoming || item.dueOn <= today
+      ? today
+      : isBnplBill(item, creditLines)
+        ? item.dueOn
+        : earliestToPay(item, plan, today);
   return (
     <li className="flex items-center gap-3 border-t border-line-soft py-2.5">
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex flex-wrap items-baseline gap-x-2">
-          <span className={`truncate font-bold ${incoming ? "text-sea-dark" : ""}`}>{item.name}</span>
-          {late && <span className="rounded-full bg-coral-tint px-2 text-xs font-extrabold text-coral-text">Late</span>}
+          <span className={`truncate font-bold ${incoming ? "text-sea-dark" : ""}`}>
+            {item.name}
+          </span>
+          {late && (
+            <span className="rounded-full bg-coral-tint px-2 text-xs font-extrabold text-coral-text">
+              Late
+            </span>
+          )}
           {!incoming && (item.fee ?? 0) >= 1 ? (
-            <span className="rounded-full bg-sea-tint px-2 text-xs font-extrabold text-sea-dark">Strategic</span>
+            <span className="rounded-full bg-sea-tint px-2 text-xs font-extrabold text-sea-dark">
+              Strategic
+            </span>
           ) : null}
         </span>
         {wallet && <span className="text-[13px] text-muted">{wallet}</span>}
@@ -217,7 +272,9 @@ function PaymentRow({
           >
             Pay
           </span>
-          <span className="text-xs font-extrabold text-muted">{formatShortDay(earliest, today)}</span>
+          <span className="text-xs font-extrabold text-muted">
+            {formatShortDay(earliest, today)}
+          </span>
         </span>
       )}
     </li>

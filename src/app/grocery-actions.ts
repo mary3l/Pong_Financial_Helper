@@ -21,7 +21,10 @@ export type GroceryResult = { error?: string };
 const FAILED = { error: "Couldn't save your groceries. Your cart is still here; try again." };
 
 function clean(text: unknown, max: number) {
-  return String(text ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+  return String(text ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
 }
 
 /**
@@ -33,7 +36,8 @@ export async function saveGroceryTrip(input: TripInput): Promise<GroceryResult> 
   const receipt = roundCents(Number(input.receiptTotal));
   if (!(receipt > 0 && receipt <= MAX_AMOUNT)) return { error: "Type the total on your receipt." };
   if (!isValidDate(input.occurredOn)) return { error: "Pick a date." };
-  if (input.budget !== null && !(input.budget > 0 && input.budget <= MAX_AMOUNT)) return { error: "Check the trip budget." };
+  if (input.budget !== null && !(input.budget > 0 && input.budget <= MAX_AMOUNT))
+    return { error: "Check the trip budget." };
   if (input.items.length > 300) return { error: "That's a lot of items! Save at most 300." };
   const items = input.items.map((i) => ({
     barcode: i.barcode ? clean(i.barcode, 64) : null,
@@ -47,9 +51,14 @@ export async function saveGroceryTrip(input: TripInput): Promise<GroceryResult> 
 
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
-  const { data: account } = await supabase.from("accounts").select("type").eq("id", input.accountId).maybeSingle();
+  const { data: account } = await supabase
+    .from("accounts")
+    .select("type")
+    .eq("id", input.accountId)
+    .maybeSingle();
   const type = account?.type as AccountType | undefined;
-  if (!type || !(isSpendable(type) || type === "credit_line")) return { error: "Pick what you paid with." };
+  if (!type || !(isSpendable(type) || type === "credit_line"))
+    return { error: "Pick what you paid with." };
 
   const txn = await supabase
     .from("transactions")
@@ -101,7 +110,11 @@ export async function saveGroceryTrip(input: TripInput): Promise<GroceryResult> 
     }
     productIds = new Map(products.data.map((p) => [p.barcode as string, p.id as string]));
     await supabase.from("product_prices").insert(
-      [...named.values()].map((i) => ({ product_id: productIds.get(i.barcode!), store, price: i.price })),
+      [...named.values()].map((i) => ({
+        product_id: productIds.get(i.barcode!),
+        store,
+        price: i.price,
+      })),
     );
   }
 

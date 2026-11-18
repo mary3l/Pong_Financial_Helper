@@ -63,11 +63,21 @@ export function LoanEditForm({
     paidHere.length ? Math.min(...paidHere) - 1 : Infinity,
   );
   const termsOk =
-    terms.received > 0 && terms.monthly > 0 && Number.isInteger(terms.months) && terms.months >= 1 && terms.months <= 60 && isValidDate(nextDue);
+    terms.received > 0 &&
+    terms.monthly > 0 &&
+    Number.isInteger(terms.months) &&
+    terms.months >= 1 &&
+    terms.months <= 60 &&
+    isValidDate(nextDue);
   const preview =
     plan && termsOk
       ? editLoan(
-          plan.payments.map((p) => ({ seq: p.seq, principalPart: p.principalPart, feePart: p.feePart, paid: Boolean(p.transactionId) })),
+          plan.payments.map((p) => ({
+            seq: p.seq,
+            principalPart: p.principalPart,
+            feePart: p.feePart,
+            paid: Boolean(p.transactionId),
+          })),
           terms,
         )
       : null;
@@ -102,10 +112,23 @@ export function LoanEditForm({
 
   const money = (id: string, label: string, value: string, set: (v: string) => void) => (
     <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm font-bold">{label}</label>
+      <label htmlFor={id} className="text-sm font-bold">
+        {label}
+      </label>
       <div className="relative">
-        <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-        <AmountInput id={id} value={value} onChange={set} placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8 text-right`} />
+        <span
+          aria-hidden="true"
+          className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted"
+        >
+          ₱
+        </span>
+        <AmountInput
+          id={id}
+          value={value}
+          onChange={set}
+          placeholder="0.00"
+          className={`${FIELD_CLASS} w-full pl-8 text-right`}
+        />
       </div>
     </div>
   );
@@ -113,27 +136,63 @@ export function LoanEditForm({
   return (
     <form onSubmit={save} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <label htmlFor="edit-loan-name" className="text-sm font-bold">Name</label>
-        <input id="edit-loan-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required className={FIELD_CLASS} />
+        <label htmlFor="edit-loan-name" className="text-sm font-bold">
+          Name
+        </label>
+        <input
+          id="edit-loan-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          maxLength={60}
+          required
+          className={FIELD_CLASS}
+        />
       </div>
       {plan && (
         <>
           {/* Two across only with room: on a phone each field gets the full width. */}
           <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
-            {money("edit-loan-received", plan.sourceTxnId && !alreadyHad && !theirs ? "Amount received" : "Loan amount", received, setReceived)}
+            {money(
+              "edit-loan-received",
+              plan.sourceTxnId && !alreadyHad && !theirs ? "Amount received" : "Loan amount",
+              received,
+              setReceived,
+            )}
             {money("edit-loan-monthly", "Monthly payment", monthly, setMonthly)}
             <div className="flex flex-col gap-1">
-              <label htmlFor="edit-loan-months" className="text-sm font-bold">Months</label>
-              <input id="edit-loan-months" value={months} onChange={(e) => setMonths(e.target.value)} inputMode="numeric" className={FIELD_CLASS} />
+              <label htmlFor="edit-loan-months" className="text-sm font-bold">
+                Months
+              </label>
+              <input
+                id="edit-loan-months"
+                value={months}
+                onChange={(e) => setMonths(e.target.value)}
+                inputMode="numeric"
+                className={FIELD_CLASS}
+              />
             </div>
             <div className="flex flex-col gap-1">
-              <label htmlFor="edit-loan-next" className="text-sm font-bold">Next payment due</label>
-              <input id="edit-loan-next" type="date" value={nextDue} onChange={(e) => setNextDue(e.target.value)} className={FIELD_CLASS} />
+              <label htmlFor="edit-loan-next" className="text-sm font-bold">
+                Next payment due
+              </label>
+              <input
+                id="edit-loan-next"
+                type="date"
+                value={nextDue}
+                onChange={(e) => setNextDue(e.target.value)}
+                className={FIELD_CLASS}
+              />
             </div>
             {running && (
               <div className="flex flex-col gap-1">
-                <span id="edit-loan-before-label" className="text-sm font-bold">Paid before adding here</span>
-                <div role="group" aria-labelledby="edit-loan-before-label" className="flex h-12 items-center justify-between rounded-[14px] border-2 border-line px-1">
+                <span id="edit-loan-before-label" className="text-sm font-bold">
+                  Paid before adding here
+                </span>
+                <div
+                  role="group"
+                  aria-labelledby="edit-loan-before-label"
+                  className="flex h-12 items-center justify-between rounded-[14px] border-2 border-line px-1"
+                >
                   <button
                     type="button"
                     aria-label="One fewer payment made before"
@@ -145,7 +204,9 @@ export function LoanEditForm({
                   </button>
                   <span aria-live="polite" className="font-extrabold">
                     {paidBefore}
-                    {terms.months > 0 && <span className="font-bold text-muted"> of {terms.months}</span>}
+                    {terms.months > 0 && (
+                      <span className="font-bold text-muted"> of {terms.months}</span>
+                    )}
                   </span>
                   <button
                     type="button"
@@ -161,15 +222,24 @@ export function LoanEditForm({
             )}
             {/* Someone else's loan never comes out of your wallets. */}
             {!theirs && (
-            <div className={`${running ? "" : "min-[420px]:col-span-2 "}flex flex-col gap-1`}>
-              <label htmlFor="edit-loan-from" className="text-sm font-bold">Pay from</label>
-              <select id="edit-loan-from" value={payFrom} onChange={(e) => setPayFrom(e.target.value)} className={FIELD_CLASS}>
-                {wallets.map((w) => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
-                ))}
-                {!wallets.length && <option value="">Any wallet</option>}
-              </select>
-            </div>
+              <div className={`${running ? "" : "min-[420px]:col-span-2 "}flex flex-col gap-1`}>
+                <label htmlFor="edit-loan-from" className="text-sm font-bold">
+                  Pay from
+                </label>
+                <select
+                  id="edit-loan-from"
+                  value={payFrom}
+                  onChange={(e) => setPayFrom(e.target.value)}
+                  className={FIELD_CLASS}
+                >
+                  {wallets.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+                  {!wallets.length && <option value="">Any wallet</option>}
+                </select>
+              </div>
             )}
           </div>
           {preview && "error" in preview && (
@@ -213,21 +283,31 @@ export function LoanEditForm({
                 className="mt-0.5 h-5 w-5 shrink-0 accent-sea"
               />
               <span>
-                <strong>Don&apos;t add this money to a wallet.</strong> For money already spent (even if you don&apos;t
-                remember where), or already counted in the wallet&apos;s balance. Takes the{" "}
-                {formatPeso(roundCents(plan.principal))} back out of the wallet it went into. What you owe stays the
-                same.
+                <strong>Don&apos;t add this money to a wallet.</strong> For money already spent
+                (even if you don&apos;t remember where), or already counted in the wallet&apos;s
+                balance. Takes the {formatPeso(roundCents(plan.principal))} back out of the wallet
+                it went into. What you owe stays the same.
               </span>
             </label>
           )}
         </>
       )}
-      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
       <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
+        <button
+          type="submit"
+          disabled={pending}
+          className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60"
+        >
           {pending ? "Updating…" : "Update loan"}
         </button>
-        <button type="button" onClick={onDone} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card">
+        <button
+          type="button"
+          onClick={onDone}
+          className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card"
+        >
           Cancel
         </button>
       </div>

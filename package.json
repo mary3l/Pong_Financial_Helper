@@ -19,13 +19,6 @@
     "qa": "npm run typecheck && npm run lint && npm run format:check && npm run test",
     "prepare": "husky"
   },
-  "lint-staged": {
-    "*.{ts,tsx,js,mjs}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.{css,json,yml,yaml}": "prettier --write"
-  },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.118.0",

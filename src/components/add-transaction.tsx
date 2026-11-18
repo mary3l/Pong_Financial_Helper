@@ -1,6 +1,12 @@
 import { TransactionForm, type Prefill } from "@/components/transaction-form";
 import { isCategoryFor } from "@/lib/categories";
-import { getAccounts, getPeople, getSubcategories, getTransactions, templatesFrom } from "@/lib/data";
+import {
+  getAccounts,
+  getPeople,
+  getSubcategories,
+  getTransactions,
+  templatesFrom,
+} from "@/lib/data";
 import { today } from "@/lib/dates";
 import { parseAmount } from "@/lib/money";
 
@@ -19,7 +25,14 @@ function prefillFrom(params: Params): Prefill | undefined {
   const type = get("type");
   // From a wallet's + Add: just the wallet, as an expense to start.
   if (!type && get("account")) {
-    return { type: "expense", amount: null, category: null, accountId: get("account"), note: "", link: null };
+    return {
+      type: "expense",
+      amount: null,
+      category: null,
+      accountId: get("account"),
+      note: "",
+      link: null,
+    };
   }
   if (type !== "expense" && type !== "income") return undefined;
   const amount = parseAmount(get("amount"));

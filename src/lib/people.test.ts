@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { dueDate, equalShares, isOverdue, personItems, splitEffects, type Person } from "@/lib/people";
+import {
+  dueDate,
+  equalShares,
+  isOverdue,
+  personItems,
+  splitEffects,
+  type Person,
+} from "@/lib/people";
 
 const TODAY = "2026-11-02";
 
@@ -50,9 +57,18 @@ describe("split bills", () => {
 describe("forecast ignores pautang until it's paid back", () => {
   it("leaves pautang out unless you switched on Count it in my forecast", () => {
     expect(personItems([person(1000, [{ dueOn: "2026-11-15" }])], TODAY, "2026-12-02")).toEqual([]);
-    const counted = personItems([person(1000, [{ dueOn: "2026-11-15", countInForecast: true }])], TODAY, "2026-12-02");
+    const counted = personItems(
+      [person(1000, [{ dueOn: "2026-11-15", countInForecast: true }])],
+      TODAY,
+      "2026-12-02",
+    );
     expect(counted).toHaveLength(1);
-    expect(counted[0]).toMatchObject({ kind: "pautang", flow: "in", amount: 1000, dueOn: "2026-11-15" });
+    expect(counted[0]).toMatchObject({
+      kind: "pautang",
+      flow: "in",
+      amount: 1000,
+      dueOn: "2026-11-15",
+    });
   });
 
   it("never counts late pautang", () => {
@@ -68,7 +84,9 @@ describe("forecast ignores pautang until it's paid back", () => {
   });
 
   it("uses the earliest promised date", () => {
-    expect(dueDate(person(800, [{ dueOn: "2026-11-30" }, { dueOn: "2026-11-15" }]))).toBe("2026-11-15");
+    expect(dueDate(person(800, [{ dueOn: "2026-11-30" }, { dueOn: "2026-11-15" }]))).toBe(
+      "2026-11-15",
+    );
     expect(dueDate(person(0, [{ dueOn: "2026-11-15" }]))).toBeNull();
   });
 });

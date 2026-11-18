@@ -10,7 +10,9 @@ export function AddSplitsButton({ splitIds, label }: { splitIds: string[]; label
 
   return (
     <div className="flex flex-col gap-2">
-      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
       <button
         type="button"
         disabled={pending}

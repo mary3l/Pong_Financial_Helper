@@ -10,7 +10,10 @@
 // Run it again any time to preview the widget or change the setup code.
 
 const KEYCHAIN = "pong-money-widget";
-const CACHE = FileManager.local().joinPath(FileManager.local().documentsDirectory(), "pong-money-widget.json");
+const CACHE = FileManager.local().joinPath(
+  FileManager.local().documentsDirectory(),
+  "pong-money-widget.json",
+);
 const TIME_ZONE = "Asia/Manila";
 
 // Pong Money colors (src/app/globals.css).
@@ -81,7 +84,8 @@ async function askForSetup() {
   if (!setup) {
     const oops = new Alert();
     oops.title = "That's not a setup code";
-    oops.message = "Copy it again from Settings › Home screen widget. It's a long line of letters and numbers.";
+    oops.message =
+      "Copy it again from Settings › Home screen widget. It's a long line of letters and numbers.";
     oops.addAction("OK");
     await oops.present();
     return null;
@@ -144,13 +148,18 @@ function writeCache(data) {
 async function load(setup) {
   try {
     const data = await fetchSpent(setup);
-    if (data === null) return { error: "Your widget key doesn't work anymore. Run this script in Scriptable and paste a new setup code." };
+    if (data === null)
+      return {
+        error:
+          "Your widget key doesn't work anymore. Run this script in Scriptable and paste a new setup code.",
+      };
     writeCache(data);
     return { data };
   } catch (e) {
     const cached = readCache();
     // Only today's numbers are worth showing; at midnight they start over.
-    if (cached && cached.data.date === todayInManila()) return { data: cached.data, stale: new Date(cached.at) };
+    if (cached && cached.data.date === todayInManila())
+      return { data: cached.data, stale: new Date(cached.at) };
     return { error: `Couldn't update. ${e.message || "Check your connection."}` };
   }
 }
@@ -174,9 +183,11 @@ function countLabel(count) {
 
 function dayLabel(date) {
   // Noon, so the date is the same in every time zone.
-  return new Intl.DateTimeFormat("en-PH", { weekday: "short", month: "short", day: "numeric" }).format(
-    new Date(`${date}T12:00:00`),
-  );
+  return new Intl.DateTimeFormat("en-PH", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(`${date}T12:00:00`));
 }
 
 function timeLabel(when) {
@@ -199,7 +210,12 @@ function text(stack, value, f, color, { lines = 1, scale = 1 } = {}) {
 }
 
 function hasSafeToSpend(data) {
-  return data.perDay !== null && data.perDay !== undefined && data.left !== null && data.left !== undefined;
+  return (
+    data.perDay !== null &&
+    data.perDay !== undefined &&
+    data.left !== null &&
+    data.left !== undefined
+  );
 }
 
 function paydayLabel(data) {
@@ -208,7 +224,9 @@ function paydayLabel(data) {
 }
 
 function shortDay(date) {
-  return new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric" }).format(new Date(`${date}T12:00:00`));
+  return new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric" }).format(
+    new Date(`${date}T12:00:00`),
+  );
 }
 
 /**
@@ -225,19 +243,31 @@ function addTotal(stack, result, big) {
     stack.addSpacer(3);
     text(stack, countLabel(data.count), font.sub, SEA_TEXT);
     // perDay is in the answer once step 20 is run: Home just hasn't saved one (or payday passed).
-    text(stack, "perDay" in data ? "Open Pong Money to update" : when, font.small, SEA_TEXT, { lines: 2 });
+    text(stack, "perDay" in data ? "Open Pong Money to update" : when, font.small, SEA_TEXT, {
+      lines: 2,
+    });
     return;
   }
   const over = data.left < 0;
   text(stack, over ? "OVER TODAY BY" : "SAFE TO SPEND TODAY", font.label, SEA_TEXT);
   stack.addSpacer(big ? 6 : null);
-  text(stack, peso(Math.abs(data.left)), big ? font.huge : font.big, over ? new Color("#ffd2c6") : Color.white(), { scale: 0.5 });
+  text(
+    stack,
+    peso(Math.abs(data.left)),
+    big ? font.huge : font.big,
+    over ? new Color("#ffd2c6") : Color.white(),
+    { scale: 0.5 },
+  );
   stack.addSpacer(3);
   // Smaller, under the big number: what you've spent today, then the daily amount and payday.
   text(stack, `Spent today ${peso(data.total)}`, font.sub, SEA_TEXT, { scale: 0.7 });
-  text(stack, `${peso(data.perDay)} a day · ${paydayLabel(data)}`, font.small, SEA_TEXT, { lines: 2, scale: 0.7 });
+  text(stack, `${peso(data.perDay)} a day · ${paydayLabel(data)}`, font.small, SEA_TEXT, {
+    lines: 2,
+    scale: 0.7,
+  });
   // The daily amount is from the last time Home was opened.
-  if (stale || data.asOf !== data.date) text(stack, stale ? when : `As of ${shortDay(data.asOf)}`, font.small, SEA_TEXT);
+  if (stale || data.asOf !== data.date)
+    text(stack, stale ? when : `As of ${shortDay(data.asOf)}`, font.small, SEA_TEXT);
 }
 
 function addItems(stack, data, max, withWallet) {
@@ -251,7 +281,8 @@ function addItems(stack, data, max, withWallet) {
     const left = row.addStack();
     left.layoutVertically();
     text(left, itemTitle(item), font.body, INK);
-    if (withWallet) text(left, `${CATEGORIES[item.category] || "Expense"} · ${item.wallet}`, font.small, MUTED);
+    if (withWallet)
+      text(left, `${CATEGORIES[item.category] || "Expense"} · ${item.wallet}`, font.small, MUTED);
     row.addSpacer(6);
     text(row, peso(item.amount), font.body, INK);
     stack.addSpacer(withWallet ? 6 : 4);

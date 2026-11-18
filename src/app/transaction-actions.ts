@@ -5,7 +5,13 @@ import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
 import { ADJUSTMENT, SUBCATEGORY_MAX, cleanSubcategory, isCategoryFor } from "@/lib/categories";
 import { isValidClock, isValidDate } from "@/lib/dates";
 import { bnplFee, buildSchedule } from "@/lib/installments";
-import { MAX_AMOUNT, isSpendable, roundCents, type AccountType, type TransactionType } from "@/lib/money";
+import {
+  MAX_AMOUNT,
+  isSpendable,
+  roundCents,
+  type AccountType,
+  type TransactionType,
+} from "@/lib/money";
 import { savePlan, type Client } from "@/lib/server-writes";
 
 export type TransactionInput = {
@@ -36,7 +42,8 @@ function validate(input: TransactionInput) {
   const amount = roundCents(Number(input.amount));
   if (!Number.isFinite(amount) || amount <= 0) return { error: "Enter an amount above 0." };
   if (amount > MAX_AMOUNT) return { error: "That amount is too big." };
-  const toAmount = type === "transfer" && input.toAmount != null ? roundCents(Number(input.toAmount)) : null;
+  const toAmount =
+    type === "transfer" && input.toAmount != null ? roundCents(Number(input.toAmount)) : null;
   if (toAmount !== null && !(Number.isFinite(toAmount) && toAmount > 0 && toAmount <= MAX_AMOUNT)) {
     return { error: "Check how much landed." };
   }
@@ -56,7 +63,9 @@ function validate(input: TransactionInput) {
   if (!isValidDate(occurredOn)) return { error: "Pick a date." };
   const occurredTime = input.occurredTime || null;
   if (occurredTime !== null && !isValidClock(occurredTime)) return { error: "Check the time." };
-  const note = String(input.note ?? "").replace(/\s+/g, " ").trim();
+  const note = String(input.note ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (note.length > NOTE_MAX) return { error: `Keep the note to ${NOTE_MAX} characters.` };
 
   return {
@@ -87,8 +96,10 @@ function currencyError(error: { code?: string; message?: string } | null): strin
     return "To move money to or from a dollar wallet, run step 17 in supabase/SQL_GUIDE.md first.";
   }
   if (error?.code !== "23514") return null;
-  if (error.message?.includes("pesos and dollars")) return "Type how much landed in the other wallet.";
-  if (error.message?.includes("Dollar wallets")) return "Dollar wallets only move money by transfer. Pick a peso wallet.";
+  if (error.message?.includes("pesos and dollars"))
+    return "Type how much landed in the other wallet.";
+  if (error.message?.includes("Dollar wallets"))
+    return "Dollar wallets only move money by transfer. Pick a peso wallet.";
   return null;
 }
 
@@ -117,7 +128,10 @@ async function writeTxn(supabase: Client, row: TxnRowInput, id?: string) {
     const column = missingColumn(result.error);
     if (!column || !(column in values)) break;
     if (column === "subcategory" && values.subcategory) {
-      return { data: null, error: { code: "missing_subcategory", message: MISSING_SUBCATEGORY_ERROR } };
+      return {
+        data: null,
+        error: { code: "missing_subcategory", message: MISSING_SUBCATEGORY_ERROR },
+      };
     }
     delete values[column];
     result = await run(values);
@@ -161,7 +175,10 @@ export async function saveTransaction(
       // Logged already (another tab?): don't count it twice.
       await supabase.from("transactions").delete().eq("id", data[0].id);
       return {
-        error: linked.error.code === "23505" ? "That's already logged." : "Couldn't save that. Please try again.",
+        error:
+          linked.error.code === "23505"
+            ? "That's already logged."
+            : "Couldn't save that. Please try again.",
       };
     }
   }
@@ -190,9 +207,13 @@ async function averageRate(supabase: Client, accountId: string, pesos: number, d
   const after = Number(current.data.balance);
   const before = after - dollars;
   const old = Number(account.data.fx_rate);
-  const rate = before > 0 && old > 0 && after > 0 ? (before * old + pesos) / after : pesos / dollars;
+  const rate =
+    before > 0 && old > 0 && after > 0 ? (before * old + pesos) / after : pesos / dollars;
   if (!(Number.isFinite(rate) && rate > 0 && rate <= 1000)) return;
-  await supabase.from("accounts").update({ fx_rate: Math.round(rate * 10000) / 10000 }).eq("id", accountId);
+  await supabase
+    .from("accounts")
+    .update({ fx_rate: Math.round(rate * 10000) / 10000 })
+    .eq("id", accountId);
 }
 
 export type BnplPlanInput = {
@@ -209,12 +230,17 @@ export type BnplPlanInput = {
  * the credit line, plus its payment plan. Deleting the expense later
  * deletes the plan too.
  */
-export async function saveBnplPurchase(input: TransactionInput, plan: BnplPlanInput): Promise<ActionResult> {
+export async function saveBnplPurchase(
+  input: TransactionInput,
+  plan: BnplPlanInput,
+): Promise<ActionResult> {
   const checked = validate(input);
   if (!checked.row) return { error: checked.error };
   if (checked.row.type !== "expense") return { error: "Payment plans are for expenses." };
-  if (!Number.isInteger(plan.months) || plan.months < 1 || plan.months > 24) return { error: "Pick how many months." };
-  if (!(plan.ratePerMonth >= 0 && plan.ratePerMonth <= 10)) return { error: "Check the monthly fee (0 to 10%)." };
+  if (!Number.isInteger(plan.months) || plan.months < 1 || plan.months > 24)
+    return { error: "Pick how many months." };
+  if (!(plan.ratePerMonth >= 0 && plan.ratePerMonth <= 10))
+    return { error: "Check the monthly fee (0 to 10%)." };
   if (!isValidDate(plan.firstDue) || plan.firstDue < checked.row.occurred_on) {
     return { error: "The first payment can't be before the purchase." };
   }
@@ -222,11 +248,18 @@ export async function saveBnplPurchase(input: TransactionInput, plan: BnplPlanIn
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
-  const ids = [checked.row.account_id, plan.payFromAccountId].filter((id): id is string => Boolean(id));
+  const ids = [checked.row.account_id, plan.payFromAccountId].filter((id): id is string =>
+    Boolean(id),
+  );
   const { data: accounts } = await supabase.from("accounts").select("id, type").in("id", ids);
-  const typeOf = (id: string | null) => accounts?.find((a) => a.id === id)?.type as AccountType | undefined;
-  if (typeOf(checked.row.account_id) !== "credit_line") return { error: "Pick a BNPL credit line to pay with." };
-  const payFrom = plan.payFromAccountId && isSpendable(typeOf(plan.payFromAccountId)!) ? plan.payFromAccountId : null;
+  const typeOf = (id: string | null) =>
+    accounts?.find((a) => a.id === id)?.type as AccountType | undefined;
+  if (typeOf(checked.row.account_id) !== "credit_line")
+    return { error: "Pick a BNPL credit line to pay with." };
+  const payFrom =
+    plan.payFromAccountId && isSpendable(typeOf(plan.payFromAccountId)!)
+      ? plan.payFromAccountId
+      : null;
 
   const { data: rows, error } = await writeTxn(supabase, checked.row);
   const data = rows?.[0];
@@ -266,7 +299,9 @@ function adjustmentRow(change: number, input: AdjustmentInput) {
   if (!Number.isFinite(amount) || amount <= 0) return { error: "Enter an amount above ₱0." };
   if (amount > MAX_AMOUNT) return { error: "That amount is too big." };
   if (!isValidDate(input.occurredOn)) return { error: "Pick a date." };
-  const note = String(input.note ?? "").replace(/\s+/g, " ").trim();
+  const note = String(input.note ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (note.length > NOTE_MAX) return { error: `Keep the note to ${NOTE_MAX} characters.` };
   return {
     row: {
@@ -283,8 +318,13 @@ function adjustmentRow(change: number, input: AdjustmentInput) {
  * Sets what's really in a wallet now, logged as a balance adjustment for the
  * difference: up (income) or down (expense), never counted as either.
  */
-export async function adjustBalance(accountId: string, actual: number, input: AdjustmentInput): Promise<ActionResult> {
-  if (!Number.isFinite(actual) || Math.abs(actual) > MAX_AMOUNT) return { error: "Check the amount." };
+export async function adjustBalance(
+  accountId: string,
+  actual: number,
+  input: AdjustmentInput,
+): Promise<ActionResult> {
+  if (!Number.isFinite(actual) || Math.abs(actual) > MAX_AMOUNT)
+    return { error: "Check the amount." };
 
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
@@ -293,7 +333,8 @@ export async function adjustBalance(accountId: string, actual: number, input: Ad
     supabase.from("accounts").select("type, archived").eq("id", accountId).maybeSingle(),
     supabase.from("account_balances").select("balance").eq("account_id", accountId).maybeSingle(),
   ]);
-  if (account.error || current.error || !account.data || !current.data) return { error: "Couldn't find that wallet." };
+  if (account.error || current.error || !account.data || !current.data)
+    return { error: "Couldn't find that wallet." };
   if (!isSpendable(account.data.type as AccountType) || account.data.archived) {
     return { error: "Only cash, bank and e-wallet balances can be adjusted." };
   }
@@ -303,7 +344,10 @@ export async function adjustBalance(accountId: string, actual: number, input: Ad
   const checked = adjustmentRow(change, input);
   if (!checked.row) return { error: checked.error };
 
-  const { error } = await supabase.from("transactions").insert({ ...checked.row, account_id: accountId }).select("id");
+  const { error } = await supabase
+    .from("transactions")
+    .insert({ ...checked.row, account_id: accountId })
+    .select("id");
   if (error) return { error: "Couldn't save that. Please try again." };
 
   refresh();
@@ -311,7 +355,11 @@ export async function adjustBalance(accountId: string, actual: number, input: Ad
 }
 
 /** Changes a balance adjustment: how much it moved the balance (up is +), its date and note. */
-export async function updateAdjustment(id: string, change: number, input: AdjustmentInput): Promise<ActionResult> {
+export async function updateAdjustment(
+  id: string,
+  change: number,
+  input: AdjustmentInput,
+): Promise<ActionResult> {
   const checked = adjustmentRow(roundCents(Number(change)), input);
   if (!checked.row) return { error: checked.error };
 
@@ -336,11 +384,7 @@ export async function deleteTransaction(id: string): Promise<ActionResult> {
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
-  const { data, error } = await supabase
-    .from("transactions")
-    .delete()
-    .eq("id", id)
-    .select("id");
+  const { data, error } = await supabase.from("transactions").delete().eq("id", id).select("id");
   if (error || !data?.length) {
     return { error: "Couldn't delete that. Please try again." };
   }

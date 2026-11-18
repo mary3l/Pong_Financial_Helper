@@ -51,7 +51,8 @@ const NAME_MAX = 60;
  * PostgREST says PGRST204 for a column it doesn't know, Postgres 42703.
  */
 function needsMigration(error: { code?: string; message?: string } | null): string | null {
-  if (!error || (error.code !== "PGRST204" && error.code !== "42703" && error.code !== "23514")) return null;
+  if (!error || (error.code !== "PGRST204" && error.code !== "42703" && error.code !== "23514"))
+    return null;
   if (/currency|fx_rate|matures_on|interest_payout_check/.test(error.message ?? "")) {
     return "For dollar wallets and time deposits, run step 17 in supabase/SQL_GUIDE.md first.";
   }
@@ -63,7 +64,9 @@ function needsMigration(error: { code?: string; message?: string } | null): stri
 }
 
 function cleanName(name: unknown) {
-  return String(name ?? "").replace(/\s+/g, " ").trim();
+  return String(name ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** Pesos per US$1 a rate can be, so a typo like 5800 is caught. */
@@ -81,7 +84,8 @@ function checkWallet(w: WalletInput, currency: Currency = w.currency ?? "PHP"): 
   const rate = w.interestRate ?? null;
   if (rate !== null) {
     if (!canEarnInterest(w.type)) return "Only banks and e-wallets earn interest.";
-    if (!Number.isFinite(rate) || rate <= 0 || rate > 100) return `Check the interest rate for ${name}.`;
+    if (!Number.isFinite(rate) || rate <= 0 || rate > 100)
+      return `Check the interest rate for ${name}.`;
   }
   if (w.interestPayout !== undefined && !isInterestPayout(w.interestPayout)) {
     return `Pick when ${name} pays interest.`;
@@ -92,20 +96,23 @@ function checkWallet(w: WalletInput, currency: Currency = w.currency ?? "PHP"): 
     if (fx === null || !Number.isFinite(fx) || fx <= 0 || fx > FX_MAX) {
       return `Set how many pesos US$1 is for ${name}, like 58.50.`;
     }
-    if (w.purpose === "spending") return "Dollars aren't spending money. Pick Savings, Emergency fund or Investments.";
+    if (w.purpose === "spending")
+      return "Dollars aren't spending money. Pick Savings, Emergency fund or Investments.";
     if (w.goalAmount != null) return "Goals are in pesos, so a dollar wallet can't have one yet.";
   }
   if (w.interestRate != null && w.interestPayout === "maturity") {
     if (!w.maturesOn || !isValidDate(w.maturesOn)) return `Pick when ${name} matures.`;
     if (w.maturesOn > addDays(today(), 10 * 366)) return "Pick a maturity date within 10 years.";
     if (w.placedOn != null) {
-      if (!isValidDate(w.placedOn) || w.placedOn > today()) return `Check when you put the money in ${name}.`;
+      if (!isValidDate(w.placedOn) || w.placedOn > today())
+        return `Check when you put the money in ${name}.`;
       if (w.placedOn >= w.maturesOn) return "It has to mature after the day you put the money in.";
     }
   }
   const goal = w.goalAmount ?? null;
   if (goal !== null) {
-    if (!Number.isFinite(goal) || goal <= 0 || goal > MAX_AMOUNT) return `Check the goal amount for ${name}.`;
+    if (!Number.isFinite(goal) || goal <= 0 || goal > MAX_AMOUNT)
+      return `Check the goal amount for ${name}.`;
   }
   if (w.goalDate != null) {
     if (goal === null) return `Set how much you're saving for before picking a date.`;
@@ -130,11 +137,13 @@ function extras(w: WalletInput, payoutBefore = "daily", hadGoal = false) {
     ...(w.interestRate !== undefined && {
       interest_rate: w.interestRate === null ? null : Math.round(w.interestRate * 100) / 100,
     }),
-    ...(w.interestPayout !== undefined && w.interestPayout !== payoutBefore && { interest_payout: w.interestPayout }),
-    ...(w.goalAmount !== undefined && (goal !== null || hadGoal) && {
-      goal_amount: goal === null ? null : roundCents(goal),
-      goal_date: goal === null ? null : (w.goalDate ?? null),
-    }),
+    ...(w.interestPayout !== undefined &&
+      w.interestPayout !== payoutBefore && { interest_payout: w.interestPayout }),
+    ...(w.goalAmount !== undefined &&
+      (goal !== null || hadGoal) && {
+        goal_amount: goal === null ? null : roundCents(goal),
+        goal_date: goal === null ? null : (w.goalDate ?? null),
+      }),
   };
 }
 
@@ -143,7 +152,8 @@ function extras(w: WalletInput, payoutBefore = "daily", hadGoal = false) {
  * and a maturity date (or clearing one). Peso wallets save before 0017.
  */
 function currencyColumns(w: WalletInput, currency: Currency, hadMaturity = false) {
-  const maturesOn = w.interestRate != null && w.interestPayout === "maturity" ? (w.maturesOn ?? null) : null;
+  const maturesOn =
+    w.interestRate != null && w.interestPayout === "maturity" ? (w.maturesOn ?? null) : null;
   return {
     ...(currency === "USD" && { fx_rate: Math.round((w.fxRate ?? 0) * 10000) / 10000 }),
     ...((maturesOn !== null || hadMaturity) && { matures_on: maturesOn }),
@@ -208,8 +218,7 @@ export async function updateWallet(id: string, input: WalletInput): Promise<Wall
   const problem = checkWallet(input, currency);
   if (problem) return { error: problem };
 
-  const starting =
-    Number(account.data.starting_balance) + (balance - Number(current.data.balance));
+  const starting = Number(account.data.starting_balance) + (balance - Number(current.data.balance));
   const row = {
     ...extras(input, account.data.interest_payout ?? "daily", account.data.goal_amount != null),
     ...currencyColumns(input, currency, account.data.matures_on != null),
@@ -218,7 +227,8 @@ export async function updateWallet(id: string, input: WalletInput): Promise<Wall
   if ("interest_rate" in row) {
     const before = account.data.interest_rate == null ? null : Number(account.data.interest_rate);
     if (row.interest_rate === null) Object.assign(row, { interest_since: null });
-    else if (row.interest_rate !== before) Object.assign(row, { interest_since: placedOn(input) ?? today() });
+    else if (row.interest_rate !== before)
+      Object.assign(row, { interest_since: placedOn(input) ?? today() });
   }
   // A time deposit earns from the day the money went in.
   const placed = placedOn(input);

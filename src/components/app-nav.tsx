@@ -25,8 +25,7 @@ type IsActive = (href: string) => boolean;
 
 function useIsActive(): IsActive {
   const pathname = usePathname();
-  return (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
+  return (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 }
 
 // The pathname isn't known while prerendering pages with a dynamic param
@@ -71,12 +70,7 @@ function BottomNavBar({ isActive }: { isActive: IsActive }) {
   );
 }
 
-function BottomTab({
-  href,
-  label,
-  Icon,
-  active,
-}: (typeof TABS)[number] & { active: boolean }) {
+function BottomTab({ href, label, Icon, active }: (typeof TABS)[number] & { active: boolean }) {
   return (
     <Link
       href={href}
@@ -105,7 +99,6 @@ function ActiveSidebar() {
 }
 
 function SidebarPanel({ isActive }: { isActive: IsActive }) {
-
   return (
     <aside className="sticky top-6 hidden w-64 shrink-0 flex-col gap-5 self-start rounded-[28px] bg-card px-4 py-5 lg:flex">
       <Link href="/" className="flex items-center gap-2 text-ink no-underline">

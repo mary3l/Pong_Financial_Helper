@@ -70,7 +70,12 @@ describe("buildPaymentPlan", () => {
   it("counts late bills today and skips paid ones", () => {
     const late = buildPaymentPlan({ start: 3000, items: [item(-3, -1000)], today, days: 10 });
     expect(late.perDay).toBe(100);
-    const paid = buildPaymentPlan({ start: 3000, items: [item(2, -1000, { transactionId: "t" })], today, days: 10 });
+    const paid = buildPaymentPlan({
+      start: 3000,
+      items: [item(2, -1000, { transactionId: "t" })],
+      today,
+      days: 10,
+    });
     expect(paid.perDay).toBe(200);
   });
 
@@ -85,16 +90,24 @@ describe("planRows", () => {
   it("gives each item the balance after it: the day before's, plus that day's items", () => {
     const plan = buildPaymentPlan({ start: 8000, items: crunch, today, days: 20 });
     // ₱400 a day: ₱6,000 left after day 4, ₱1,000 after day 9.
-    expect(planRows(plan, 8000, crunch, today).map((r) => [r.date, r.item.name, r.balanceAfter])).toEqual([
+    expect(
+      planRows(plan, 8000, crunch, today).map((r) => [r.date, r.item.name, r.balanceAfter]),
+    ).toEqual([
       [day(5), "SLoan", 3000],
       [day(10), "Payday", 7000],
     ]);
   });
 
   it("puts late items today, skips paid ones and items past the plan", () => {
-    const items = [item(-2, -500, { name: "Late" }), item(1, -200, { transactionId: "t1" }), item(30, -100)];
+    const items = [
+      item(-2, -500, { name: "Late" }),
+      item(1, -200, { transactionId: "t1" }),
+      item(30, -100),
+    ];
     const plan = buildPaymentPlan({ start: 3000, items, today, days: 10 });
-    expect(planRows(plan, 3000, items, today)).toEqual([{ item: items[0], date: today, balanceAfter: 2500 }]);
+    expect(planRows(plan, 3000, items, today)).toEqual([
+      { item: items[0], date: today, balanceAfter: 2500 },
+    ]);
   });
 });
 
@@ -150,13 +163,33 @@ describe("planToday", () => {
 
 describe("BNPL caps", () => {
   // Atome: cutoff the 6th, due the 16th. Today (Nov 15) lands on the Dec 16 bill.
-  const atome = { id: "atome", name: "Atome", dueDay: 16, cutoffDay: 6, creditLeft: 10000, used: 0 };
-  const pay = (dueOn: string, amount: number) => item(0, amount, { dueOn, key: `pay|${dueOn}`, name: "Payday" });
-  const paydays = ["2026-11-30", "2026-12-15", "2026-12-30", "2027-01-15", "2027-01-30", "2027-02-15"].map((d) => pay(d, 10000));
+  const atome = {
+    id: "atome",
+    name: "Atome",
+    dueDay: 16,
+    cutoffDay: 6,
+    creditLeft: 10000,
+    used: 0,
+  };
+  const pay = (dueOn: string, amount: number) =>
+    item(0, amount, { dueOn, key: `pay|${dueOn}`, name: "Payday" });
+  const paydays = [
+    "2026-11-30",
+    "2026-12-15",
+    "2026-12-30",
+    "2027-01-15",
+    "2027-01-30",
+    "2027-02-15",
+  ].map((d) => pay(d, 10000));
 
   it("groups days by the bill they land on", () => {
     const [first, second] = billCycles(atome, today);
-    expect(first).toMatchObject({ due: "2026-12-16", from: "2026-11-07", until: "2026-12-07", days: 30 });
+    expect(first).toMatchObject({
+      due: "2026-12-16",
+      from: "2026-11-07",
+      until: "2026-12-07",
+      days: 30,
+    });
     expect(second).toMatchObject({ due: "2027-01-16", from: "2026-12-07" });
   });
 
@@ -168,11 +201,18 @@ describe("BNPL caps", () => {
     expect(dec16.cap).toBe(capped.perDay * 30);
     expect(capped.held.find((h) => h.dueOn === "2026-12-16")?.amount).toBe(dec16.left);
     // Holding the caps lowers the daily cash amount.
-    expect(capped.plan.perDay).toBeLessThan(buildPaymentPlan({ start: 10000, items: paydays, today }).perDay);
+    expect(capped.plan.perDay).toBeLessThan(
+      buildPaymentPlan({ start: 10000, items: paydays, today }).perDay,
+    );
   });
 
   it("takes what you already bought off today's bill, never below ₱0", () => {
-    const capped = cappedPlan({ start: 10000, items: paydays, today, lines: [{ ...atome, used: 999999 }] });
+    const capped = cappedPlan({
+      start: 10000,
+      items: paydays,
+      today,
+      lines: [{ ...atome, used: 999999 }],
+    });
     expect(capped.caps.find((c) => c.due === "2026-12-16")!.left).toBe(0);
     expect(capped.held.some((h) => h.dueOn === "2026-12-16")).toBe(false);
   });
@@ -195,6 +235,8 @@ describe("breathers", () => {
     expect(breathers([day(2), day(3), day(10)], today)).toEqual([
       { after: day(3), from: day(4), until: day(10), days: 6 },
     ]);
-    expect(breathers([day(7)], today)).toEqual([{ after: null, from: today, until: day(7), days: 7 }]);
+    expect(breathers([day(7)], today)).toEqual([
+      { after: null, from: today, until: day(7), days: 7 },
+    ]);
   });
 });

@@ -64,7 +64,10 @@ export function toSplitBill(splitId: string, records: Transaction[]): SplitBill 
  * balance sits on the newest records. `transactions` must be newest first
  * (as getTransactions returns them).
  */
-export function unpaidByRecord(people: { id: string; balance: number }[], transactions: Transaction[]): Map<string, number> {
+export function unpaidByRecord(
+  people: { id: string; balance: number }[],
+  transactions: Transaction[],
+): Map<string, number> {
   const unpaid = new Map<string, number>();
   for (const p of people) {
     let left = Math.max(0, p.balance);
@@ -165,7 +168,10 @@ export type NewShare = { personId: string | null; name: string; amount: number }
  * each needs a name and a share above ₱0, and no one can be on the bill twice
  * (a typed name matches someone with that name, as saving does).
  */
-export function newSharesProblem(added: NewShare[], onBill: { personId: string; name: string }[]): string | null {
+export function newSharesProblem(
+  added: NewShare[],
+  onBill: { personId: string; name: string }[],
+): string | null {
   const key = (s: { personId: string | null; name: string }) =>
     s.personId ? `id:${s.personId}` : `name:${s.name.replace(/\s+/g, " ").trim().toLowerCase()}`;
   const seen = new Set<string>();
@@ -177,9 +183,11 @@ export function newSharesProblem(added: NewShare[], onBill: { personId: string; 
     const name = s.name.replace(/\s+/g, " ").trim();
     if (!s.personId && !name) return "Pick who to add, or type their name.";
     if (name.length > 60) return "Check the name (up to 60 characters).";
-    if (!(s.amount > 0)) return name ? `Enter ${name}'s share.` : "Enter a share for each person you add.";
+    if (!(s.amount > 0))
+      return name ? `Enter ${name}'s share.` : "Enter a share for each person you add.";
     const ids = [key(s), key({ personId: null, name })];
-    if (ids.some((k) => seen.has(k))) return `${name || "They"} ${name ? "is" : "are"} already on this bill.`;
+    if (ids.some((k) => seen.has(k)))
+      return `${name || "They"} ${name ? "is" : "are"} already on this bill.`;
     for (const k of ids) seen.add(k);
   }
   return null;
@@ -218,6 +226,8 @@ export function billBreakdownText({
     ...(split.mine ? [`• ${myName ?? "Me"}: ${formatPeso(split.mine.amount)}`] : []),
     ...shares,
     "",
-    stillOwed > 0 ? `Still to pay: ${formatPeso(stillOwed)}. Salamat!` : "All paid. Salamat, everyone!",
+    stillOwed > 0
+      ? `Still to pay: ${formatPeso(stillOwed)}. Salamat!`
+      : "All paid. Salamat, everyone!",
   ].join("\n");
 }

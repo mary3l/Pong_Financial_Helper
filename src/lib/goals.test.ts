@@ -15,11 +15,15 @@ describe("GoTyme GoalSave interest", () => {
   });
 
   it("doesn't count interest that isn't credited by the deadline", () => {
-    expect(projectBalance({ ...goTyme, from: "2026-11-05", to: "2026-11-30" }).balance).toBe(100_000);
+    expect(projectBalance({ ...goTyme, from: "2026-11-05", to: "2026-11-30" }).balance).toBe(
+      100_000,
+    );
   });
 
   it("credits what built up before today on the next 1st", () => {
-    expect(projectBalance({ ...goTyme, pending: 32, from: "2026-11-29", to: "2026-12-01" }).interest).toBe(48);
+    expect(
+      projectBalance({ ...goTyme, pending: 32, from: "2026-11-29", to: "2026-12-01" }).interest,
+    ).toBe(48);
   });
 
   it("earns on interest once it's credited", () => {
@@ -30,7 +34,12 @@ describe("GoTyme GoalSave interest", () => {
   });
 
   it("adds MariBank's interest every day", () => {
-    const mari = projectBalance({ ...goTyme, payout: "daily", from: "2026-11-05", to: "2026-11-30" });
+    const mari = projectBalance({
+      ...goTyme,
+      payout: "daily",
+      from: "2026-11-05",
+      to: "2026-11-30",
+    });
     expect(mari.balance).toBeGreaterThan(100_208);
   });
 
@@ -40,7 +49,9 @@ describe("GoTyme GoalSave interest", () => {
     expect(projectBalance({ ...plan, from: "2026-11-05", to: "2027-10-04" }).deposits).toBe(11);
     // The 31st moves to the end of shorter months.
     expect(projectBalance({ ...plan, from: "2027-01-31", to: "2027-03-01" }).deposits).toBe(2);
-    expect(projectBalance({ ...plan, every: "weekly", from: "2026-11-05", to: "2026-11-19" }).deposits).toBe(3);
+    expect(
+      projectBalance({ ...plan, every: "weekly", from: "2026-11-05", to: "2026-11-19" }).deposits,
+    ).toBe(3);
   });
 });
 
@@ -55,7 +66,11 @@ describe("goals", () => {
   });
 
   it("needs less when GoTyme's interest helps", () => {
-    const plan = goalPlan({ ...wallet, interestRate: 3 }, { amount: 12_000, date: "2027-10-05" }, "2026-11-05");
+    const plan = goalPlan(
+      { ...wallet, interestRate: 3 },
+      { amount: 12_000, date: "2027-10-05" },
+      "2026-11-05",
+    );
     expect(plan.needed!.monthly.amount).toBeLessThan(1000);
     expect(plan.needed!.monthly.interest).toBeGreaterThan(0);
   });
@@ -71,7 +86,14 @@ describe("goals", () => {
   });
 
   it("counts interest the bank added but isn't logged yet", () => {
-    const accrued = { perDay: 8, since: "2026-11-01", days: 4, amount: 32, credited: { on: "2026-11-01", from: "2026-10-15", amount: 136 }, nextPayout: "2026-12-01" };
+    const accrued = {
+      perDay: 8,
+      since: "2026-11-01",
+      days: 4,
+      amount: 32,
+      credited: { on: "2026-11-01", from: "2026-10-15", amount: 136 },
+      nextPayout: "2026-12-01",
+    };
     const plan = goalPlan(
       { balance: 100_000, interestRate: 3.65, interestPayout: "monthly" },
       { amount: 200_000, date: "2026-12-01" },
@@ -84,12 +106,20 @@ describe("goals", () => {
   });
 
   it("shows progress without a deadline, and stops planning once reached or late", () => {
-    expect(goalPlan({ ...wallet, balance: 2500 }, { amount: 10_000, date: null }, "2026-11-05")).toMatchObject({
+    expect(
+      goalPlan({ ...wallet, balance: 2500 }, { amount: 10_000, date: null }, "2026-11-05"),
+    ).toMatchObject({
       progress: 0.25,
       left: 7500,
       needed: null,
     });
-    expect(goalPlan({ ...wallet, balance: 12_000 }, { amount: 10_000, date: "2027-01-01" }, "2026-11-05")).toMatchObject({
+    expect(
+      goalPlan(
+        { ...wallet, balance: 12_000 },
+        { amount: 10_000, date: "2027-01-01" },
+        "2026-11-05",
+      ),
+    ).toMatchObject({
       reached: true,
       progress: 1,
       needed: null,

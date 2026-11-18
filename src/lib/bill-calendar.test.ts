@@ -4,7 +4,12 @@ import type { ForecastItem } from "@/lib/forecast";
 
 const TODAY = "2026-11-14";
 
-function bill(name: string, dueOn: string, amount: number, extra: Partial<ForecastItem> = {}): ForecastItem {
+function bill(
+  name: string,
+  dueOn: string,
+  amount: number,
+  extra: Partial<ForecastItem> = {},
+): ForecastItem {
   return {
     key: `${name}|${dueOn}`,
     kind: "bill",
@@ -33,7 +38,15 @@ describe("billCalendar", () => {
     bill("Lazada (2 of 6)", "2026-12-05", 3835.37, { kind: "installment", lenderId: "spay" }),
     bill("SLoan 1", "2026-12-05", 3100.72),
   ];
-  const cal = billCalendar({ from: "2026-11-30", to: "2026-12-14", payday: "2026-11-30", pay: 11550, bills, today: TODAY, lenderName });
+  const cal = billCalendar({
+    from: "2026-11-30",
+    to: "2026-12-14",
+    payday: "2026-11-30",
+    pay: 11550,
+    bills,
+    today: TODAY,
+    lenderName,
+  });
 
   it("draws every day the pay covers, starting on the right weekday", () => {
     expect(cal.days).toHaveLength(15);
@@ -47,13 +60,20 @@ describe("billCalendar", () => {
   it("marks the payday and labels the month on the first day and the 1st", () => {
     expect(cal.days[0].payday).toBe(true);
     expect(cal.days.filter((d) => d.payday)).toHaveLength(1);
-    expect(cal.days.filter((d) => d.showMonth).map((d) => d.date)).toEqual(["2026-11-30", "2026-12-01"]);
+    expect(cal.days.filter((d) => d.showMonth).map((d) => d.date)).toEqual([
+      "2026-11-30",
+      "2026-12-01",
+    ]);
     expect(cal.days[1].dayOfMonth).toBe(1);
   });
 
   it("puts each bill on its due day, grouped like the list", () => {
     const nov30 = cal.days[0];
-    expect(nov30.bills.map((g) => g.name)).toEqual(["iPhone Installment", "SSS contribution", "Pag-IBIG contribution"]);
+    expect(nov30.bills.map((g) => g.name)).toEqual([
+      "iPhone Installment",
+      "SSS contribution",
+      "Pag-IBIG contribution",
+    ]);
     expect(nov30.total).toBe(5650);
     expect(nov30.count).toBe(3);
 
@@ -84,7 +104,11 @@ describe("billCalendar", () => {
       from: TODAY,
       to: "2026-11-29",
       payday: null,
-      bills: [bill("Meralco", "2026-11-10", 2100), bill("Water", "2026-11-20", 500), bill("Too late", "2026-12-01", 9)],
+      bills: [
+        bill("Meralco", "2026-11-10", 2100),
+        bill("Water", "2026-11-20", 500),
+        bill("Too late", "2026-12-01", 9),
+      ],
       today: TODAY,
       lenderName,
     });
@@ -116,19 +140,44 @@ describe("billCalendar", () => {
     expect(week.days[3].payShare).toBe(0);
 
     // A short stretch before the first payday is one row too.
-    const short = billCalendar({ from: TODAY, to: "2026-11-19", payday: null, bills: [], today: TODAY, lenderName });
+    const short = billCalendar({
+      from: TODAY,
+      to: "2026-11-19",
+      payday: null,
+      bills: [],
+      today: TODAY,
+      lenderName,
+    });
     expect([short.weekStart, short.blanks, short.days.length]).toEqual([6, 0, 6]);
   });
 
   it("draws nothing for an empty range and caps a long one", () => {
-    expect(billCalendar({ from: "2026-12-02", to: "2026-12-01", payday: null, bills: [], today: TODAY, lenderName })).toEqual({
+    expect(
+      billCalendar({
+        from: "2026-12-02",
+        to: "2026-12-01",
+        payday: null,
+        bills: [],
+        today: TODAY,
+        lenderName,
+      }),
+    ).toEqual({
       weekStart: 0,
       blanks: 0,
       days: [],
       late: [],
       lateTotal: 0,
     });
-    expect(billCalendar({ from: "2026-01-01", to: "2026-12-31", payday: null, bills: [], today: TODAY, lenderName }).days).toHaveLength(62);
+    expect(
+      billCalendar({
+        from: "2026-01-01",
+        to: "2026-12-31",
+        payday: null,
+        bills: [],
+        today: TODAY,
+        lenderName,
+      }).days,
+    ).toHaveLength(62);
   });
 });
 

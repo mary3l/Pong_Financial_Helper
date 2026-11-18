@@ -80,9 +80,15 @@ export function WalletsForm({ existing }: { existing: Account[] }) {
   return (
     <div className="flex flex-1 flex-col gap-4">
       {existing.length > 0 && (
-        <section aria-label="Wallets you already added" className="flex flex-col rounded-3xl bg-card px-5 py-2">
+        <section
+          aria-label="Wallets you already added"
+          className="flex flex-col rounded-3xl bg-card px-5 py-2"
+        >
           {existing.map((a) => (
-            <div key={a.id} className="flex items-center justify-between border-b border-line-soft py-3 last:border-0">
+            <div
+              key={a.id}
+              className="flex items-center justify-between border-b border-line-soft py-3 last:border-0"
+            >
               <div className="flex flex-col">
                 <span className="font-bold">{a.name}</span>
                 <span className="text-sm text-muted">{accountTypeLabel(a.type)}</span>
@@ -99,7 +105,9 @@ export function WalletsForm({ existing }: { existing: Account[] }) {
             <div className="flex items-center gap-3">
               {row.custom ? (
                 <>
-                  <label htmlFor={`name-${row.key}`} className="sr-only">Wallet name</label>
+                  <label htmlFor={`name-${row.key}`} className="sr-only">
+                    Wallet name
+                  </label>
                   <input
                     id={`name-${row.key}`}
                     value={row.name}
@@ -115,7 +123,12 @@ export function WalletsForm({ existing }: { existing: Account[] }) {
                 </label>
               )}
               <div className="relative w-36 shrink-0">
-                <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
+                <span
+                  aria-hidden="true"
+                  className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted"
+                >
+                  ₱
+                </span>
                 <AmountInput
                   id={`amount-${row.key}`}
                   value={row.amount}
@@ -128,8 +141,14 @@ export function WalletsForm({ existing }: { existing: Account[] }) {
             </div>
             {row.custom && (
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-bold text-muted" id={`type-${row.key}`}>Type</span>
-                <div role="group" aria-labelledby={`type-${row.key}`} className="flex flex-wrap gap-2">
+                <span className="text-sm font-bold text-muted" id={`type-${row.key}`}>
+                  Type
+                </span>
+                <div
+                  role="group"
+                  aria-labelledby={`type-${row.key}`}
+                  className="flex flex-wrap gap-2"
+                >
                   {WALLET_TYPES.map((t) => (
                     <button
                       key={t.value}
@@ -169,7 +188,9 @@ export function WalletsForm({ existing }: { existing: Account[] }) {
       </div>
 
       <div className="mt-auto flex flex-col gap-2 pt-4">
-        <p role="alert" className="min-h-5 text-sm font-bold text-coral-text">{error}</p>
+        <p role="alert" className="min-h-5 text-sm font-bold text-coral-text">
+          {error}
+        </p>
         <button
           type="button"
           onClick={next}

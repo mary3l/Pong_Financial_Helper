@@ -18,9 +18,25 @@ const payday = {
   endsOn: null,
 };
 
-const iphone = { ...payday, id: "iphone", kind: "bill" as const, name: "iPhone", amount: 4500, frequency: "monthly" as const, day1: 30, day2: null };
+const iphone = {
+  ...payday,
+  id: "iphone",
+  kind: "bill" as const,
+  name: "iPhone",
+  amount: 4500,
+  frequency: "monthly" as const,
+  day1: 30,
+  day2: null,
+};
 
-function loan(id: string, lender: string, months: number, firstSeq: number, dates: string[], amount: number) {
+function loan(
+  id: string,
+  lender: string,
+  months: number,
+  firstSeq: number,
+  dates: string[],
+  amount: number,
+) {
   return dates.map((dueOn, i) => ({
     id: `${id}-${i}`,
     name: `${id} (${firstSeq + i} of ${months})`,
@@ -62,11 +78,19 @@ describe("payments by pay period", () => {
     ]);
     expect(periods[0].share).toBeCloseTo(0.664, 3);
     // Bills like the iPhone aren't BNPL or loan payments here.
-    expect(periods[0].payments.map((p) => p.name)).toEqual(["Atome bill (1 of 1)", "SLoan (1 of 3)", "SPayLater bill (1 of 1)"]);
+    expect(periods[0].payments.map((p) => p.name)).toEqual([
+      "Atome bill (1 of 1)",
+      "SLoan (1 of 3)",
+      "SPayLater bill (1 of 1)",
+    ]);
   });
 
   it("adds up each lender and marks last payments", () => {
-    const [first, , third] = paymentsByPeriod({ items: items(), today: TODAY, nextPayday: "2026-11-15" });
+    const [first, , third] = paymentsByPeriod({
+      items: items(),
+      today: TODAY,
+      nextPayday: "2026-11-15",
+    });
     expect(first.byLender).toEqual([
       { lenderId: "atome", total: 6456.12 },
       { lenderId: "spay", total: 5885.65 },
@@ -80,12 +104,20 @@ describe("payments by pay period", () => {
 
   it("gives the days before payday their own period when something's due, with late ones in it", () => {
     const periods = paymentsByPeriod({
-      items: items({ installments: [...loan("GLoan", "gloan", 9, 7, ["2026-10-27", "2026-11-10"], 528.54)] }),
+      items: items({
+        installments: [...loan("GLoan", "gloan", 9, 7, ["2026-10-27", "2026-11-10"], 528.54)],
+      }),
       today: TODAY,
       nextPayday: "2026-11-15",
     });
     expect(periods).toHaveLength(4);
-    expect(periods[0]).toMatchObject({ from: TODAY, to: "2026-11-14", total: 1057.08, income: 0, share: null });
+    expect(periods[0]).toMatchObject({
+      from: TODAY,
+      to: "2026-11-14",
+      total: 1057.08,
+      income: 0,
+      share: null,
+    });
   });
 
   it("starts from today without a payday", () => {
@@ -99,7 +131,13 @@ describe("payments by pay period", () => {
 });
 
 describe("payments by where they go", () => {
-  const at = (name: string, dueOn: string, amount: number, lenderId: string | null, kind: ForecastItem["kind"] = "installment"): ForecastItem => ({
+  const at = (
+    name: string,
+    dueOn: string,
+    amount: number,
+    lenderId: string | null,
+    kind: ForecastItem["kind"] = "installment",
+  ): ForecastItem => ({
     key: `${name}|${dueOn}`,
     kind,
     flow: "out",

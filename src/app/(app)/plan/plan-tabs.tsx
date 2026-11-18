@@ -3,7 +3,11 @@ import Link from "next/link";
 // Plan = Forecast + Payments + Scheduled + Budgets, as tabs at the top (design
 // canvas 3.1, 3.3). Payments is the payment plan; Scheduled holds recurring
 // and planned income and expenses.
-export function PlanTabs({ current }: { current: "forecast" | "payments" | "scheduled" | "budgets" }) {
+export function PlanTabs({
+  current,
+}: {
+  current: "forecast" | "payments" | "scheduled" | "budgets";
+}) {
   const tabs = [
     { key: "forecast", href: "/plan", label: "Forecast" },
     { key: "payments", href: "/plan/payments", label: "Payments" },
@@ -18,7 +22,9 @@ export function PlanTabs({ current }: { current: "forecast" | "payments" | "sche
           href={t.href}
           aria-current={current === t.key ? "page" : undefined}
           className={`-mb-0.5 border-b-[3px] py-2 ${
-            current === t.key ? "border-sea font-extrabold" : "border-transparent font-bold text-muted hover:text-ink"
+            current === t.key
+              ? "border-sea font-extrabold"
+              : "border-transparent font-bold text-muted hover:text-ink"
           }`}
         >
           {t.label}

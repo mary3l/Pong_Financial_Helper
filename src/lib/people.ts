@@ -57,7 +57,11 @@ export function personItems(people: Person[], from: string, until: string): Fore
     if (!due || due >= until) continue;
     if (p.balance < 0) {
       items.push(item(p, "utang", due));
-    } else if (p.balance > 0 && due >= from && p.entries.some((e) => e.countInForecast && e.dueOn)) {
+    } else if (
+      p.balance > 0 &&
+      due >= from &&
+      p.entries.some((e) => e.countInForecast && e.dueOn)
+    ) {
       items.push(item(p, "pautang", due));
     }
   }
@@ -106,7 +110,10 @@ export function splitEffects(shares: Share[], paidBy: string | null) {
   if (paidBy === null) {
     return {
       expense: mine,
-      lent: shares.filter((s) => s.personId !== null && s.amount > 0) as { personId: string; amount: number }[],
+      lent: shares.filter((s) => s.personId !== null && s.amount > 0) as {
+        personId: string;
+        amount: number;
+      }[],
       owed: 0,
     };
   }
@@ -139,14 +146,22 @@ export function inYourName(personId: string, plans: PlanForPerson[]): InYourName
   return {
     interest: roundCents(unpaid.reduce((sum, p) => sum + p.feePart, 0)),
     next: first
-      ? { dueOn: first, amount: roundCents(unpaid.filter((p) => p.dueOn === first).reduce((sum, p) => sum + p.amount, 0)) }
+      ? {
+          dueOn: first,
+          amount: roundCents(
+            unpaid.filter((p) => p.dueOn === first).reduce((sum, p) => sum + p.amount, 0),
+          ),
+        }
       : null,
   };
 }
 
 /** Pautang overdue, or a payment of theirs in your name that's late. */
 export function isLate(person: Person, theirs: InYourName, today: string): boolean {
-  return isOverdue(person, today) || (person.balance > 0 && theirs.next !== null && theirs.next.dueOn < today);
+  return (
+    isOverdue(person, today) ||
+    (person.balance > 0 && theirs.next !== null && theirs.next.dueOn < today)
+  );
 }
 
 // ── Sendable breakdowns ─────────────────────────────────────────────────
@@ -230,7 +245,10 @@ export function expectedText(card: CardBill, today: string): string {
 
 /** The earliest card date among open records, to lead with; null if none is on a card. */
 export function firstExpected(open: OpenRecord[]): CardBill | null {
-  return open.reduce<CardBill | null>((first, r) => (r.card && (!first || r.card.expectedOn < first.expectedOn) ? r.card : first), null);
+  return open.reduce<CardBill | null>(
+    (first, r) => (r.card && (!first || r.card.expectedOn < first.expectedOn) ? r.card : first),
+    null,
+  );
 }
 
 /** True when the open records are on cards with more than one date, so each row needs its own. */
@@ -250,7 +268,10 @@ type Txn = {
 
 /** What a record was for, without the "Split: " / "(my share)" the app adds. */
 function recordLabel(t: Txn, entry: PersonEntry | undefined): string {
-  const note = (t.note ?? "").replace(/^Split: /, "").replace(/ \(my share\)$/, "").trim();
+  const note = (t.note ?? "")
+    .replace(/^Split: /, "")
+    .replace(/ \(my share\)$/, "")
+    .trim();
   if (note && !["Pautang", "Utang", "Split bill", "My share"].includes(note)) return note;
   if (entry?.kind === "split") return "Split bill";
   return entry?.kind === "borrow" ? "Borrowed" : "Cash";
@@ -261,7 +282,11 @@ function recordLabel(t: Txn, entry: PersonEntry | undefined): string {
  * records first, so what's left of their balance sits on the newest ones
  * (like unpaidByRecord). `history` must be newest first.
  */
-export function openRecords(person: Person, history: Txn[], cards: Map<string, CardBill> = new Map()): OpenRecord[] {
+export function openRecords(
+  person: Person,
+  history: Txn[],
+  cards: Map<string, CardBill> = new Map(),
+): OpenRecord[] {
   const sign = Math.sign(person.balance);
   if (!sign) return [];
   const entries = new Map(person.entries.map((e) => [e.transactionId, e]));
@@ -293,10 +318,20 @@ export type TheirPlan = {
   /** "My MariLoan loan", "Phone on my Atome". */
   label: string;
   /** Unpaid payments, interest or fees included. */
-  payments: { amount: number; dueOn: string; /** "3 of 6", or null for a single payment. */ which: string | null }[];
+  payments: {
+    amount: number;
+    dueOn: string;
+    /** "3 of 6", or null for a single payment. */ which: string | null;
+  }[];
 };
 
-export type DuePayment = { label: string; amount: number; dueOn: string; which: string | null; late: boolean };
+export type DuePayment = {
+  label: string;
+  amount: number;
+  dueOn: string;
+  which: string | null;
+  late: boolean;
+};
 
 /** What they pay this calendar month on plans in your name. */
 export type MonthDue = {
@@ -319,11 +354,21 @@ export type MonthDue = {
 export function dueThisMonth(plans: TheirPlan[], today: string): MonthDue {
   const end = monthContaining(today).end;
   const all = plans
-    .flatMap((p) => p.payments.map((x) => ({ label: p.label, amount: x.amount, dueOn: x.dueOn, which: x.which, late: x.dueOn < today })))
+    .flatMap((p) =>
+      p.payments.map((x) => ({
+        label: p.label,
+        amount: x.amount,
+        dueOn: x.dueOn,
+        which: x.which,
+        late: x.dueOn < today,
+      })),
+    )
     .sort((a, b) => a.dueOn.localeCompare(b.dueOn) || a.label.localeCompare(b.label));
   const items = all.filter((x) => x.dueOn <= end);
   return {
-    month: new Intl.DateTimeFormat("en-US", { month: "long", timeZone: "UTC" }).format(Date.parse(`${today}T00:00:00Z`)),
+    month: new Intl.DateTimeFormat("en-US", { month: "long", timeZone: "UTC" }).format(
+      Date.parse(`${today}T00:00:00Z`),
+    ),
     items,
     total: roundCents(items.reduce((sum, x) => sum + x.amount, 0)),
     late: roundCents(items.filter((x) => x.late).reduce((sum, x) => sum + x.amount, 0)),
@@ -366,16 +411,25 @@ export function breakdownText({
   const cardCloses = owesMe && !month && !theirs.next && !dueDate(person);
   const eachDate = !cardCloses || datesDiffer(open);
   const lines = open.map((r) => {
-    const part = r.left < r.amount ? `${formatPeso(r.left)} left of ${formatPeso(r.amount)}` : formatPeso(r.left);
-    const share = r.splitTotal ? ` (${owesMe ? "your" : "my"} share of ${formatPeso(r.splitTotal)})` : "";
-    const card = r.card ? ` · on my ${r.card.line}${eachDate ? `, ${expectedText(r.card, today)}` : ""}` : "";
+    const part =
+      r.left < r.amount
+        ? `${formatPeso(r.left)} left of ${formatPeso(r.amount)}`
+        : formatPeso(r.left);
+    const share = r.splitTotal
+      ? ` (${owesMe ? "your" : "my"} share of ${formatPeso(r.splitTotal)})`
+      : "";
+    const card = r.card
+      ? ` · on my ${r.card.line}${eachDate ? `, ${expectedText(r.card, today)}` : ""}`
+      : "";
     return `• ${formatShortDay(r.date, today)} · ${r.label}: ${part}${share}${card}`;
   });
   const onCard = firstExpected(open);
   const cardWhen = onCard ? capitalize(expectedText(onCard, today)) : null;
   const owed = Math.abs(person.balance);
   const theirInterest = owesMe ? roundCents(theirs.interest) : 0;
-  const thanks = owesMe ? `Salamat!${myName ? ` - ${myName}` : ""}` : `I'll send it soon. Salamat!${myName ? ` - ${myName}` : ""}`;
+  const thanks = owesMe
+    ? `Salamat!${myName ? ` - ${myName}` : ""}`
+    : `I'll send it soon. Salamat!${myName ? ` - ${myName}` : ""}`;
 
   if (owesMe && month) {
     const lead = month.items.length
@@ -388,14 +442,18 @@ export function breakdownText({
         ]
       : [
           `Hi ${person.name}! Nothing more to pay this ${month.month}.`,
-          ...(month.next ? [`Next payment: ${duePaymentText(month.next, today)} · ${month.next.label}`] : []),
+          ...(month.next
+            ? [`Next payment: ${duePaymentText(month.next, today)} · ${month.next.label}`]
+            : []),
         ];
     return [
       ...lead,
       "",
       `Still open in all: ${formatPeso(roundCents(owed + theirInterest))}`,
       ...lines,
-      ...(theirInterest > 0 ? [`• Interest & fees in the payments left: ${formatPeso(theirInterest)}`] : []),
+      ...(theirInterest > 0
+        ? [`• Interest & fees in the payments left: ${formatPeso(theirInterest)}`]
+        : []),
       "",
       thanks,
     ].join("\n");
@@ -414,7 +472,9 @@ export function breakdownText({
       ? `${due < today ? "Was due" : "Due"} ${formatShortDay(due, today)}`
       : cardWhen;
   return [
-    owesMe ? `Hi ${person.name}! Here's the breakdown of what's still open:` : `Hi ${person.name}! Here's what I still owe you:`,
+    owesMe
+      ? `Hi ${person.name}! Here's the breakdown of what's still open:`
+      : `Hi ${person.name}! Here's what I still owe you:`,
     "",
     ...lines,
     "",

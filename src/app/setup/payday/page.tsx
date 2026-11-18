@@ -39,7 +39,11 @@ async function Payday({ searchParams }: Pick<PageProps<"/setup/payday">, "search
         payday={items.find((i) => i.kind === "payday") ?? null}
         bills={items.filter((i) => i.kind === "bill" && i.frequency === "monthly" && !i.payrollKey)}
         editing={false}
-        payroll={payroll && payroll !== "missing" ? { cutoffs: coversText(cutoffRuleOf(payroll.settings)) } : null}
+        payroll={
+          payroll && payroll !== "missing"
+            ? { cutoffs: coversText(cutoffRuleOf(payroll.settings)) }
+            : null
+        }
       />
     </>
   );

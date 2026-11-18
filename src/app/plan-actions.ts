@@ -20,7 +20,13 @@ async function logTransaction(
     accountId,
     category,
     note,
-  }: { type: "expense" | "income"; amount: number; accountId: string; category: string; note: string },
+  }: {
+    type: "expense" | "income";
+    amount: number;
+    accountId: string;
+    category: string;
+    note: string;
+  },
 ): Promise<string | null> {
   const { data, error } = await supabase
     .from("transactions")
@@ -143,12 +149,16 @@ export type PlannedInput = {
 
 /** "Add as planned expense" from Can I afford this?. */
 export async function addPlannedExpense(input: PlannedInput): Promise<PlanResult> {
-  const name = String(input.name ?? "").replace(/\s+/g, " ").trim() || "Planned purchase";
+  const name =
+    String(input.name ?? "")
+      .replace(/\s+/g, " ")
+      .trim() || "Planned purchase";
   const amount = roundCents(Number(input.amount));
   if (name.length > 50) return { error: "Keep the name to 50 characters." };
   if (!(amount > 0 && amount <= MAX_AMOUNT)) return { error: "Enter an amount above ₱0." };
   if (!isCategoryFor("expense", input.category)) return { error: "Pick a category." };
-  if (!isValidDate(input.first) || input.first < today()) return { error: "Pick today or a later date." };
+  if (!isValidDate(input.first) || input.first < today())
+    return { error: "Pick today or a later date." };
   if (!Number.isInteger(input.months) || input.months < 1 || input.months > 24) {
     return { error: "Pick how many months." };
   }

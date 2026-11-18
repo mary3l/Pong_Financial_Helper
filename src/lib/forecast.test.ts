@@ -71,7 +71,12 @@ describe("scheduled items", () => {
 
   it("gives each payday its own amount from the payroll calculator", () => {
     const withPayroll = scheduledItems(
-      inputs({ paydayAmounts: { "2026-11-15": { amount: 8000, estimate: false }, "2026-11-30": { amount: 8800, estimate: true } } }),
+      inputs({
+        paydayAmounts: {
+          "2026-11-15": { amount: 8000, estimate: false },
+          "2026-11-30": { amount: 8800, estimate: true },
+        },
+      }),
       TODAY,
       "2026-12-02",
     ).filter((i) => i.kind === "payday");
@@ -87,7 +92,9 @@ describe("scheduled items", () => {
 
   it("income counts +, expenses −, and logged items count 0", () => {
     const logged = scheduledItems(
-      inputs({ billPayments: [{ recurringItemId: "rent", dueOn: "2026-11-05", transactionId: "t1" }] }),
+      inputs({
+        billPayments: [{ recurringItemId: "rent", dueOn: "2026-11-05", transactionId: "t1" }],
+      }),
       TODAY,
       "2026-12-02",
     );
@@ -102,8 +109,26 @@ describe("scheduled items", () => {
     const withPlanned = scheduledItems(
       inputs({
         planned: [
-          { id: "late", type: "expense", name: "Tuition", amount: 5000, category: "family", dueOn: "2026-10-30", accountId: null, transactionId: null },
-          { id: "bonus", type: "income", name: "13th month", amount: 20000, category: "salary", dueOn: "2026-11-20", accountId: null, transactionId: null },
+          {
+            id: "late",
+            type: "expense",
+            name: "Tuition",
+            amount: 5000,
+            category: "family",
+            dueOn: "2026-10-30",
+            accountId: null,
+            transactionId: null,
+          },
+          {
+            id: "bonus",
+            type: "income",
+            name: "13th month",
+            amount: 20000,
+            category: "salary",
+            dueOn: "2026-11-20",
+            accountId: null,
+            transactionId: null,
+          },
         ],
       }),
       TODAY,
@@ -117,8 +142,22 @@ describe("scheduled items", () => {
     const withInstallments = scheduledItems(
       inputs({
         installments: [
-          { id: "i1", name: "Shoes (1 of 3)", dueOn: "2026-10-25", amount: 1045, payFromAccountId: "gcash", transactionId: null },
-          { id: "i2", name: "Shoes (2 of 3)", dueOn: "2026-11-25", amount: 1045, payFromAccountId: "gcash", transactionId: null },
+          {
+            id: "i1",
+            name: "Shoes (1 of 3)",
+            dueOn: "2026-10-25",
+            amount: 1045,
+            payFromAccountId: "gcash",
+            transactionId: null,
+          },
+          {
+            id: "i2",
+            name: "Shoes (2 of 3)",
+            dueOn: "2026-11-25",
+            amount: 1045,
+            payFromAccountId: "gcash",
+            transactionId: null,
+          },
         ],
       }),
       TODAY,
@@ -175,12 +214,32 @@ describe("safe to spend", () => {
           recurring: [payday, philhealth, water, rent],
           billPayments: [
             { recurringItemId: "philhealth", dueOn: "2026-11-15", transactionId: "t-philhealth" },
-            ...(received ? [{ recurringItemId: "pay", dueOn: "2026-11-15", transactionId: "t-pay" }] : []),
+            ...(received
+              ? [{ recurringItemId: "pay", dueOn: "2026-11-15", transactionId: "t-pay" }]
+              : []),
           ],
           planned: [
-            { id: "side", type: "income", name: "Side job", amount: 10000, category: "other_income", dueOn: "2026-11-15", accountId: "bank", transactionId: "t-side" },
+            {
+              id: "side",
+              type: "income",
+              name: "Side job",
+              amount: 10000,
+              category: "other_income",
+              dueOn: "2026-11-15",
+              accountId: "bank",
+              transactionId: "t-side",
+            },
           ],
-          installments: [{ id: "i1", name: "Bonchon", dueOn: "2026-11-16", amount: 355, payFromAccountId: "bank", transactionId: null }],
+          installments: [
+            {
+              id: "i1",
+              name: "Bonchon",
+              dueOn: "2026-11-16",
+              amount: 355,
+              payFromAccountId: "bank",
+              transactionId: null,
+            },
+          ],
           ...extra,
         },
         today,
@@ -189,7 +248,13 @@ describe("safe to spend", () => {
 
     it("counts down to the payday after it, spreading what's left over those days", () => {
       // The wallets already hold the Nov 15 pay and the side job.
-      const sts = safeToSpend({ inWallets: 30000, payday, items: early(true), today, spentToday: 50 });
+      const sts = safeToSpend({
+        inWallets: 30000,
+        payday,
+        items: early(true),
+        today,
+        spentToday: 50,
+      });
       expect(sts.nextPayday).toBe("2026-11-30");
       expect(sts.daysLeft).toBe(17);
       // Water and Bonchon before Nov 30; PhilHealth is paid, rent is Dec 5.
@@ -208,7 +273,11 @@ describe("safe to spend", () => {
     });
 
     it("matches a payday moved to another day by its usual date", () => {
-      const moved = early(true, { paydayAmounts: { "2026-11-15": { amount: 11471.25, estimate: false, paidOn: "2026-11-13" } } });
+      const moved = early(true, {
+        paydayAmounts: {
+          "2026-11-15": { amount: 11471.25, estimate: false, paidOn: "2026-11-13" },
+        },
+      });
       expect(nextUnreceivedPayday(payday, moved, today)).toBe("2026-11-30");
     });
 
@@ -234,9 +303,21 @@ describe("projection and can I afford this", () => {
 
   it("says no when a purchase takes you below 0, and wait when payday fixes it", () => {
     const items = scheduledItems(inputs(), TODAY, "2026-12-02");
-    const no = affordVerdict({ start: 7000, items, purchase: { name: "Phone", amount: 30000, first: TODAY, months: 1 }, today: TODAY, nextPayday: "2026-11-15" });
+    const no = affordVerdict({
+      start: 7000,
+      items,
+      purchase: { name: "Phone", amount: 30000, first: TODAY, months: 1 },
+      today: TODAY,
+      nextPayday: "2026-11-15",
+    });
     expect(no.tone).toBe("no");
-    const wait = affordVerdict({ start: 7000, items, purchase: { name: "Shoes", amount: 4000, first: TODAY, months: 1 }, today: TODAY, nextPayday: "2026-11-15" });
+    const wait = affordVerdict({
+      start: 7000,
+      items,
+      purchase: { name: "Shoes", amount: 4000, first: TODAY, months: 1 },
+      today: TODAY,
+      nextPayday: "2026-11-15",
+    });
     expect(wait.tone).toBe("wait");
   });
 
@@ -251,7 +332,11 @@ describe("safe to spend with weekly pay", () => {
   // Paid ₱3,000 every Friday; rent ₱6,000 on the 20th. Nov 2, 2026 is a Monday.
   const weekly = { ...payday, amount: 3000, frequency: "weekly" as const, day1: 5, day2: null };
   const bigRent = { ...rent, amount: 6000, day1: 20 };
-  const items = scheduledItems({ recurring: [weekly, bigRent], billPayments: [], planned: [] }, TODAY, "2026-12-02");
+  const items = scheduledItems(
+    { recurring: [weekly, bigRent], billPayments: [], planned: [] },
+    TODAY,
+    "2026-12-02",
+  );
 
   it("holds money back for a bill the next pays can't cover", () => {
     const sts = safeToSpend({ inWallets: 4000, payday: weekly, items, today: TODAY });
@@ -266,18 +351,38 @@ describe("safe to spend with weekly pay", () => {
   });
 
   it("holds nothing back when the pays cover the bills", () => {
-    const sts = safeToSpend({ inWallets: 4000, payday: { ...weekly }, items: scheduledItems({ recurring: [{ ...weekly, amount: 20000 }, bigRent], billPayments: [], planned: [] }, TODAY, "2026-12-02"), today: TODAY });
+    const sts = safeToSpend({
+      inWallets: 4000,
+      payday: { ...weekly },
+      items: scheduledItems(
+        { recurring: [{ ...weekly, amount: 20000 }, bigRent], billPayments: [], planned: [] },
+        TODAY,
+        "2026-12-02",
+      ),
+      today: TODAY,
+    });
     expect(sts.setAsideLater).toBe(0);
     expect(sts.perDay).toBe(1000);
   });
 
   it("never counts pay toward what you can spend before it comes in", () => {
-    const rich = scheduledItems({ recurring: [{ ...weekly, amount: 100000 }], billPayments: [], planned: [] }, TODAY, "2026-12-02");
-    expect(safeToSpend({ inWallets: 400, payday: weekly, items: rich, today: TODAY }).perDay).toBe(100);
+    const rich = scheduledItems(
+      { recurring: [{ ...weekly, amount: 100000 }], billPayments: [], planned: [] },
+      TODAY,
+      "2026-12-02",
+    );
+    expect(safeToSpend({ inWallets: 400, payday: weekly, items: rich, today: TODAY }).perDay).toBe(
+      100,
+    );
   });
 
   it("leaves pay twice a month as it was", () => {
-    const sts = safeToSpend({ inWallets: 10000, payday, items: scheduledItems(inputs(), TODAY, "2026-12-02"), today: TODAY });
+    const sts = safeToSpend({
+      inWallets: 10000,
+      payday,
+      items: scheduledItems(inputs(), TODAY, "2026-12-02"),
+      today: TODAY,
+    });
     expect(sts.setAsideLater).toBe(0);
   });
 });

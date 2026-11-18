@@ -39,26 +39,36 @@ export type ScheduleResult = { error?: string };
 const FAILED = { error: "Couldn't save that. Please try again." };
 
 function validate(input: ScheduledInput): string | null {
-  const name = String(input.name ?? "").replace(/\s+/g, " ").trim();
+  const name = String(input.name ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!name) return "Give it a name.";
   if (name.length > 60) return "Keep the name to 60 characters.";
   const amount = roundCents(Number(input.amount));
   if (!(amount > 0 && amount <= MAX_AMOUNT)) return "Enter an amount above ₱0.";
   if (input.flow !== "in" && input.flow !== "out") return "Pick income or expense.";
-  if (!isCategoryFor(input.flow === "in" ? "income" : "expense", input.category)) return "Pick a category.";
+  if (!isCategoryFor(input.flow === "in" ? "income" : "expense", input.category))
+    return "Pick a category.";
   if (input.repeat === "once") {
     if (!isValidDate(input.date)) return "Pick a date.";
     return null;
   }
   // Every work day is for paydays only.
-  if (input.repeat === "daily" || !isValidSchedule({ frequency: input.repeat, day1: input.day1, day2: input.day2 })) {
+  if (
+    input.repeat === "daily" ||
+    !isValidSchedule({ frequency: input.repeat, day1: input.day1, day2: input.day2 })
+  ) {
     return "Check the dates it repeats on.";
   }
-  if (input.endsOn !== null && !isValidDate(input.endsOn)) return "Check the end date, or leave it blank.";
+  if (input.endsOn !== null && !isValidDate(input.endsOn))
+    return "Check the end date, or leave it blank.";
   return null;
 }
 
-function rowFor(input: ScheduledInput): { table: "planned_expenses" | "recurring_items"; row: Record<string, unknown> } {
+function rowFor(input: ScheduledInput): {
+  table: "planned_expenses" | "recurring_items";
+  row: Record<string, unknown>;
+} {
   const name = input.name.replace(/\s+/g, " ").trim();
   const amount = roundCents(Number(input.amount));
   if (input.repeat === "once") {
@@ -98,7 +108,10 @@ const TABLES = { recurring: "recurring_items", planned: "planned_expenses" } as 
  * one-off and recurring moves it to the other table; anything already
  * logged stays in Activity.
  */
-export async function saveScheduled(input: ScheduledInput, existing?: ScheduledRef): Promise<ScheduleResult> {
+export async function saveScheduled(
+  input: ScheduledInput,
+  existing?: ScheduledRef,
+): Promise<ScheduleResult> {
   const problem = validate(input);
   if (problem) return { error: problem };
 
@@ -107,7 +120,11 @@ export async function saveScheduled(input: ScheduledInput, existing?: ScheduledR
 
   const { table, row } = rowFor(input);
   if (existing && TABLES[existing.table] === table) {
-    const { data, error } = await supabase.from(table).update(row).eq("id", existing.id).select("id");
+    const { data, error } = await supabase
+      .from(table)
+      .update(row)
+      .eq("id", existing.id)
+      .select("id");
     if (error || !data.length) return FAILED;
   } else {
     const { error } = await supabase.from(table).insert(row);

@@ -117,7 +117,13 @@ export function billCalendar({
   const lateGroups = groupByPayee(late, lenderName, today);
   const first = days.length ? weekdayOf(from) : 0;
   const weekStart = days.length <= 7 ? first : 0;
-  return { weekStart, blanks: (first - weekStart + 7) % 7, days, late: lateGroups, lateTotal: total(lateGroups) };
+  return {
+    weekStart,
+    blanks: (first - weekStart + 7) % 7,
+    days,
+    late: lateGroups,
+    lateTotal: total(lateGroups),
+  };
 }
 
 /** A peso amount short enough for a calendar day on a phone: "₱750", "₱4.5k", "₱17k", "₱1.2M". */

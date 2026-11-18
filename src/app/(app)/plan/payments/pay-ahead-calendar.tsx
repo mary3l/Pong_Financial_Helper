@@ -5,7 +5,14 @@ import { ChevronIcon, CloseIcon } from "@/components/icons";
 import { LogButton } from "@/components/log-button";
 import { formatPesoShort } from "@/lib/bill-calendar";
 import type { Account } from "@/lib/data";
-import { addDays, daysBetween, formatLongDay, formatRelativeDay, formatShortDay, weekdayOf } from "@/lib/dates";
+import {
+  addDays,
+  daysBetween,
+  formatLongDay,
+  formatRelativeDay,
+  formatShortDay,
+  weekdayOf,
+} from "@/lib/dates";
 import { lowestBetween, type ForecastItem } from "@/lib/forecast";
 import { formatPeso, roundCents } from "@/lib/money";
 import {
@@ -70,7 +77,11 @@ function subscribe(listener: () => void) {
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 const MONTH = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" });
 /** "Jan 15", even in another year: paydays are never far off. */
-const MONTH_DAY = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+const MONTH_DAY = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
 
 export function PayAheadCalendar({
   start,
@@ -97,11 +108,21 @@ export function PayAheadCalendar({
   const locks = useMemo(() => cleanLocks(stored, candidates, today), [stored, candidates, today]);
   const [openKey, setOpenKey] = useState<string | null>(null);
 
-  const plan = useMemo(() => planWithLocks({ start, items, held, locks, today }), [start, items, held, locks, today]);
-  const before = useMemo(() => planWithLocks({ start, items, held, locks: {}, today }), [start, items, held, today]);
+  const plan = useMemo(
+    () => planWithLocks({ start, items, held, locks, today }),
+    [start, items, held, locks, today],
+  );
+  const before = useMemo(
+    () => planWithLocks({ start, items, held, locks: {}, today }),
+    [start, items, held, today],
+  );
 
   if (!candidates.length) {
-    return <p className="rounded-[20px] bg-card px-4 py-3 text-[15px] text-muted">Nothing to pay ahead.</p>;
+    return (
+      <p className="rounded-[20px] bg-card px-4 py-3 text-[15px] text-muted">
+        Nothing to pay ahead.
+      </p>
+    );
   }
 
   const day = (date: string) => (date === today ? "Today" : formatShortDay(date, today));
@@ -128,11 +149,20 @@ export function PayAheadCalendar({
 
   /** "Pay anytime", "Wait for Dec 15 pay", "Planned · Tomorrow", … */
   function statusOf(c: ForecastItem): { label: string; tone: string } {
-    if (locks[c.key]) return { label: `Planned · ${formatRelativeDay(locks[c.key], today)}`, tone: "bg-sea text-white" };
+    if (locks[c.key])
+      return {
+        label: `Planned · ${formatRelativeDay(locks[c.key], today)}`,
+        tone: "bg-sea text-white",
+      };
     const first = firstSafeDay(c, plan, locks, today);
     if (first === today) return { label: "Pay anytime", tone: "bg-sea-tint text-sea-dark" };
     if (first === c.dueOn) return { label: "Pay on due day", tone: "bg-key text-muted" };
-    return { label: paydays.includes(first) ? `Wait for ${MONTH_DAY.format(Date.parse(`${first}T00:00:00Z`))} pay` : `Wait till ${day(first)}`, tone: "bg-key text-muted" };
+    return {
+      label: paydays.includes(first)
+        ? `Wait for ${MONTH_DAY.format(Date.parse(`${first}T00:00:00Z`))} pay`
+        : `Wait till ${day(first)}`,
+      tone: "bg-key text-muted",
+    };
   }
 
   const openItem = candidates.find((c) => c.key === openKey) ?? null;
@@ -141,7 +171,9 @@ export function PayAheadCalendar({
     <div className="flex flex-col gap-3">
       <section className="flex items-center justify-between gap-3 rounded-[20px] bg-sea px-4 py-3 text-white">
         <span className="flex min-w-0 flex-col">
-          <span className={`font-display text-[22px] font-semibold ${tight ? "text-sun" : ""}`}>{tight ? "✗ Too tight" : "✓ Still safe"}</span>
+          <span className={`font-display text-[22px] font-semibold ${tight ? "text-sun" : ""}`}>
+            {tight ? "✗ Too tight" : "✓ Still safe"}
+          </span>
           {low && (
             <span className="text-[13px] text-sea-text">
               Lowest {formatPeso(low.balance)} · {day(low.date)}
@@ -151,7 +183,12 @@ export function PayAheadCalendar({
         <span className="flex shrink-0 flex-col items-end">
           <span className="font-display text-[22px] font-semibold">{formatPeso(plan.perDay)}</span>
           <span className="text-[13px] text-sea-text">
-            a day{planned.length ? (change === 0 ? " · same" : ` · ${change > 0 ? "+" : "−"}${formatPeso(Math.abs(change))}`) : ""}
+            a day
+            {planned.length
+              ? change === 0
+                ? " · same"
+                : ` · ${change > 0 ? "+" : "−"}${formatPeso(Math.abs(change))}`
+              : ""}
           </span>
         </span>
       </section>
@@ -169,7 +206,10 @@ export function PayAheadCalendar({
           {days.map((date) => {
             const list = byDay.get(date)!;
             return (
-              <div key={date} className="flex flex-col border-t border-line-soft py-2.5 first:border-0">
+              <div
+                key={date}
+                className="flex flex-col border-t border-line-soft py-2.5 first:border-0"
+              >
                 <span className="font-bold">
                   {formatRelativeDay(date, today)} · pay {list.length} · {formatPeso(total(list))}
                 </span>
@@ -180,14 +220,18 @@ export function PayAheadCalendar({
                         <span className="min-w-0 flex-1 truncate text-[15px]">{c.name}</span>
                         <span className="font-display text-[15px] font-semibold">
                           {formatPeso(c.amount!)}
-                          {c.estimate && <span className="font-sans text-xs font-bold text-muted"> est.</span>}
+                          {c.estimate && (
+                            <span className="font-sans text-xs font-bold text-muted"> est.</span>
+                          )}
                         </span>
                         <LogButton item={c} accounts={accounts} label="Pay" />
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <span className="truncate text-[13px] text-muted">{list.map((c) => c.name).join(", ")}</span>
+                  <span className="truncate text-[13px] text-muted">
+                    {list.map((c) => c.name).join(", ")}
+                  </span>
                 )}
               </div>
             );
@@ -195,11 +239,17 @@ export function PayAheadCalendar({
         </section>
       )}
 
-      <ul aria-label="Payments you can pay ahead" className="flex flex-col rounded-[20px] bg-card px-2 py-1">
+      <ul
+        aria-label="Payments you can pay ahead"
+        className="flex flex-col rounded-[20px] bg-card px-2 py-1"
+      >
         {candidates.map((c) => {
           const status = statusOf(c);
           return (
-            <li key={c.key} className="flex items-center gap-1 border-t border-line-soft first:border-0">
+            <li
+              key={c.key}
+              className="flex items-center gap-1 border-t border-line-soft first:border-0"
+            >
               <button
                 type="button"
                 aria-haspopup="dialog"
@@ -210,7 +260,11 @@ export function PayAheadCalendar({
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="flex flex-wrap items-baseline gap-x-2">
                     <span className="truncate font-bold">{c.name}</span>
-                    {c.lastPayment && <span className="rounded-full bg-sea-tint px-2 text-xs font-extrabold text-sea-dark">Last</span>}
+                    {c.lastPayment && (
+                      <span className="rounded-full bg-sea-tint px-2 text-xs font-extrabold text-sea-dark">
+                        Last
+                      </span>
+                    )}
                   </span>
                   <span className="text-[13px] text-muted">
                     Due {day(c.dueOn)}
@@ -220,9 +274,13 @@ export function PayAheadCalendar({
                 <span className="flex shrink-0 flex-col items-end gap-0.5">
                   <span className="font-display text-[17px] font-semibold">
                     {formatPeso(c.amount!)}
-                    {c.estimate && <span className="font-sans text-xs font-bold text-muted"> est.</span>}
+                    {c.estimate && (
+                      <span className="font-sans text-xs font-bold text-muted"> est.</span>
+                    )}
                   </span>
-                  <span className={`rounded-full px-2 text-xs font-extrabold ${status.tone}`}>{status.label}</span>
+                  <span className={`rounded-full px-2 text-xs font-extrabold ${status.tone}`}>
+                    {status.label}
+                  </span>
                 </span>
               </button>
               {locks[c.key] && (
@@ -296,7 +354,9 @@ function DaySheet({
   }, []);
 
   const day = (date: string) => (date === today ? "Today" : formatShortDay(date, today));
-  const cells = Array.from({ length: daysBetween(today, item.dueOn) + 1 }, (_, i) => addDays(today, i));
+  const cells = Array.from({ length: daysBetween(today, item.dueOn) + 1 }, (_, i) =>
+    addDays(today, i),
+  );
   const checkOf = (date: string) => checkDay(item, date, plan, locks, today);
   const pickedCheck = picked ? checkOf(picked) : null;
 
@@ -325,7 +385,12 @@ function DaySheet({
               · due {day(item.dueOn)}
             </p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-card">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-card"
+          >
             <CloseIcon size={16} />
           </button>
         </div>
@@ -333,7 +398,9 @@ function DaySheet({
         <div className="flex flex-col gap-1 rounded-[20px] bg-card p-3">
           <div className="grid grid-cols-7 gap-1" aria-hidden="true">
             {WEEKDAYS.map((w, i) => (
-              <span key={i} className="text-center text-xs font-bold text-muted">{w}</span>
+              <span key={i} className="text-center text-xs font-bold text-muted">
+                {w}
+              </span>
             ))}
           </div>
           <div className="grid grid-cols-7 gap-1">
@@ -357,14 +424,29 @@ function DaySheet({
                   aria-label={`${formatLongDay(date)}${due ? ", due" : ""}${payday ? ", payday" : ""}${mine ? ", planned" : check.safe ? "" : ", not safe"}`}
                   aria-pressed={mine}
                   className={`relative flex h-11 flex-col items-center justify-center rounded-[10px] border-2 text-[13px] ${
-                    mine ? "bg-sea font-extrabold text-white" : check.safe ? "bg-card hover:bg-sea-tint" : "bg-line-soft text-muted"
+                    mine
+                      ? "bg-sea font-extrabold text-white"
+                      : check.safe
+                        ? "bg-card hover:bg-sea-tint"
+                        : "bg-line-soft text-muted"
                   } ${due ? "border-coral" : "border-transparent"} ${picked === date ? "ring-2 ring-ink ring-offset-1 ring-offset-card" : ""} ${
                     date === today ? "font-extrabold underline" : ""
                   }`}
                 >
-                  {showMonth && <span className={`text-[10px] leading-none ${mine ? "text-sea-text" : "text-muted"}`}>{MONTH.format(Date.parse(`${date}T00:00:00Z`))}</span>}
+                  {showMonth && (
+                    <span
+                      className={`text-[10px] leading-none ${mine ? "text-sea-text" : "text-muted"}`}
+                    >
+                      {MONTH.format(Date.parse(`${date}T00:00:00Z`))}
+                    </span>
+                  )}
                   {Number(date.slice(8))}
-                  {payday && <span aria-hidden="true" className="absolute bottom-1 h-[3px] w-3.5 rounded-full bg-sun" />}
+                  {payday && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute bottom-1 h-[3px] w-3.5 rounded-full bg-sun"
+                    />
+                  )}
                 </button>
               );
             })}
@@ -372,20 +454,39 @@ function DaySheet({
         </div>
 
         <p aria-live="polite" className="min-h-5 text-[13px] font-bold text-coral-text">
-          {pickedCheck && picked && pickedCheck.low !== null && `${day(picked)} · drops to ${formatPeso(pickedCheck.low)} on ${day(pickedCheck.lowOn!)}`}
+          {pickedCheck &&
+            picked &&
+            pickedCheck.low !== null &&
+            `${day(picked)} · drops to ${formatPeso(pickedCheck.low)} on ${day(pickedCheck.lowOn!)}`}
         </p>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
-          <span className="flex items-center gap-1.5"><span aria-hidden="true" className="h-3.5 w-3.5 rounded bg-line-soft" />Not safe</span>
-          <span className="flex items-center gap-1.5"><span aria-hidden="true" className="h-3.5 w-3.5 rounded border-2 border-coral" />Due</span>
-          <span className="flex items-center gap-1.5"><span aria-hidden="true" className="h-3.5 w-3.5 rounded bg-sea" />Planned</span>
-          <span className="flex items-center gap-1.5"><span aria-hidden="true" className="h-[3px] w-3.5 rounded-full bg-sun" />Payday</span>
+          <span className="flex items-center gap-1.5">
+            <span aria-hidden="true" className="h-3.5 w-3.5 rounded bg-line-soft" />
+            Not safe
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span aria-hidden="true" className="h-3.5 w-3.5 rounded border-2 border-coral" />
+            Due
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span aria-hidden="true" className="h-3.5 w-3.5 rounded bg-sea" />
+            Planned
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span aria-hidden="true" className="h-[3px] w-3.5 rounded-full bg-sun" />
+            Payday
+          </span>
         </div>
       </div>
     </dialog>
   );
 }
 
-const MONTH_YEAR = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+const MONTH_YEAR = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
 
 /**
  * The month at a glance: paydays, the days you planned payments for, and
@@ -416,7 +517,9 @@ function MonthView({
     due: candidates.filter((c) => !locks[c.key] && c.dueOn === date),
   });
   // Until you tap a day: the next one with something on it.
-  const next = [...pays.map((p) => p.dueOn), ...candidates.map((c) => locks[c.key] ?? c.dueOn)].filter((d) => d >= today).sort()[0];
+  const next = [...pays.map((p) => p.dueOn), ...candidates.map((c) => locks[c.key] ?? c.dueOn)]
+    .filter((d) => d >= today)
+    .sort()[0];
   const selected = tapped ?? next ?? today;
   const picked = on(selected);
   const out = roundCents([...picked.planned, ...picked.due].reduce((sum, c) => sum + c.amount!, 0));
@@ -438,9 +541,13 @@ function MonthView({
           <ChevronIcon direction="left" size={18} />
         </button>
         <span className="flex flex-col items-center">
-          <h2 className="font-display text-[17px] font-semibold">{MONTH_YEAR.format(Date.parse(`${month}-01T00:00:00Z`))}</h2>
+          <h2 className="font-display text-[17px] font-semibold">
+            {MONTH_YEAR.format(Date.parse(`${month}-01T00:00:00Z`))}
+          </h2>
           <span className="text-[13px] font-bold text-muted">
-            {inMonth.length ? `${inMonth.length} to pay · ${formatPeso(monthTotal)}` : "Nothing to pay"}
+            {inMonth.length
+              ? `${inMonth.length} to pay · ${formatPeso(monthTotal)}`
+              : "Nothing to pay"}
           </span>
         </span>
         <button
@@ -456,7 +563,9 @@ function MonthView({
 
       <div className="grid grid-cols-7 gap-1" aria-hidden="true">
         {WEEKDAYS.map((w, i) => (
-          <span key={i} className="text-center text-xs font-bold text-muted">{w}</span>
+          <span key={i} className="text-center text-xs font-bold text-muted">
+            {w}
+          </span>
         ))}
       </div>
       <div className="grid grid-cols-7 gap-1">
@@ -475,13 +584,21 @@ function MonthView({
               aria-pressed={selected === date}
               aria-label={`${formatLongDay(date)}${that.pays.length ? ", payday" : ""}${owing.length ? `, ${owing.length} to pay, ${formatPeso(sum)}` : ""}${that.due.length ? `, ${that.due.length} due` : ""}`}
               className={`relative flex h-12 flex-col items-center justify-center rounded-[10px] border-2 pb-1 text-[13px] leading-tight ${
-                that.planned.length ? "bg-sea font-extrabold text-white" : past ? "text-muted opacity-50" : "hover:bg-sea-tint"
+                that.planned.length
+                  ? "bg-sea font-extrabold text-white"
+                  : past
+                    ? "text-muted opacity-50"
+                    : "hover:bg-sea-tint"
               } ${that.due.length ? "border-coral" : "border-transparent"} ${
                 selected === date ? "ring-2 ring-ink ring-offset-1 ring-offset-card" : ""
               } ${date === today ? "font-extrabold underline" : ""}`}
             >
               {Number(date.slice(8))}
-              {owing.length > 0 && <span className="text-[10px] font-extrabold no-underline">{formatPesoShort(sum)}</span>}
+              {owing.length > 0 && (
+                <span className="text-[10px] font-extrabold no-underline">
+                  {formatPesoShort(sum)}
+                </span>
+              )}
               {owing.length > 0 && (
                 <span
                   aria-hidden="true"
@@ -492,15 +609,29 @@ function MonthView({
                   {owing.length}
                 </span>
               )}
-              {that.pays.length > 0 && <span aria-hidden="true" className="absolute bottom-0.5 h-[3px] w-3.5 rounded-full bg-sun" />}
+              {that.pays.length > 0 && (
+                <span
+                  aria-hidden="true"
+                  className="absolute bottom-0.5 h-[3px] w-3.5 rounded-full bg-sun"
+                />
+              )}
             </button>
           );
         })}
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 px-1 text-xs text-muted">
-        <span className="flex items-center gap-1.5"><span aria-hidden="true" className="h-[3px] w-3.5 rounded-full bg-sun" />Payday</span>
-        <span className="flex items-center gap-1.5"><span aria-hidden="true" className="h-3.5 w-3.5 rounded bg-sea" />Planned</span>
-        <span className="flex items-center gap-1.5"><span aria-hidden="true" className="h-3.5 w-3.5 rounded border-2 border-coral" />Due</span>
+        <span className="flex items-center gap-1.5">
+          <span aria-hidden="true" className="h-[3px] w-3.5 rounded-full bg-sun" />
+          Payday
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span aria-hidden="true" className="h-3.5 w-3.5 rounded bg-sea" />
+          Planned
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span aria-hidden="true" className="h-3.5 w-3.5 rounded border-2 border-coral" />
+          Due
+        </span>
       </div>
 
       <div aria-live="polite" className="flex flex-col border-t border-line-soft px-1 pt-2">
@@ -517,19 +648,25 @@ function MonthView({
                 <span>{p.name}</span>
                 <span className="font-display font-semibold text-sea">
                   {p.amount === null ? "amount not set" : `+${formatPeso(p.amount)}`}
-                  {p.estimate && <span className="font-sans text-xs font-bold text-muted"> est.</span>}
+                  {p.estimate && (
+                    <span className="font-sans text-xs font-bold text-muted"> est.</span>
+                  )}
                 </span>
               </li>
             ))}
             {[...picked.planned, ...picked.due].map((c) => (
               <li key={c.key} className="flex items-center gap-3 py-1 text-[15px]">
                 <span className="min-w-0 flex-1 truncate">{c.name}</span>
-                <span className={`rounded-full px-2 text-xs font-extrabold ${locks[c.key] ? "bg-sea text-white" : "bg-coral-tint text-coral-text"}`}>
+                <span
+                  className={`rounded-full px-2 text-xs font-extrabold ${locks[c.key] ? "bg-sea text-white" : "bg-coral-tint text-coral-text"}`}
+                >
                   {locks[c.key] ? "Planned" : "Due"}
                 </span>
                 <span className="font-display font-semibold">
                   {formatPeso(c.amount!)}
-                  {c.estimate && <span className="font-sans text-xs font-bold text-muted"> est.</span>}
+                  {c.estimate && (
+                    <span className="font-sans text-xs font-bold text-muted"> est.</span>
+                  )}
                 </span>
               </li>
             ))}

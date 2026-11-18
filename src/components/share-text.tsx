@@ -86,8 +86,13 @@ export function ShareText({
   }
 
   return (
-    <section aria-labelledby="share-heading" className="flex flex-col gap-3 rounded-[24px] bg-card p-4">
-      <h2 id="share-heading" className="font-display text-xl font-semibold">Send breakdown</h2>
+    <section
+      aria-labelledby="share-heading"
+      className="flex flex-col gap-3 rounded-[24px] bg-card p-4"
+    >
+      <h2 id="share-heading" className="font-display text-xl font-semibold">
+        Send breakdown
+      </h2>
       {/* Pong, drawn onto the image. */}
       <div ref={pongRef} aria-hidden="true" className="hidden">
         <Pong mood={receipt.mood} size={250} decorative />
@@ -95,7 +100,11 @@ export function ShareText({
       <div className="flex justify-center rounded-[20px] bg-sea-tint p-3">
         {preview ? (
           // eslint-disable-next-line @next/next/no-img-element -- a blob: URL drawn in the browser
-          <img src={preview} alt={`Breakdown for ${receipt.title}, ready to send`} className="w-full max-w-[360px] rounded-[16px]" />
+          <img
+            src={preview}
+            alt={`Breakdown for ${receipt.title}, ready to send`}
+            className="w-full max-w-[360px] rounded-[16px]"
+          />
         ) : (
           <div className="flex aspect-[3/4] w-full max-w-[360px] animate-pulse items-center justify-center rounded-[16px] bg-card">
             <Pong mood="peek" size={90} decorative />
@@ -111,7 +120,11 @@ export function ShareText({
         >
           {png ? "Copy image" : "Pong is drawing it…"}
         </button>
-        <button type="button" onClick={copyText} className="h-12 rounded-[16px] border-2 border-sea font-extrabold text-sea-dark">
+        <button
+          type="button"
+          onClick={copyText}
+          className="h-12 rounded-[16px] border-2 border-sea font-extrabold text-sea-dark"
+        >
           Copy text
         </button>
       </div>

@@ -39,8 +39,10 @@ function validate(input: PaydayInput): string | null {
     const name = bill.name.trim();
     if (!name) return "Give each bill a name.";
     if (name.length > 60) return "Keep bill names to 60 characters.";
-    if (!(bill.amount > 0 && bill.amount <= MAX_AMOUNT)) return `Add an amount for ${name}. A guess is fine.`;
-    if (!Number.isInteger(bill.day) || bill.day < 1 || bill.day > 31) return `Pick the day ${name} is due.`;
+    if (!(bill.amount > 0 && bill.amount <= MAX_AMOUNT))
+      return `Add an amount for ${name}. A guess is fine.`;
+    if (!Number.isInteger(bill.day) || bill.day < 1 || bill.day > 31)
+      return `Pick the day ${name} is due.`;
   }
   return null;
 }
@@ -56,7 +58,10 @@ export async function savePaydayAndBills(input: PaydayInput): Promise<SetupResul
 
   // Paydays that differ (which Fridays pay, an amount per payday) need
   // migration 0022: check before the old payday goes.
-  const weeks = input.schedule?.frequency === "weekly" && input.schedule.weeks?.length ? [...input.schedule.weeks] : null;
+  const weeks =
+    input.schedule?.frequency === "weekly" && input.schedule.weeks?.length
+      ? [...input.schedule.weeks]
+      : null;
   const amounts = input.schedule?.amounts?.some((a) => a !== null)
     ? input.schedule.amounts.map((a) => (a === null ? null : roundCents(a)))
     : null;
@@ -64,11 +69,19 @@ export async function savePaydayAndBills(input: PaydayInput): Promise<SetupResul
   const weekdays = daily && input.schedule?.weekdays?.length ? [...input.schedule.weekdays] : null;
   if (daily) {
     const { error } = await supabase.from("recurring_items").select("pay_weekdays").limit(1);
-    if (error) return { error: "To get paid every work day, run step 23 in supabase/SQL_GUIDE.md first." };
+    if (error)
+      return { error: "To get paid every work day, run step 23 in supabase/SQL_GUIDE.md first." };
   }
   if (weeks || amounts) {
-    const { error } = await supabase.from("recurring_items").select("pay_weeks, pay_amounts").limit(1);
-    if (error) return { error: "To pick paydays or an amount for each one, run step 22 in supabase/SQL_GUIDE.md first." };
+    const { error } = await supabase
+      .from("recurring_items")
+      .select("pay_weeks, pay_amounts")
+      .limit(1);
+    if (error)
+      return {
+        error:
+          "To pick paydays or an amount for each one, run step 22 in supabase/SQL_GUIDE.md first.",
+      };
   }
 
   const clearPayday = await supabase.from("recurring_items").delete().eq("kind", "payday");

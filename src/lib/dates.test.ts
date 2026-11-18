@@ -24,8 +24,12 @@ describe("time of day", () => {
   });
 
   it("uses the picked time, else when it was logged", () => {
-    expect(transactionTime({ occurredTime: "08:15", createdAt: "2026-11-05T07:42:00Z" })).toBe("8:15 AM");
-    expect(transactionTime({ occurredTime: null, createdAt: "2026-11-05T07:42:00Z" })).toBe("3:42 PM");
+    expect(transactionTime({ occurredTime: "08:15", createdAt: "2026-11-05T07:42:00Z" })).toBe(
+      "8:15 AM",
+    );
+    expect(transactionTime({ occurredTime: null, createdAt: "2026-11-05T07:42:00Z" })).toBe(
+      "3:42 PM",
+    );
     expect(transactionTime({ occurredTime: null, createdAt: null })).toBe("");
   });
 });

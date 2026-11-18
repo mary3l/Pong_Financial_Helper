@@ -13,10 +13,7 @@ export function DisplayNameForm({
   label?: string;
   hint?: string;
 }) {
-  const [state, action, pending] = useActionState<DisplayNameState, FormData>(
-    setDisplayName,
-    {},
-  );
+  const [state, action, pending] = useActionState<DisplayNameState, FormData>(setDisplayName, {});
 
   return (
     <form action={action} className="flex flex-col gap-2">
@@ -49,9 +46,7 @@ export function DisplayNameForm({
       <p
         id="display_name_status"
         role={state.error ? "alert" : "status"}
-        className={`min-h-5 text-sm font-bold ${
-          state.error ? "text-coral-text" : "text-sea-dark"
-        }`}
+        className={`min-h-5 text-sm font-bold ${state.error ? "text-coral-text" : "text-sea-dark"}`}
       >
         {state.error ?? (state.saved && !pending ? "Saved." : "")}
       </p>

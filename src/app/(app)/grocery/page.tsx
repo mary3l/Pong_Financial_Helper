@@ -32,7 +32,9 @@ async function Grocery() {
   ]);
   const budget = budgets.find((b) => b.category === "groceries");
   const used = roundCents(
-    spent.filter((t) => t.type === "expense" && t.category === "groceries").reduce((sum, t) => sum + t.amount, 0),
+    spent
+      .filter((t) => t.type === "expense" && t.category === "groceries")
+      .reduce((sum, t) => sum + t.amount, 0),
   );
 
   return (

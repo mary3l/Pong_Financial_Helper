@@ -21,9 +21,15 @@ function sane(rate: unknown): rate is number {
 }
 
 async function fromExchangeRateApi(): Promise<UsdRate | null> {
-  const res = await fetch("https://open.er-api.com/v6/latest/USD", { signal: AbortSignal.timeout(5000) });
+  const res = await fetch("https://open.er-api.com/v6/latest/USD", {
+    signal: AbortSignal.timeout(5000),
+  });
   if (!res.ok) return null;
-  const data = (await res.json()) as { result?: string; rates?: Record<string, number>; time_last_update_unix?: number };
+  const data = (await res.json()) as {
+    result?: string;
+    rates?: Record<string, number>;
+    time_last_update_unix?: number;
+  };
   const rate = data.rates?.PHP;
   if (data.result !== "success" || !sane(rate) || !data.time_last_update_unix) return null;
   return {

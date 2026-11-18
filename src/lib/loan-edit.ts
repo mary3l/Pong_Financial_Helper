@@ -44,18 +44,26 @@ export function editLoan(saved: SavedPayment[], edit: LoanEdit): EditedLoan | { 
   const savedFirst = saved.length ? Math.min(...saved.map((p) => p.seq)) : 1;
   const firstPaidHere = paid.length ? Math.min(...paid.map((p) => p.seq)) : Infinity;
   if (edit.paidBefore !== undefined) {
-    if (!Number.isInteger(edit.paidBefore) || edit.paidBefore < 0 || edit.paidBefore >= edit.months) {
+    if (
+      !Number.isInteger(edit.paidBefore) ||
+      edit.paidBefore < 0 ||
+      edit.paidBefore >= edit.months
+    ) {
       return { error: "Payments made before should be fewer than the months." };
     }
     if (edit.paidBefore >= firstPaidHere) {
-      return { error: `Payment ${firstPaidHere} is already logged here, so make it ${firstPaidHere - 1} or fewer before.` };
+      return {
+        error: `Payment ${firstPaidHere} is already logged here, so make it ${firstPaidHere - 1} or fewer before.`,
+      };
     }
   }
   const firstSeq = edit.paidBefore === undefined ? savedFirst : edit.paidBefore + 1;
   const paidSeqs = new Set(paid.map((p) => p.seq));
   const lastPaid = Math.max(firstSeq - 1, ...paid.map((p) => p.seq));
   if (edit.months < lastPaid) {
-    return { error: `You've already made ${lastPaid} payment${lastPaid === 1 ? "" : "s"}, so it can't be fewer months.` };
+    return {
+      error: `You've already made ${lastPaid} payment${lastPaid === 1 ? "" : "s"}, so it can't be fewer months.`,
+    };
   }
 
   const owedAtStart = roundCents(
@@ -64,23 +72,40 @@ export function editLoan(saved: SavedPayment[], edit: LoanEdit): EditedLoan | { 
       .reduce((sum, p) => sum + p, 0),
   );
   const owedNow = roundCents(owedAtStart - paid.reduce((sum, p) => sum + p.principalPart, 0));
-  const seqs = Array.from({ length: edit.months - firstSeq + 1 }, (_, i) => firstSeq + i).filter((s) => !paidSeqs.has(s));
+  const seqs = Array.from({ length: edit.months - firstSeq + 1 }, (_, i) => firstSeq + i).filter(
+    (s) => !paidSeqs.has(s),
+  );
   if (seqs.length && owedNow <= 0) {
-    return { error: "What you've paid already covers that loan amount. Check the amount or the months." };
+    return {
+      error: "What you've paid already covers that loan amount. Check the amount or the months.",
+    };
   }
   if (!seqs.length && owedNow > 0) {
-    return { error: "Every payment is made but some is still owed. Add a month or check the loan amount." };
+    return {
+      error: "Every payment is made but some is still owed. Add a month or check the loan amount.",
+    };
   }
   if (roundCents(edit.monthly * seqs.length) < owedNow) {
-    return { error: "The payments left add up to less than you still owe. Check the monthly payment and months." };
+    return {
+      error:
+        "The payments left add up to less than you still owe. Check the monthly payment and months.",
+    };
   }
 
   const principals = seqs.length ? splitAmount(owedNow, seqs.length) : [];
   const dates = monthlyDates(edit.nextDue, seqs.length);
   const rows = seqs.map((seq, i) => {
     const principalPart = principals[i];
-    const feePart = roundCents(Math.max(0, loanPayment(edit.monthly, edit.months, seq) - principalPart));
-    return { seq, dueOn: dates[i], principalPart, feePart, amount: roundCents(principalPart + feePart) };
+    const feePart = roundCents(
+      Math.max(0, loanPayment(edit.monthly, edit.months, seq) - principalPart),
+    );
+    return {
+      seq,
+      dueOn: dates[i],
+      principalPart,
+      feePart,
+      amount: roundCents(principalPart + feePart),
+    };
   });
   const feeTotal = roundCents(
     paid.reduce((sum, p) => sum + p.feePart, 0) + rows.reduce((sum, r) => sum + r.feePart, 0),
@@ -106,18 +131,25 @@ export function checkLoan(input: {
   nextDue: string;
   alreadyPaid: number;
 }): string | null {
-  const name = String(input.name ?? "").replace(/\s+/g, " ").trim();
+  const name = String(input.name ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!name) return "Give the loan a name, like SLoan.";
   if (name.length > 60) return "Keep the name to 60 characters.";
   if (!validAmount(input.received)) return "Enter the amount you received.";
   if (!validAmount(input.monthly)) return "Enter the monthly payment.";
-  if (!Number.isInteger(input.months) || input.months < 1 || input.months > 60) return "Pick how many months.";
+  if (!Number.isInteger(input.months) || input.months < 1 || input.months > 60)
+    return "Pick how many months.";
   if (roundCents(input.monthly * input.months) < input.received) {
     return "The payments add up to less than you received. Check the monthly payment and months.";
   }
   if (!isValidDate(input.nextDue)) return "Pick when the next payment is due.";
   if (input.intoAccountId && !isValidDate(input.receivedOn)) return "Pick the day you received it.";
-  if (!Number.isInteger(input.alreadyPaid) || input.alreadyPaid < 0 || input.alreadyPaid >= input.months) {
+  if (
+    !Number.isInteger(input.alreadyPaid) ||
+    input.alreadyPaid < 0 ||
+    input.alreadyPaid >= input.months
+  ) {
     return "Check how many payments you've already made.";
   }
   if (input.intoAccountId && input.alreadyPaid > 0) {

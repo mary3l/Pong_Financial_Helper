@@ -49,23 +49,47 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, max: number): string[
   return lines;
 }
 
-function fillRound(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number | number[], fill: string) {
+function fillRound(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number | number[],
+  fill: string,
+) {
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, r);
   ctx.fillStyle = fill;
   ctx.fill();
 }
 
-const BADGE = { paid: [C.seaTint, C.sea], part: [C.sunTint, C.sunText], open: [C.coralTint, C.coral] } as const;
+const BADGE = {
+  paid: [C.seaTint, C.sea],
+  part: [C.sunTint, C.sunText],
+  open: [C.coralTint, C.coral],
+} as const;
 
 /** Lays the receipt out; with `draw` false it only measures. Returns the card's bottom edge. */
-function layout(ctx: CanvasRenderingContext2D, r: Receipt, pong: CanvasImageSource | null, draw: boolean): number {
+function layout(
+  ctx: CanvasRenderingContext2D,
+  r: Receipt,
+  pong: CanvasImageSource | null,
+  draw: boolean,
+): number {
   const f = fonts();
   const cardL = PAD;
   const cardR = W - PAD;
   const left = cardL + 56;
   const right = cardR - 56;
-  const text = (s: string, x: number, y: number, font: string, color: string, align: CanvasTextAlign = "left") => {
+  const text = (
+    s: string,
+    x: number,
+    y: number,
+    font: string,
+    color: string,
+    align: CanvasTextAlign = "left",
+  ) => {
     ctx.font = font;
     if (!draw) return;
     ctx.fillStyle = color;
@@ -146,7 +170,14 @@ function layout(ctx: CanvasRenderingContext2D, r: Receipt, pong: CanvasImageSour
       const labelLines = wrap(ctx, row.label, right - left - amountW - 40);
       const top = y;
       y += 56;
-      text(row.amount, right, y, `600 40px ${f.display}`, row.tone === "paid" ? C.sea : C.ink, "right");
+      text(
+        row.amount,
+        right,
+        y,
+        `600 40px ${f.display}`,
+        row.tone === "paid" ? C.sea : C.ink,
+        "right",
+      );
       labelLines.forEach((line, i) => {
         if (i) y += 44;
         text(line, left, y, `800 34px ${f.body}`, C.ink);
@@ -202,14 +233,24 @@ function layout(ctx: CanvasRenderingContext2D, r: Receipt, pong: CanvasImageSour
     if (draw) fillRound(ctx, left - 16, y, right - left + 32, totalH, 28, C.sunTint);
     text(r.total.label.toUpperCase(), left + 16, y + 62, `800 28px ${f.body}`, C.sunText);
     text(r.total.amount, right - 16, y + 80, `600 64px ${f.display}`, C.ink, "right");
-    if (r.total.detail) text(r.total.detail, right - 16, y + 124, `700 24px ${f.body}`, C.sunText, "right");
+    if (r.total.detail)
+      text(r.total.detail, right - 16, y + 124, `700 24px ${f.body}`, C.sunText, "right");
     y += totalH;
   }
 
   // ── Next payment or due date.
   if (r.note) {
     y += 24;
-    if (draw) fillRound(ctx, left - 16, y, right - left + 32, 72, 24, r.note.late ? C.coralTint : C.seaTint);
+    if (draw)
+      fillRound(
+        ctx,
+        left - 16,
+        y,
+        right - left + 32,
+        72,
+        24,
+        r.note.late ? C.coralTint : C.seaTint,
+      );
     text(r.note.text, left + 16, y + 47, `800 28px ${f.body}`, r.note.late ? C.coral : C.sea);
     y += 72;
   }
@@ -247,7 +288,10 @@ export function pongImage(svg: SVGSVGElement): Promise<HTMLImageElement> {
 }
 
 /** The receipt as a PNG, with Pong when his image is given. */
-export async function receiptPng(receipt: Receipt, pong: CanvasImageSource | null = null): Promise<Blob> {
+export async function receiptPng(
+  receipt: Receipt,
+  pong: CanvasImageSource | null = null,
+): Promise<Blob> {
   await document.fonts.ready;
   const measure = document.createElement("canvas").getContext("2d")!;
   const bottom = Math.ceil(layout(measure, receipt, pong, false));
@@ -276,6 +320,9 @@ export async function receiptPng(receipt: Receipt, pong: CanvasImageSource | nul
   ctx.restore();
   layout(ctx, receipt, pong, true);
   return new Promise((resolve, reject) =>
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Couldn't draw the image"))), "image/png"),
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("Couldn't draw the image"))),
+      "image/png",
+    ),
   );
 }

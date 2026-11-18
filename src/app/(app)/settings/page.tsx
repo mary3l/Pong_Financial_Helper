@@ -32,20 +32,40 @@ export default function SettingsPage() {
         <Suspense fallback={<Row title="Budgets" href="/plan/budgets" />}>
           <BudgetsRow />
         </Suspense>
-        <Row title="Can I afford this?" detail="Test a purchase against your forecast" href="/plan/afford" />
-        <Row title="Goals (sinking funds)" detail="Set money aside for an emergency fund or a new laptop" soon />
+        <Row
+          title="Can I afford this?"
+          detail="Test a purchase against your forecast"
+          href="/plan/afford"
+        />
+        <Row
+          title="Goals (sinking funds)"
+          detail="Set money aside for an emergency fund or a new laptop"
+          soon
+        />
       </Group>
 
       <Group title="DEBTS & COMMITMENTS">
         <Row title="Utang / Pautang & split bills" detail="Who owes whom" href="/money/people" />
-        <Row title="Installments & loans" detail="SPayLater, Atome, SLoan, MariLoan" href="/money" />
+        <Row
+          title="Installments & loans"
+          detail="SPayLater, Atome, SLoan, MariLoan"
+          href="/money"
+        />
         <Row title="Paluwagan" soon />
       </Group>
 
       <Group title="TOOLS">
-        <Row title="Wallets, BNPL & loans" detail="Cash, banks, e-wallets and what you owe" href="/money" />
+        <Row
+          title="Wallets, BNPL & loans"
+          detail="Cash, banks, e-wallets and what you owe"
+          href="/money"
+        />
         <Row title="Grocery mode" detail="Scan as you shop and stay in budget" href="/grocery" />
-        <Row title="Payroll calculator" detail="Days worked, late, overtime, SSS, PhilHealth, Pag-IBIG, tax" href="/payroll" />
+        <Row
+          title="Payroll calculator"
+          detail="Days worked, late, overtime, SSS, PhilHealth, Pag-IBIG, tax"
+          href="/payroll"
+        />
         <Row title="Import CSV · Export · Backup" soon />
       </Group>
 
@@ -113,7 +133,9 @@ function Row({
         {detail && <span className="text-[13px] text-muted">{detail}</span>}
       </span>
       {soon ? (
-        <span className="rounded-full bg-sun-tint px-2.5 py-0.5 text-xs font-extrabold text-sun-text">Soon</span>
+        <span className="rounded-full bg-sun-tint px-2.5 py-0.5 text-xs font-extrabold text-sun-text">
+          Soon
+        </span>
       ) : (
         <ChevronIcon size={20} className="text-muted" />
       )}
@@ -154,7 +176,11 @@ async function BudgetsRow() {
   return (
     <Row
       title="Budgets"
-      detail={budgets.length ? `${budgets.length} set · ${formatPeso(total)} per kinsenas` : "Limits per kinsenas"}
+      detail={
+        budgets.length
+          ? `${budgets.length} set · ${formatPeso(total)} per kinsenas`
+          : "Limits per kinsenas"
+      }
       href="/plan/budgets"
     />
   );
@@ -165,12 +191,14 @@ async function Widget() {
   if (key === "missing") {
     return (
       <p className="text-[15px] text-muted">
-        Run step 9 in <strong className="text-ink">supabase/SQL_GUIDE.md</strong> to turn on the home
-        screen widget.
+        Run step 9 in <strong className="text-ink">supabase/SQL_GUIDE.md</strong> to turn on the
+        home screen widget.
       </p>
     );
   }
-  return <WidgetSetup keyMadeOn={key ? `on ${formatShortDay(today(new Date(key.createdAt)))}` : null} />;
+  return (
+    <WidgetSetup keyMadeOn={key ? `on ${formatShortDay(today(new Date(key.createdAt)))}` : null} />
+  );
 }
 
 async function Profile() {

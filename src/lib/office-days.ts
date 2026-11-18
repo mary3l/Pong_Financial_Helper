@@ -1,7 +1,14 @@
 import { addDays, type Period } from "@/lib/dates";
 import { isOwed, paidInAdvance, type ForecastItem } from "@/lib/forecast";
 import { roundCents } from "@/lib/money";
-import { cutoffFor, cutoffPay, cutoffRuleOf, daysFor, settingsFor, type PayrollRecords } from "@/lib/payroll";
+import {
+  cutoffFor,
+  cutoffPay,
+  cutoffRuleOf,
+  daysFor,
+  settingsFor,
+  type PayrollRecords,
+} from "@/lib/payroll";
 import { MAX_GAP_DAYS, occurrences, type Schedule } from "@/lib/schedule";
 
 // Plan › Bills by payday: every bill goes with the pay that covers it (the
@@ -53,21 +60,35 @@ export type PaydayBills = {
   office: OfficeDays | null;
 };
 
-const sum = (items: ForecastItem[]) => roundCents(items.reduce((total, i) => total + (i.amount ?? 0), 0));
+const sum = (items: ForecastItem[]) =>
+  roundCents(items.reduce((total, i) => total + (i.amount ?? 0), 0));
 
 const isBill = (i: ForecastItem) => isOwed(i) && i.amount !== null && i.kind !== "pautang";
 
-const isOtherIncome = (i: ForecastItem) => i.flow === "in" && i.kind !== "payday" && !i.transactionId && i.amount !== null;
+const isOtherIncome = (i: ForecastItem) =>
+  i.flow === "in" && i.kind !== "payday" && !i.transactionId && i.amount !== null;
 
 /**
  * The work days left in `cutoff` from `today` and what's earned before
  * today, from the days you saved (or the usual work week).
  */
-export function officeDays(records: PayrollRecords, cutoff: Period, today: string, need: number): OfficeDays {
-  const days = daysFor(cutoff, new Map(records.days.map((d) => [d.date, d])), records.settings.startedOn, records.settings);
+export function officeDays(
+  records: PayrollRecords,
+  cutoff: Period,
+  today: string,
+  need: number,
+): OfficeDays {
+  const days = daysFor(
+    cutoff,
+    new Map(records.days.map((d) => [d.date, d])),
+    records.settings.startedOn,
+    records.settings,
+  );
   const past = days.filter((d) => d.date < today);
   const ahead = days.filter((d) => d.date >= today && d.status === "worked");
-  const overtime = records.overtime.filter((o) => o.date >= cutoff.start && o.date < today && o.date <= cutoff.end);
+  const overtime = records.overtime.filter(
+    (o) => o.date >= cutoff.start && o.date < today && o.date <= cutoff.end,
+  );
   const settings = settingsFor(records, cutoff.start);
   const earned = past.length ? cutoffPay(settings, past, overtime).total : 0;
   const rate = settings.dailyRate;
@@ -109,7 +130,11 @@ export function billsByPayday({
 }): PaydayBills[] {
   // count + 1 paydays: each period ends the day before the next one. Paydays
   // can be months apart (only the 5th Friday), so look as far as that needs.
-  const paydays = occurrences(payday, addDays(today, 1), addDays(today, MAX_GAP_DAYS * (count + 1) + 1)).slice(0, count + 1);
+  const paydays = occurrences(
+    payday,
+    addDays(today, 1),
+    addDays(today, MAX_GAP_DAYS * (count + 1) + 1),
+  ).slice(0, count + 1);
   if (!paydays.length) return [];
   const bills = items.filter(isBill);
   const out: PaydayBills[] = [];
@@ -118,17 +143,26 @@ export function billsByPayday({
   const windows = [
     { payday: null as string | null, from: today, until: paydays[0] },
     // A period needs the payday after it to end.
-    ...paydays.slice(0, -1).slice(0, count).map((p, i) => ({ payday: p as string | null, from: p, until: paydays[i + 1] })),
+    ...paydays
+      .slice(0, -1)
+      .slice(0, count)
+      .map((p, i) => ({ payday: p as string | null, from: p, until: paydays[i + 1] })),
   ];
   for (const w of windows) {
     const first = w.payday === null;
     const inWindow = (i: ForecastItem) => (i.dueOn >= w.from || first) && i.dueOn < w.until;
     const due = bills.filter(inWindow);
-    const paidEarly = items.filter((i) => paidInAdvance(i) && i.kind !== "pautang" && i.dueOn >= w.from && i.dueOn < w.until);
-    const otherIncome = sum(items.filter((i) => isOtherIncome(i) && i.dueOn >= w.from && i.dueOn < w.until));
+    const paidEarly = items.filter(
+      (i) => paidInAdvance(i) && i.kind !== "pautang" && i.dueOn >= w.from && i.dueOn < w.until,
+    );
+    const otherIncome = sum(
+      items.filter((i) => isOtherIncome(i) && i.dueOn >= w.from && i.dueOn < w.until),
+    );
     const total = sum(due);
     const need = Math.max(0, roundCents(total + carried - otherIncome));
-    const payItem = w.payday ? items.find((i) => i.kind === "payday" && i.dueOn === w.payday) : undefined;
+    const payItem = w.payday
+      ? items.find((i) => i.kind === "payday" && i.dueOn === w.payday)
+      : undefined;
     const cutoff = w.payday && payroll ? cutoffFor(w.payday, cutoffRuleOf(payroll.settings)) : null;
     const office = cutoff && payroll ? officeDays(payroll, cutoff, today, need) : null;
     const money = first ? inWallets : (payItem?.amount ?? null);

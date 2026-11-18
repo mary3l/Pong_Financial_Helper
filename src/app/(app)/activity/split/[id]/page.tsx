@@ -53,7 +53,9 @@ async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/
   const credit = accounts.find((a) => a.id === split.accountId)?.type === "credit_line";
   const recordIds = new Set(records.map((r) => r.id));
   const plan = credit
-    ? (await getInstallmentPlans(split.accountId)).find((p) => p.sourceTxnId && recordIds.has(p.sourceTxnId))
+    ? (await getInstallmentPlans(split.accountId)).find(
+        (p) => p.sourceTxnId && recordIds.has(p.sourceTxnId),
+      )
     : undefined;
   const nextPayment = plan?.payments.find((p) => !p.transactionId);
   const pautang = roundCents(split.total - (split.mine?.amount ?? 0));
@@ -62,7 +64,17 @@ async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/
   const stillOwed = roundCents(split.others.reduce((s, t) => s + (unpaid.get(t.id) ?? 0), 0));
 
   const rows = [
-    ...(split.mine ? [{ id: split.mine.id, personId: null, name: "You", amount: split.mine.amount, what: `${info.label} · spending` }] : []),
+    ...(split.mine
+      ? [
+          {
+            id: split.mine.id,
+            personId: null,
+            name: "You",
+            amount: split.mine.amount,
+            what: `${info.label} · spending`,
+          },
+        ]
+      : []),
     ...split.others.map((t) => {
       const left = unpaid.get(t.id) ?? 0;
       return {
@@ -70,7 +82,12 @@ async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/
         personId: t.toAccountId,
         name: names.get(t.toAccountId ?? "") ?? "Removed person",
         amount: t.amount,
-        what: left === 0 ? "✓ Paid back" : left < t.amount ? `Still owes ${formatPeso(left)}` : "Pautang · not paid yet",
+        what:
+          left === 0
+            ? "✓ Paid back"
+            : left < t.amount
+              ? `Still owes ${formatPeso(left)}`
+              : "Pautang · not paid yet",
       };
     }),
   ];
@@ -82,11 +99,15 @@ async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/
       </Link>
 
       <section className="flex flex-col items-center gap-1 rounded-[28px] bg-card px-6 py-6 text-center">
-        <span className={`mb-1 flex h-12 w-12 items-center justify-center rounded-2xl ${info.tint}`}>
+        <span
+          className={`mb-1 flex h-12 w-12 items-center justify-center rounded-2xl ${info.tint}`}
+        >
           <PathIcon d={info.icon} size={24} />
         </span>
         <h1 className="font-display text-2xl font-semibold">{split.title}</h1>
-        <span className="font-display text-[44px] leading-[1.1] font-semibold">{formatPeso(split.total)}</span>
+        <span className="font-display text-[44px] leading-[1.1] font-semibold">
+          {formatPeso(split.total)}
+        </span>
         <span className="text-sm font-bold text-muted">
           {info.label} · {wallet} · {formatRelativeDay(split.occurredOn, today)}
           {transactionTime(split) && `, ${transactionTime(split)}`}
@@ -112,12 +133,17 @@ async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/
         <ul className="flex flex-col">
           {rows.map((r) => (
             <li key={r.id}>
-              <Link href={`/activity/${r.id}`} className="-mx-2 flex items-center gap-3 rounded-2xl px-2 py-2.5 hover:bg-mint">
+              <Link
+                href={`/activity/${r.id}`}
+                className="-mx-2 flex items-center gap-3 rounded-2xl px-2 py-2.5 hover:bg-mint"
+              >
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-[15px] font-bold">{r.name}</span>
                   <span className="truncate text-[13px] text-muted">{r.what}</span>
                 </span>
-                <span className="shrink-0 font-display text-[17px] font-semibold">{formatPeso(r.amount)}</span>
+                <span className="shrink-0 font-display text-[17px] font-semibold">
+                  {formatPeso(r.amount)}
+                </span>
                 <ChevronIcon size={18} className="shrink-0 text-muted" />
                 <span className="sr-only">, edit</span>
               </Link>
@@ -133,8 +159,21 @@ async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/
       {split.others.length > 0 && (
         <ShareText
           filename={`split-${split.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${split.occurredOn}.png`}
-          text={billBreakdownText({ split, names, unpaid, dateLabel: formatShortDay(split.occurredOn, today), myName: user.name })}
-          receipt={billReceipt({ split, names, unpaid, dateLabel: formatShortDay(split.occurredOn, today), wallet, myName: user.name })}
+          text={billBreakdownText({
+            split,
+            names,
+            unpaid,
+            dateLabel: formatShortDay(split.occurredOn, today),
+            myName: user.name,
+          })}
+          receipt={billReceipt({
+            split,
+            names,
+            unpaid,
+            dateLabel: formatShortDay(split.occurredOn, today),
+            wallet,
+            myName: user.name,
+          })}
         />
       )}
 
@@ -151,7 +190,9 @@ async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/
                 </span>
                 <span className="font-display text-xl font-semibold">
                   {formatPeso(nextPayment?.amount ?? plan.principal)}
-                  {plan.months > 1 && <span className="text-sm text-muted"> · {plan.months} months</span>}
+                  {plan.months > 1 && (
+                    <span className="text-sm text-muted"> · {plan.months} months</span>
+                  )}
                 </span>
               </span>
               <Link
@@ -172,12 +213,23 @@ async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/
         splitId={id}
         note={typedNote(records)}
         date={split.occurredOn}
-        shares={rows.map((r) => ({ id: r.id, personId: r.personId, name: r.name, amount: r.amount }))}
-        people={people.filter((p) => !archivedIds.has(p.id)).map((p) => ({ id: p.id, name: p.name }))}
+        shares={rows.map((r) => ({
+          id: r.id,
+          personId: r.personId,
+          name: r.name,
+          amount: r.amount,
+        }))}
+        people={people
+          .filter((p) => !archivedIds.has(p.id))
+          .map((p) => ({ id: p.id, name: p.name }))}
         walletId={split.accountId}
         // Peso wallets and credit lines you still use, and whatever it's on now.
         wallets={accounts
-          .filter((a) => a.id === split.accountId || (!a.archived && (a.type === "credit_line" || paysInPesos(a))))
+          .filter(
+            (a) =>
+              a.id === split.accountId ||
+              (!a.archived && (a.type === "credit_line" || paysInPesos(a))),
+          )
           .map((a) => ({ id: a.id, name: a.name, credit: a.type === "credit_line" }))}
       />
 

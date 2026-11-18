@@ -52,8 +52,8 @@ export function SignInPanel() {
       <div role="status" className="flex flex-col gap-3 rounded-[18px] bg-sea-tint p-4">
         <p className="font-bold">Check your email</p>
         <p className="text-[15px] text-muted">
-          We sent a sign-in link to <strong className="text-ink">{email}</strong>.
-          Open it on this device to continue.
+          We sent a sign-in link to <strong className="text-ink">{email}</strong>. Open it on this
+          device to continue.
         </p>
         <button
           type="button"
@@ -69,7 +69,10 @@ export function SignInPanel() {
   return (
     <div className="flex flex-col gap-3">
       {error && (
-        <p role="alert" className="rounded-[14px] bg-coral-tint px-4 py-3 text-sm font-bold text-coral-text">
+        <p
+          role="alert"
+          className="rounded-[14px] bg-coral-tint px-4 py-3 text-sm font-bold text-coral-text"
+        >
           {error}
         </p>
       )}
@@ -132,9 +135,12 @@ export function SignInError() {
   const failed = useSearchParams().get("error") === "signin";
   if (!failed) return null;
   return (
-    <p role="alert" className="rounded-[14px] bg-coral-tint px-4 py-3 text-sm font-bold text-coral-text">
-      That sign-in link didn&apos;t work. It may have expired or been opened on
-      another device. Please try again.
+    <p
+      role="alert"
+      className="rounded-[14px] bg-coral-tint px-4 py-3 text-sm font-bold text-coral-text"
+    >
+      That sign-in link didn&apos;t work. It may have expired or been opened on another device.
+      Please try again.
     </p>
   );
 }

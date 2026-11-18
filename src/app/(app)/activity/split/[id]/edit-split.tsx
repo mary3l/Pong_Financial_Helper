@@ -16,7 +16,8 @@ type Share = { id: string; name: string; amount: number; personId: string | null
 type Added = { key: number; personId: string | null; name: string; amount: string };
 
 const NEW = "new";
-const FIELD = "h-11 min-w-0 rounded-[14px] bg-card px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea";
+const FIELD =
+  "h-11 min-w-0 rounded-[14px] bg-card px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea";
 
 /** A share as typed, including a sum ("50+20"); NaN if it can't be read. */
 function read(text: string): number {
@@ -74,7 +75,10 @@ export function EditSplit({
   // Only people not already on the bill (or picked in another new row) can be added.
   const onBill = new Set(shares.map((s) => s.personId).filter(Boolean));
   const choices = (row: Added) =>
-    people.filter((p) => !onBill.has(p.id) && (p.id === row.personId || !added.some((a) => a.personId === p.id)));
+    people.filter(
+      (p) =>
+        !onBill.has(p.id) && (p.id === row.personId || !added.some((a) => a.personId === p.id)),
+    );
 
   function reset() {
     setDraftNote(note);
@@ -87,7 +91,10 @@ export function EditSplit({
 
   function addPerson() {
     const first = people.find((p) => !onBill.has(p.id) && !added.some((a) => a.personId === p.id));
-    setAdded((rows) => [...rows, { key: nextKey, personId: first?.id ?? null, name: "", amount: "" }]);
+    setAdded((rows) => [
+      ...rows,
+      { key: nextKey, personId: first?.id ?? null, name: "", amount: "" },
+    ]);
     setNextKey((k) => k + 1);
   }
 
@@ -107,7 +114,9 @@ export function EditSplit({
         name: a.personId ? (people.find((p) => p.id === a.personId)?.name ?? "") : a.name,
         amount: addedValues[i],
       })),
-      shares.flatMap((s, i) => (s.personId && values[i] > 0 ? [{ personId: s.personId, name: s.name }] : [])),
+      shares.flatMap((s, i) =>
+        s.personId && values[i] > 0 ? [{ personId: s.personId, name: s.name }] : [],
+      ),
     );
     if (problem) {
       setError(problem);
@@ -157,7 +166,9 @@ export function EditSplit({
           >
             <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,10rem)] gap-2.5">
               <div className="flex flex-col gap-1">
-                <label htmlFor="split-note" className="text-[13px] font-extrabold">Description</label>
+                <label htmlFor="split-note" className="text-[13px] font-extrabold">
+                  Description
+                </label>
                 <input
                   id="split-note"
                   value={draftNote}
@@ -168,7 +179,9 @@ export function EditSplit({
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <label htmlFor="split-date" className="text-[13px] font-extrabold">Date</label>
+                <label htmlFor="split-date" className="text-[13px] font-extrabold">
+                  Date
+                </label>
                 <input
                   id="split-date"
                   type="date"
@@ -182,16 +195,27 @@ export function EditSplit({
 
             {wallets.length > 1 && (
               <div className="flex flex-col gap-1">
-                <label htmlFor="split-wallet" className="text-[13px] font-extrabold">Paid with</label>
-                <select id="split-wallet" value={draftWallet} onChange={(e) => setDraftWallet(e.target.value)} className={FIELD}>
+                <label htmlFor="split-wallet" className="text-[13px] font-extrabold">
+                  Paid with
+                </label>
+                <select
+                  id="split-wallet"
+                  value={draftWallet}
+                  onChange={(e) => setDraftWallet(e.target.value)}
+                  className={FIELD}
+                >
                   {wallets.map((w) => (
-                    <option key={w.id} value={w.id}>{w.credit ? `${w.name} (credit line)` : w.name}</option>
+                    <option key={w.id} value={w.id}>
+                      {w.credit ? `${w.name} (credit line)` : w.name}
+                    </option>
                   ))}
                 </select>
                 {draftWallet !== walletId && toWallet && (
                   <span className="text-xs text-muted">
-                    The whole {total === null ? "bill" : formatPeso(total)} moves from {fromName} to {toWallet.name}
-                    {toWallet.credit ? `, onto its bill by the statement cutoff` : ""}. What each person owes you stays the same.
+                    The whole {total === null ? "bill" : formatPeso(total)} moves from {fromName} to{" "}
+                    {toWallet.name}
+                    {toWallet.credit ? `, onto its bill by the statement cutoff` : ""}. What each
+                    person owes you stays the same.
                   </span>
                 )}
               </div>
@@ -215,20 +239,33 @@ export function EditSplit({
 
               {added.map((a, i) => {
                 const options = choices(a);
-                const label = a.personId ? (people.find((p) => p.id === a.personId)?.name ?? "New person") : a.name.trim() || "New person";
+                const label = a.personId
+                  ? (people.find((p) => p.id === a.personId)?.name ?? "New person")
+                  : a.name.trim() || "New person";
                 return (
-                  <li key={a.key} className="flex flex-col gap-1.5 rounded-[14px] bg-sea-tint/60 p-2">
+                  <li
+                    key={a.key}
+                    className="flex flex-col gap-1.5 rounded-[14px] bg-sea-tint/60 p-2"
+                  >
                     {/* Who on top, with ✕; their name (when new) and share under it, so nothing gets cut on a phone. */}
                     <div className="flex items-center gap-2">
-                      <label htmlFor={`add-who-${a.key}`} className="sr-only">Who to add</label>
+                      <label htmlFor={`add-who-${a.key}`} className="sr-only">
+                        Who to add
+                      </label>
                       <select
                         id={`add-who-${a.key}`}
                         value={a.personId ?? NEW}
-                        onChange={(e) => patchRow(a.key, { personId: e.target.value === NEW ? null : e.target.value })}
+                        onChange={(e) =>
+                          patchRow(a.key, {
+                            personId: e.target.value === NEW ? null : e.target.value,
+                          })
+                        }
                         className={`${FIELD} h-10 min-w-0 flex-1 rounded-[12px]`}
                       >
                         {options.map((p) => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
                         ))}
                         <option value={NEW}>Someone new…</option>
                       </select>
@@ -243,10 +280,14 @@ export function EditSplit({
                     </div>
                     <div className="flex items-center gap-2">
                       {a.personId ? (
-                        <span className="min-w-0 flex-1 truncate pl-1 text-sm font-bold">{label}&apos;s share</span>
+                        <span className="min-w-0 flex-1 truncate pl-1 text-sm font-bold">
+                          {label}&apos;s share
+                        </span>
                       ) : (
                         <>
-                          <label htmlFor={`add-name-${a.key}`} className="sr-only">Their name</label>
+                          <label htmlFor={`add-name-${a.key}`} className="sr-only">
+                            Their name
+                          </label>
                           <input
                             id={`add-name-${a.key}`}
                             value={a.name}
@@ -289,7 +330,9 @@ export function EditSplit({
               >
                 <span className="font-extrabold">New total</span>
                 <span className="text-right">
-                  <span className="font-display font-semibold">{total === null ? "Check the shares" : formatPeso(total)}</span>
+                  <span className="font-display font-semibold">
+                    {total === null ? "Check the shares" : formatPeso(total)}
+                  </span>
                   {total !== null && (
                     <span className="block text-xs text-muted">
                       {change === 0
@@ -301,16 +344,26 @@ export function EditSplit({
               </li>
             </ul>
             <p className="text-xs text-muted">
-              Set a share to 0 to take that person off the bill. Anyone you add owes you their share (pautang),
-              paid with the same wallet as the rest of the bill.
+              Set a share to 0 to take that person off the bill. Anyone you add owes you their share
+              (pautang), paid with the same wallet as the rest of the bill.
             </p>
 
-            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+              {error}
+            </p>
             <div className="flex gap-2.5">
-              <button type="button" onClick={() => setOpen(false)} className="h-12 flex-1 rounded-[16px] bg-card font-extrabold">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="h-12 flex-1 rounded-[16px] bg-card font-extrabold"
+              >
                 Cancel
               </button>
-              <button type="submit" disabled={pending} className="h-12 flex-[2] rounded-[16px] bg-sun font-extrabold text-ink disabled:opacity-60">
+              <button
+                type="submit"
+                disabled={pending}
+                className="h-12 flex-[2] rounded-[16px] bg-sun font-extrabold text-ink disabled:opacity-60"
+              >
                 {pending ? "Updating…" : "Update split"}
               </button>
             </div>

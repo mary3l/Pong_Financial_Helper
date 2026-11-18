@@ -2,15 +2,7 @@
 // Swap the art here and every screen picks it up.
 
 export type PongMood =
-  | "happy"
-  | "worried"
-  | "proud"
-  | "shocked"
-  | "sleepy"
-  | "sleep"
-  | "peek"
-  | "ask"
-  | "listen";
+  "happy" | "worried" | "proud" | "shocked" | "sleepy" | "sleep" | "peek" | "ask" | "listen";
 
 const LABELS: Record<PongMood, string> = {
   happy: "Pong happy",
@@ -53,9 +45,7 @@ export function Pong({
   decorative = false,
 }: PongProps) {
   const on = (...moods: PongMood[]) => (moods.includes(mood) ? 1 : 0);
-  const a11y = decorative
-    ? { "aria-hidden": true }
-    : { role: "img", "aria-label": LABELS[mood] };
+  const a11y = decorative ? { "aria-hidden": true } : { role: "img", "aria-label": LABELS[mood] };
 
   return (
     <svg
@@ -83,7 +73,14 @@ export function Pong({
       <ellipse cx="24" cy="79" rx="9" ry="8" fill="#7DB88A" />
       <ellipse cx="76" cy="79" rx="9" ry="8" fill="#7DB88A" />
       <ellipse cx="50" cy="84" rx="8" ry="4.5" fill="#7DB88A" />
-      <path d="M20 62 C24 53 32 47 40 45" stroke="#FFFFFF" strokeWidth="3" fill="none" strokeLinecap="round" opacity="0.35" />
+      <path
+        d="M20 62 C24 53 32 47 40 45"
+        stroke="#FFFFFF"
+        strokeWidth="3"
+        fill="none"
+        strokeLinecap="round"
+        opacity="0.35"
+      />
       <rect x="2" y="86" width="96" height="10" rx="5" fill="#3F7350" />
 
       <g opacity={sprout ? 1 : 0}>
@@ -96,18 +93,42 @@ export function Pong({
       </g>
       <g opacity={on("proud")}>
         <circle cx="111" cy="92" r="8.5" fill="#F5B83D" stroke="#E09A1E" strokeWidth="2" />
-        <text x="111" y="96" textAnchor="middle" fontSize="11" fontWeight="800" fontFamily="Arial, sans-serif" fill="#7A4E05">₱</text>
+        <text
+          x="111"
+          y="96"
+          textAnchor="middle"
+          fontSize="11"
+          fontWeight="800"
+          fontFamily="Arial, sans-serif"
+          fill="#7A4E05"
+        >
+          ₱
+        </text>
       </g>
-      <g opacity={on("sleep", "sleepy")} fill="#2F7F7A" fontFamily="Fredoka, Nunito, sans-serif" fontWeight="700">
-        <text x="66" y="32" fontSize="13">z</text>
-        <text x="77" y="21" fontSize="9">z</text>
+      <g
+        opacity={on("sleep", "sleepy")}
+        fill="#2F7F7A"
+        fontFamily="Fredoka, Nunito, sans-serif"
+        fontWeight="700"
+      >
+        <text x="66" y="32" fontSize="13">
+          z
+        </text>
+        <text x="77" y="21" fontSize="9">
+          z
+        </text>
       </g>
       <g opacity={on("happy", "proud")} fill="#F5B83D">
         <path d="M12 30 L14.6 36.4 L21 39 L14.6 41.6 L12 48 L9.4 41.6 L3 39 L9.4 36.4 Z" />
         <path d="M78 22 L80 26.8 L84.8 28.8 L80 30.8 L78 35.6 L76 30.8 L71.2 28.8 L76 26.8 Z" />
         <path d="M114 26 L115.2 29 L118.2 30.2 L115.2 31.4 L114 34.4 L112.8 31.4 L109.8 30.2 L112.8 29 Z" />
       </g>
-      <g opacity={on("peek", "ask", "shocked")} stroke="#E09A1E" strokeWidth="3" strokeLinecap="round">
+      <g
+        opacity={on("peek", "ask", "shocked")}
+        stroke="#E09A1E"
+        strokeWidth="3"
+        strokeLinecap="round"
+      >
         <path d="M110 38 L115 31" />
         <path d="M116 46 L121 44" />
         <path d="M86 36 L82 29" />
@@ -133,8 +154,24 @@ function Face({ mood }: { mood: PongMood }) {
         <circle cx="106.2" cy="55.4" r="1.3" fill="#FFFFFF" />
       </g>
       <g opacity={on("shocked")}>
-        <ellipse cx="91" cy="56.5" rx="4.6" ry="5.6" fill="#FFFFFF" stroke="#22301F" strokeWidth="1.6" />
-        <ellipse cx="105" cy="56.5" rx="4.6" ry="5.6" fill="#FFFFFF" stroke="#22301F" strokeWidth="1.6" />
+        <ellipse
+          cx="91"
+          cy="56.5"
+          rx="4.6"
+          ry="5.6"
+          fill="#FFFFFF"
+          stroke="#22301F"
+          strokeWidth="1.6"
+        />
+        <ellipse
+          cx="105"
+          cy="56.5"
+          rx="4.6"
+          ry="5.6"
+          fill="#FFFFFF"
+          stroke="#22301F"
+          strokeWidth="1.6"
+        />
         <circle cx="91" cy="57" r="2.2" fill="#22301F" />
         <circle cx="105" cy="57" r="2.2" fill="#22301F" />
       </g>
@@ -142,14 +179,25 @@ function Face({ mood }: { mood: PongMood }) {
         <path d="M87 57 Q91 61 95 57" />
         <path d="M101 57 Q105 61 109 57" />
       </g>
-      <g opacity={on("happy", "proud")} stroke="#22301F" strokeWidth="2.5" fill="none" strokeLinecap="round">
+      <g
+        opacity={on("happy", "proud")}
+        stroke="#22301F"
+        strokeWidth="2.5"
+        fill="none"
+        strokeLinecap="round"
+      >
         <path d="M87 59 Q91 53 95 59" />
         <path d="M101 59 Q105 53 109 59" />
       </g>
       <g opacity={on("sleepy")}>
         <ellipse cx="91" cy="58.5" rx="3.6" ry="1.9" fill="#22301F" />
         <ellipse cx="105" cy="58.5" rx="3.6" ry="1.9" fill="#22301F" />
-        <path d="M86.5 56.6 H95.5 M100.5 56.6 H109.5" stroke="#6E9E62" strokeWidth="2.3" strokeLinecap="round" />
+        <path
+          d="M86.5 56.6 H95.5 M100.5 56.6 H109.5"
+          stroke="#6E9E62"
+          strokeWidth="2.3"
+          strokeLinecap="round"
+        />
       </g>
       <path
         d={
@@ -165,12 +213,39 @@ function Face({ mood }: { mood: PongMood }) {
       />
       <ellipse cx="85.5" cy="65" rx="5" ry="3.2" fill="#F09A8A" opacity="0.6" />
       <ellipse cx="110.5" cy="65" rx="5" ry="3.2" fill="#F09A8A" opacity="0.6" />
-      <path d="M94 68 Q98 72.5 102 68" stroke="#22301F" strokeWidth="2.1" fill="none" strokeLinecap="round" opacity={on("sleep", "peek", "listen", "happy", "sleepy")} />
-      <path d="M92.5 69.5 Q98 76 103.5 69.5 Z" fill="#4A2A24" stroke="#22301F" strokeWidth="1.6" strokeLinejoin="round" opacity={on("proud")} />
-      <path d="M93 70 q2.5 -2.2 5 0 q2.5 2.2 5 0" stroke="#22301F" strokeWidth="2.1" fill="none" strokeLinecap="round" opacity={on("worried")} />
+      <path
+        d="M94 68 Q98 72.5 102 68"
+        stroke="#22301F"
+        strokeWidth="2.1"
+        fill="none"
+        strokeLinecap="round"
+        opacity={on("sleep", "peek", "listen", "happy", "sleepy")}
+      />
+      <path
+        d="M92.5 69.5 Q98 76 103.5 69.5 Z"
+        fill="#4A2A24"
+        stroke="#22301F"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+        opacity={on("proud")}
+      />
+      <path
+        d="M93 70 q2.5 -2.2 5 0 q2.5 2.2 5 0"
+        stroke="#22301F"
+        strokeWidth="2.1"
+        fill="none"
+        strokeLinecap="round"
+        opacity={on("worried")}
+      />
       <ellipse cx="98" cy="69.5" rx="3.6" ry="3" fill="#4A2A24" opacity={on("ask")} />
       <ellipse cx="98" cy="70" rx="3.2" ry="4.2" fill="#4A2A24" opacity={on("shocked")} />
-      <path d="M115 41 Q119.5 47.5 115 51 Q110.5 47.5 115 41 Z" fill="#8FD0F2" stroke="#2F7F7A" strokeWidth="1.2" opacity={on("worried", "shocked")} />
+      <path
+        d="M115 41 Q119.5 47.5 115 51 Q110.5 47.5 115 41 Z"
+        fill="#8FD0F2"
+        stroke="#2F7F7A"
+        strokeWidth="1.2"
+        opacity={on("worried", "shocked")}
+      />
     </>
   );
 }
