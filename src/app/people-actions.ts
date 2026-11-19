@@ -1247,6 +1247,8 @@ export async function assignPlanToPerson(planId: string, who: Who): Promise<Peop
                 to_account_id: null,
                 category: source.category,
                 note: source.note,
+                // clearToTransfer cleared it (only once migration 0015 added it).
+                ...("subcategory" in source && { subcategory: source.subcategory }),
               },
         )
         .eq("id", source.id);
