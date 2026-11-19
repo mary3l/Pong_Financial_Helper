@@ -29,7 +29,8 @@ Screens and the phased dev plan live on the design canvas.
    reach, and the widget functions. It needs Docker Desktop running and a local
    Supabase: `npm run db:start` first (applies `supabase/migrations`), and
    `npm run db:stop` when done. GitHub runs them on any push that changes
-   `supabase/**` (the **Database** check).
+   `supabase/**` (the **Database** check). No Docker on your PC? Open the repo
+   in GitHub Codespaces instead: see `.devcontainer/README.md`.
 
 ## Layout
 
