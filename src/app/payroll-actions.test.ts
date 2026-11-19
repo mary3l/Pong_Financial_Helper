@@ -403,16 +403,25 @@ describe("savePayrollSettings", () => {
       });
     });
 
-    // Suspected bug: the "from a cutoff on" path writes the monthly_pay column
-    // (partColumns' v23) onto payroll_settings, the rate every cutoff before
-    // the first change uses. So moving to a monthly rate from December also
-    // puts every earlier cutoff on that monthly pay (with the old daily rate).
-    it.fails("keeps the cutoffs before it on pay per day when a monthly rate starts", async () => {
+    // Regression: the "from a cutoff on" path used to write monthly_pay onto
+    // payroll_settings, the rate every cutoff before the first change uses,
+    // so a monthly rate from December also re-paid every earlier cutoff.
+    it("keeps the cutoffs before it on pay per day when a monthly rate starts", async () => {
       expect(await savePayrollSettings({ ...settings, monthlyPay: 30000 }, "2026-12-01")).toEqual(
         {},
       );
       expect(db.table("payroll_pay_changes")[0]).toMatchObject({ monthly_pay: 30000 });
       expect(db.table("payroll_settings")[0].monthly_pay ?? null).toBeNull();
+    });
+
+    it("keeps the cutoffs before it on a monthly rate when pay per day starts", async () => {
+      useDb({ payroll_settings: [{ ...savedRow, monthly_pay: 30000 }] });
+      expect(
+        await savePayrollSettings({ ...settings, monthlyPay: null, dailyRate: 1500 }, "2026-12-01"),
+      ).toEqual({});
+      expect(db.table("payroll_pay_changes")[0]).toMatchObject({ daily_rate: 1500 });
+      expect(db.table("payroll_pay_changes")[0]).not.toHaveProperty("monthly_pay");
+      expect(db.table("payroll_settings")[0].monthly_pay).toBe(30000);
     });
   });
 });

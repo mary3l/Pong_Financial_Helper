@@ -321,12 +321,15 @@ export async function savePayrollSettings(
   const before = await readPayroll(supabase, getToday()).catch(() => null);
   if (!before || before === "missing") return FAILED;
   const userId = existing.data.user_id;
-  const failed = await writeWithCutoffDays(parts, shared, (row) =>
+  // Monthly pay is part of the rate: from `from` on it goes on the change,
+  // and the cutoffs before it keep the one they have.
+  const kept: SavedParts = { ...parts, monthlyPay: before.settings.monthlyPay ?? null };
+  const failed = await writeWithCutoffDays(kept, shared, (row) =>
     supabase.from("payroll_settings").update(row).eq("user_id", userId),
   );
   if (failed) return failed;
   // Days just changed: pay before `from` is read with the new cutoffs.
-  before.settings = { ...before.settings, ...parts, frequency };
+  before.settings = { ...before.settings, ...kept, frequency };
 
   // The same as the cutoff before it already gets: no change to keep.
   const unchanged = sameRate(rateOf(input), settingsFor(before, addDays(from, -1)));
