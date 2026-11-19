@@ -6,12 +6,7 @@
 // daily) and plain savings work the same way.
 
 import { addDays, dateInMonth, daysBetween } from "@/lib/dates";
-import {
-  dailyInterest,
-  roundCents,
-  type InterestEstimate,
-  type InterestPayout,
-} from "@/lib/money";
+import { dailyInterest, roundCents, type InterestEstimate, type InterestPayout } from "@/lib/money";
 
 /** A wallet named after GoTyme. */
 export function isGoTyme(walletName: string): boolean {
@@ -152,9 +147,14 @@ export function goalPlan(
     deadline,
     daysLeft,
   };
-  if (!deadline || daysLeft === null || daysLeft < 0) return { ...base, interestOnly: null, needed: null };
+  if (!deadline || daysLeft === null || daysLeft < 0)
+    return { ...base, interestOnly: null, needed: null };
 
-  const unlogged = !accrued ? 0 : wallet.interestPayout === "daily" ? accrued.amount : (accrued.credited?.amount ?? 0);
+  const unlogged = !accrued
+    ? 0
+    : wallet.interestPayout === "daily"
+      ? accrued.amount
+      : (accrued.credited?.amount ?? 0);
   const start = {
     balance: wallet.balance + unlogged,
     ratePerYear: wallet.interestRate,

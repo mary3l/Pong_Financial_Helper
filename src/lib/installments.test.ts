@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { bnplFee, bnplFirstDue, buildSchedule, catchUpDue, dueText, loanSchedule, loanSummary, runningLoan, upcomingSchedule } from "@/lib/installments";
+import {
+  bnplFee,
+  bnplFirstDue,
+  buildSchedule,
+  catchUpDue,
+  dueText,
+  loanSchedule,
+  loanSummary,
+  runningLoan,
+  upcomingSchedule,
+} from "@/lib/installments";
 import { roundCents } from "@/lib/money";
 
 const sum = (values: number[]) => roundCents(values.reduce((a, b) => a + b, 0));
@@ -11,7 +21,12 @@ describe("BNPL plans", () => {
   });
 
   it("splits principal and fee into monthly payments that add up exactly", () => {
-    const rows = buildSchedule({ principal: 1000, feeTotal: 100, months: 3, firstDue: "2026-12-05" });
+    const rows = buildSchedule({
+      principal: 1000,
+      feeTotal: 100,
+      months: 3,
+      firstDue: "2026-12-05",
+    });
     expect(rows.map((r) => r.dueOn)).toEqual(["2026-12-05", "2027-01-05", "2027-02-05"]);
     expect(sum(rows.map((r) => r.principalPart))).toBe(1000);
     expect(sum(rows.map((r) => r.feePart))).toBe(100);
@@ -73,7 +88,10 @@ describe("loans", () => {
     expect(runningLoan("2026-08-31", 6, "2026-12-05").nextDue).toBe("2026-12-31");
 
     const rows = loanSchedule({ received: 15000, monthly: 3100.72, months: 6 }, "2026-12-02", 4);
-    expect(rows.map((r) => [r.seq, r.dueOn])).toEqual([[5, "2026-12-02"], [6, "2027-01-02"]]);
+    expect(rows.map((r) => [r.seq, r.dueOn])).toEqual([
+      [5, "2026-12-02"],
+      [6, "2027-01-02"],
+    ]);
     expect(sum(rows.map((r) => r.principalPart))).toBe(5000);
   });
 
@@ -83,12 +101,21 @@ describe("loans", () => {
     expect(rows.map((r) => r.amount)).toEqual([944.59, 944.59, 944.58]);
     expect(sum(rows.map((r) => r.amount))).toBe(2833.76);
     expect(sum(rows.map((r) => r.principalPart))).toBe(2500);
-    expect(loanSummary({ received: 2500, monthly: 944.585, months: 3 })).toMatchObject({ total: 2833.76, interest: 333.76 });
+    expect(loanSummary({ received: 2500, monthly: 944.585, months: 3 })).toMatchObject({
+      total: 2833.76,
+      interest: 333.76,
+    });
 
     // ₱15,000 at ₱3,100.7216 for 6: five of ₱3,100.72 and a last of ₱3,100.73, as SLoan bills it.
     const sloan = loanSchedule({ received: 15000, monthly: 3100.7216, months: 6 }, "2026-08-02");
-    expect(sloan.map((r) => r.amount)).toEqual([3100.72, 3100.72, 3100.72, 3100.72, 3100.72, 3100.73]);
-    expect(loanSchedule({ received: 15000, monthly: 3100.7216, months: 6 }, "2026-12-02", 4).map((r) => r.amount)).toEqual([3100.72, 3100.73]);
+    expect(sloan.map((r) => r.amount)).toEqual([
+      3100.72, 3100.72, 3100.72, 3100.72, 3100.72, 3100.73,
+    ]);
+    expect(
+      loanSchedule({ received: 15000, monthly: 3100.7216, months: 6 }, "2026-12-02", 4).map(
+        (r) => r.amount,
+      ),
+    ).toEqual([3100.72, 3100.73]);
   });
 
   it("describes when a payment is due", () => {
@@ -100,17 +127,27 @@ describe("loans", () => {
 
 describe("upcoming payments and running installments", () => {
   it("a single bill is one payment, all principal", () => {
-    const rows = upcomingSchedule({ amount: 5885.65, fee: 0, months: 1, alreadyPaid: 0 }, "2026-12-05");
-    expect(rows).toEqual([{ seq: 1, dueOn: "2026-12-05", amount: 5885.65, principalPart: 5885.65, feePart: 0 }]);
+    const rows = upcomingSchedule(
+      { amount: 5885.65, fee: 0, months: 1, alreadyPaid: 0 },
+      "2026-12-05",
+    );
+    expect(rows).toEqual([
+      { seq: 1, dueOn: "2026-12-05", amount: 5885.65, principalPart: 5885.65, feePart: 0 },
+    ]);
   });
 
   it("an installment already 3 of 6 in has the last 3 left, numbered 4 to 6", () => {
-    const rows = upcomingSchedule({ amount: 1200, fee: 150, months: 6, alreadyPaid: 3 }, "2026-11-30");
+    const rows = upcomingSchedule(
+      { amount: 1200, fee: 150, months: 6, alreadyPaid: 3 },
+      "2026-11-30",
+    );
     expect(rows.map((r) => r.seq)).toEqual([4, 5, 6]);
     // Short months fall back to their last day.
     expect(rows.map((r) => r.dueOn)).toEqual(["2026-11-30", "2026-12-30", "2027-01-30"]);
     // Only the interest is spending; the rest pays down what you owe.
-    expect(rows.every((r) => r.principalPart === 1050 && r.feePart === 150 && r.amount === 1200)).toBe(true);
+    expect(
+      rows.every((r) => r.principalPart === 1050 && r.feePart === 150 && r.amount === 1200),
+    ).toBe(true);
     expect(sum(rows.map((r) => r.principalPart))).toBe(3150);
   });
 });

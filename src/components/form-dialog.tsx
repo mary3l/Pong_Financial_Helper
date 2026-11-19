@@ -69,7 +69,9 @@ export function FormDialog({
       }`}
     >
       <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-mint px-5 pt-4 pb-2">
-        <h2 id="form-dialog-title" className="font-display text-xl font-semibold">{title}</h2>
+        <h2 id="form-dialog-title" className="font-display text-xl font-semibold">
+          {title}
+        </h2>
         <button
           type="button"
           onClick={() => close.current()}

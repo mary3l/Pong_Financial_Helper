@@ -24,7 +24,12 @@ import {
   walletFlow,
 } from "@/lib/money";
 
-const txn = (type: "expense" | "income" | "transfer", amount: number, accountId: string, toAccountId: string | null = null) => ({
+const txn = (
+  type: "expense" | "income" | "transfer",
+  amount: number,
+  accountId: string,
+  toAccountId: string | null = null,
+) => ({
   type,
   amount,
   accountId,
@@ -50,7 +55,11 @@ describe("transfers vs expenses", () => {
   it("income adds to its account and counts as money in", () => {
     const t = txn("income", 15000, "bank");
     expect(balanceEffect(t, "bank")).toBe(15000);
-    expect(cashflow([t, txn("expense", 2000, "bank")])).toEqual({ in: 15000, out: 2000, net: 13000 });
+    expect(cashflow([t, txn("expense", 2000, "bank")])).toEqual({
+      in: 15000,
+      out: 2000,
+      net: 13000,
+    });
   });
 
   it("a wallet's own in and out counts transfers, since they move its balance", () => {
@@ -72,7 +81,10 @@ describe("BNPL and loans", () => {
     const purchase = txn("expense", 3000, "spaylater");
     const installment = txn("transfer", 1000, "gcash", "spaylater");
     const fee = txn("expense", 45, "gcash");
-    const spaylater = [purchase, installment].reduce((sum, t) => sum + balanceEffect(t, "spaylater"), 0);
+    const spaylater = [purchase, installment].reduce(
+      (sum, t) => sum + balanceEffect(t, "spaylater"),
+      0,
+    );
     expect(spaylater).toBe(-2000); // still owed
     expect(cashflow([purchase, installment, fee]).out).toBe(3045); // the price once, plus the fee
   });
@@ -177,7 +189,12 @@ describe("daily interest (MariBank, GoTyme)", () => {
 
 describe("monthly interest (GoTyme Go Save)", () => {
   // ₱100,000 at 3.65% a year: ₱8 a day after tax.
-  const goTyme = { balance: 100_000, interestRate: 3.65, interestSince: "2026-10-15", interestPayout: "monthly" as const };
+  const goTyme = {
+    balance: 100_000,
+    interestRate: 3.65,
+    interestSince: "2026-10-15",
+    interestPayout: "monthly" as const,
+  };
 
   it("splits what was credited on the 1st from what's building up", () => {
     expect(interestEstimate(goTyme, null, "2026-11-03")).toEqual({
@@ -198,8 +215,17 @@ describe("monthly interest (GoTyme Go Save)", () => {
   });
 
   it("has nothing credited when the rate was set this month", () => {
-    const estimate = interestEstimate({ ...goTyme, interestSince: "2026-11-01" }, null, "2026-11-01");
-    expect(estimate).toMatchObject({ credited: null, days: 0, amount: 0, nextPayout: "2026-12-01" });
+    const estimate = interestEstimate(
+      { ...goTyme, interestSince: "2026-11-01" },
+      null,
+      "2026-11-01",
+    );
+    expect(estimate).toMatchObject({
+      credited: null,
+      days: 0,
+      amount: 0,
+      nextPayout: "2026-12-01",
+    });
   });
 
   it("rolls the next payout over to January", () => {
@@ -234,8 +260,20 @@ describe("monthly interest (GoTyme Go Save)", () => {
 });
 
 describe("balance adjustments", () => {
-  const up = { type: "income" as const, amount: 200, accountId: "a", toAccountId: null, category: "adjustment" };
-  const down = { type: "expense" as const, amount: 50, accountId: "a", toAccountId: null, category: "adjustment" };
+  const up = {
+    type: "income" as const,
+    amount: 200,
+    accountId: "a",
+    toAccountId: null,
+    category: "adjustment",
+  };
+  const down = {
+    type: "expense" as const,
+    amount: 50,
+    accountId: "a",
+    toAccountId: null,
+    category: "adjustment",
+  };
 
   it("are neither money in nor money out", () => {
     const lunch = { type: "expense" as const, amount: 120, category: "food" };
@@ -266,7 +304,12 @@ describe("dollar wallets (GoTyme USD Time Deposit)", () => {
     expect(formatMoney(1250, "PHP")).toBe(formatPeso(1250));
     expect(pesoValue({ balance: 100, currency: "USD", fxRate: 58.5 })).toBe(5850);
     expect(pesoValue({ balance: 100 })).toBe(100);
-    expect(pesoTotal([{ balance: 100, currency: "USD", fxRate: 58.5 }, { balance: 1000, currency: "PHP" }])).toBe(6850);
+    expect(
+      pesoTotal([
+        { balance: 100, currency: "USD", fxRate: 58.5 },
+        { balance: 1000, currency: "PHP" },
+      ]),
+    ).toBe(6850);
   });
 
   it("never pays for things: only peso wallets do", () => {
@@ -277,7 +320,13 @@ describe("dollar wallets (GoTyme USD Time Deposit)", () => {
   });
 
   it("a peso to dollar transfer takes pesos out and puts dollars in", () => {
-    const t = { type: "transfer" as const, amount: 5850, accountId: "gcash", toAccountId: "usd", toAmount: 100 };
+    const t = {
+      type: "transfer" as const,
+      amount: 5850,
+      accountId: "gcash",
+      toAccountId: "usd",
+      toAmount: 100,
+    };
     expect(balanceEffect(t, "gcash")).toBe(-5850);
     expect(balanceEffect(t, "usd")).toBe(100);
     expect(walletFlow([t], "usd")).toEqual({ in: 100, out: 0, net: 100 });
@@ -285,7 +334,10 @@ describe("dollar wallets (GoTyme USD Time Deposit)", () => {
   });
 
   it("counts interest on a dollar wallet in pesos in totals", () => {
-    const accounts = [{ id: "usd", currency: "USD" as const, fxRate: 58 }, { id: "gcash", currency: "PHP" as const, fxRate: null }];
+    const accounts = [
+      { id: "usd", currency: "USD" as const, fxRate: 58 },
+      { id: "gcash", currency: "PHP" as const, fxRate: null },
+    ];
     const txns = [
       { type: "income" as const, amount: 2, accountId: "usd", category: "interest" },
       { type: "income" as const, amount: 100, accountId: "gcash", category: "salary" },

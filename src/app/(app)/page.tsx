@@ -117,7 +117,9 @@ async function Dashboard() {
     getCapLines(accounts, today),
   ]);
   const day = planToday({ inWallets, cash, items, today, lines });
-  const limitLeft = roundCents(creditRoom(accounts).reduce((sum, l) => sum + (l.creditLeft ?? 0), 0));
+  const limitLeft = roundCents(
+    creditRoom(accounts).reduce((sum, l) => sum + (l.creditLeft ?? 0), 0),
+  );
   // The home screen widget shows this too (0020_widget_safe_to_spend.sql).
   await saveWidgetSnapshot({ perDay: day.plan.perDay, until: day.plan.segments[0].until }, today);
   // The plan's balance: spending its daily amount, with BNPL caps held.
@@ -133,20 +135,34 @@ async function Dashboard() {
   const wallets = accounts.filter((a) => isSpendable(a.type));
   const dollars = wallets.filter((a) => a.currency === "USD");
   const overdue = people.filter((p) => isOverdue(p, today));
-  const owed = roundCents(accounts.filter((a) => isDebt(a.type)).reduce((sum, a) => sum + Math.max(0, -a.balance), 0));
+  const owed = roundCents(
+    accounts.filter((a) => isDebt(a.type)).reduce((sum, a) => sum + Math.max(0, -a.balance), 0),
+  );
 
   return (
     <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:items-start">
       <div className="flex flex-col gap-5">
-        <SafeToSpendCard day={day} pong={pong} setAside={setAside} limitLeft={limitLeft} today={today} />
+        <SafeToSpendCard
+          day={day}
+          pong={pong}
+          setAside={setAside}
+          limitLeft={limitLeft}
+          today={today}
+        />
 
         {overdue.length > 0 && (
-          <section aria-label="Overdue pautang" className="flex flex-col gap-1 rounded-[20px] bg-coral-tint px-4 py-3">
+          <section
+            aria-label="Overdue pautang"
+            className="flex flex-col gap-1 rounded-[20px] bg-coral-tint px-4 py-3"
+          >
             {overdue.map((p) => (
               <p key={p.id} className="text-[15px]">
                 <strong>{p.name}</strong>&apos;s {formatPeso(p.balance)} was due{" "}
                 {formatShortDay(dueDate(p)!, today)}.{" "}
-                <Link href={`/money/people/${p.id}`} className="font-extrabold text-coral-text underline">
+                <Link
+                  href={`/money/people/${p.id}`}
+                  className="font-extrabold text-coral-text underline"
+                >
                   Remind {p.name}
                 </Link>
               </p>
@@ -156,8 +172,12 @@ async function Dashboard() {
 
         <section aria-labelledby="due-heading" className="flex flex-col gap-2.5">
           <div className="flex items-baseline justify-between">
-            <h2 id="due-heading" className="font-display text-xl font-semibold">Coming up</h2>
-            <Link href="/plan/scheduled" className="text-sm font-extrabold text-sea">Scheduled ›</Link>
+            <h2 id="due-heading" className="font-display text-xl font-semibold">
+              Coming up
+            </h2>
+            <Link href="/plan/scheduled" className="text-sm font-extrabold text-sea">
+              Scheduled ›
+            </Link>
           </div>
           <div className="rounded-[20px] bg-card px-4 py-1.5">
             {dueSoon.length ? (
@@ -185,13 +205,20 @@ async function Dashboard() {
 
         <section aria-labelledby="wallets-heading" className="flex flex-col gap-2.5">
           <div className="flex items-baseline justify-between">
-            <h2 id="wallets-heading" className="font-display text-xl font-semibold">Wallets</h2>
-            <Link href="/money" className="text-sm font-extrabold text-sea">Money ›</Link>
+            <h2 id="wallets-heading" className="font-display text-xl font-semibold">
+              Wallets
+            </h2>
+            <Link href="/money" className="text-sm font-extrabold text-sea">
+              Money ›
+            </Link>
           </div>
           <div className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
             {wallets.length ? (
               wallets.map((a) => (
-                <div key={a.id} className="flex items-center justify-between gap-3 border-b border-line-soft py-2.5 last:border-0">
+                <div
+                  key={a.id}
+                  className="flex items-center justify-between gap-3 border-b border-line-soft py-2.5 last:border-0"
+                >
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate font-bold">{a.name}</span>
                     <span className="text-[13px] text-muted">
@@ -199,23 +226,33 @@ async function Dashboard() {
                       {a.purpose !== "spending" && ` · ${purposeLabel(a.purpose)}`}
                     </span>
                   </span>
-                  <span className={`font-display text-[17px] font-semibold ${a.balance < 0 ? "text-coral-text" : ""}`}>
+                  <span
+                    className={`font-display text-[17px] font-semibold ${a.balance < 0 ? "text-coral-text" : ""}`}
+                  >
                     {formatBalance(a)}
                   </span>
                 </div>
               ))
             ) : (
               <p className="py-3 text-[15px] text-muted">
-                No wallets yet. <Link href="/money" className="font-extrabold text-sea-dark underline">Add one</Link>
+                No wallets yet.{" "}
+                <Link href="/money" className="font-extrabold text-sea-dark underline">
+                  Add one
+                </Link>
               </p>
             )}
             {owed > 0 && (
-              <Link href="/money" className="flex items-center justify-between gap-3 py-2.5 text-ink">
+              <Link
+                href="/money"
+                className="flex items-center justify-between gap-3 py-2.5 text-ink"
+              >
                 <span className="flex flex-col">
                   <span className="font-bold">You owe</span>
                   <span className="text-[13px] text-muted">BNPL and loans</span>
                 </span>
-                <span className="font-display text-[17px] font-semibold text-coral-text">{formatPeso(owed)}</span>
+                <span className="font-display text-[17px] font-semibold text-coral-text">
+                  {formatPeso(owed)}
+                </span>
               </Link>
             )}
           </div>
@@ -245,7 +282,9 @@ async function Dashboard() {
               <strong className={forecastLow.balance < PLAN_FLOOR ? "text-coral-text" : ""}>
                 {formatPeso(forecastLow.balance)} on {formatShortDay(forecastLow.date, today)}
               </strong>
-              {nextPayday && forecastLow.date === addDays(nextPayday, -1) && ", the day before payday"}
+              {nextPayday &&
+                forecastLow.date === addDays(nextPayday, -1) &&
+                ", the day before payday"}
             </span>
           </Link>
         )}
@@ -254,12 +293,21 @@ async function Dashboard() {
 
         <section aria-labelledby="today-heading" className="flex flex-col gap-2.5">
           <div className="flex items-baseline justify-between">
-            <h2 id="today-heading" className="font-display text-xl font-semibold">Today</h2>
-            <Link href="/activity" className="text-sm font-extrabold text-sea">See all ›</Link>
+            <h2 id="today-heading" className="font-display text-xl font-semibold">
+              Today
+            </h2>
+            <Link href="/activity" className="text-sm font-extrabold text-sea">
+              See all ›
+            </Link>
           </div>
           <div className="rounded-[20px] bg-card px-4 py-1.5">
             {activity.length ? (
-              <TransactionList transactions={activity} accounts={accounts} today={today} grouped={false} />
+              <TransactionList
+                transactions={activity}
+                accounts={accounts}
+                today={today}
+                grouped={false}
+              />
             ) : (
               <p className="py-3 text-[15px] text-muted">
                 Nothing logged today. Tap <strong className="text-ink">+</strong> to add an expense.
@@ -275,12 +323,25 @@ async function Dashboard() {
 }
 
 /** Desktop dashboard: budgets this kinsenas at a glance (design "Web · Dashboard"). */
-function BudgetsCard({ budgets, spent }: { budgets: Budget[]; spent: { type: string; category: string | null; amount: number }[] }) {
+function BudgetsCard({
+  budgets,
+  spent,
+}: {
+  budgets: Budget[];
+  spent: { type: string; category: string | null; amount: number }[];
+}) {
   if (!budgets.length) return null;
   const used = (category: string) =>
-    roundCents(spent.filter((t) => t.type === "expense" && t.category === category).reduce((sum, t) => sum + t.amount, 0));
+    roundCents(
+      spent
+        .filter((t) => t.type === "expense" && t.category === category)
+        .reduce((sum, t) => sum + t.amount, 0),
+    );
   return (
-    <Link href="/plan/budgets" className="hidden flex-col gap-3 rounded-[20px] bg-card px-4 py-3.5 text-ink hover:ring-2 hover:ring-sea-tint lg:flex">
+    <Link
+      href="/plan/budgets"
+      className="hidden flex-col gap-3 rounded-[20px] bg-card px-4 py-3.5 text-ink hover:ring-2 hover:ring-sea-tint lg:flex"
+    >
       <span className="flex items-baseline justify-between">
         <span className="font-display text-xl font-semibold">Budgets</span>
         <span className="text-sm font-extrabold text-sea">This kinsenas ›</span>
@@ -297,7 +358,10 @@ function BudgetsCard({ budgets, spent }: { budgets: Budget[]; spent: { type: str
               </span>
             </span>
             <span aria-hidden="true" className="h-2 overflow-hidden rounded-full bg-line-soft">
-              <span className={`block h-full rounded-full ${over ? "bg-coral" : "bg-sea"}`} style={{ width: `${Math.min(100, (u / b.amount) * 100)}%` }} />
+              <span
+                className={`block h-full rounded-full ${over ? "bg-coral" : "bg-sea"}`}
+                style={{ width: `${Math.min(100, (u / b.amount) * 100)}%` }}
+              />
             </span>
           </span>
         );
@@ -306,7 +370,15 @@ function BudgetsCard({ budgets, spent }: { budgets: Budget[]; spent: { type: str
   );
 }
 
-function DueRow({ item, accounts, today }: { item: ForecastItem; accounts: Account[]; today: string }) {
+function DueRow({
+  item,
+  accounts,
+  today,
+}: {
+  item: ForecastItem;
+  accounts: Account[];
+  today: string;
+}) {
   const paid = Boolean(item.transactionId);
   const late = item.dueOn < today && !paid;
   const wallet = accounts.find((a) => a.id === item.accountId);
@@ -322,10 +394,16 @@ function DueRow({ item, accounts, today }: { item: ForecastItem; accounts: Accou
   return (
     <li className="flex items-center gap-3 border-b border-line-soft py-2.5 last:border-0">
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className={`truncate font-bold ${paid ? "text-muted line-through" : ""}`}>{item.name}</span>
-        <span className={`text-[13px] ${late ? "font-bold text-coral-text" : "text-muted"}`}>{meta}</span>
+        <span className={`truncate font-bold ${paid ? "text-muted line-through" : ""}`}>
+          {item.name}
+        </span>
+        <span className={`text-[13px] ${late ? "font-bold text-coral-text" : "text-muted"}`}>
+          {meta}
+        </span>
       </span>
-      <span className={`font-display text-[17px] font-semibold ${paid ? "text-muted line-through" : incoming ? "text-sea" : ""}`}>
+      <span
+        className={`font-display text-[17px] font-semibold ${paid ? "text-muted line-through" : incoming ? "text-sea" : ""}`}
+      >
         {item.estimate && !paid && (
           <>
             <span aria-hidden="true">~</span>
@@ -353,8 +431,13 @@ async function DollarsCard({ wallets, today }: { wallets: Account[]; today: stri
   return (
     <section aria-labelledby="dollars-heading" className="flex flex-col gap-2.5">
       <div className="flex items-baseline justify-between">
-        <h2 id="dollars-heading" className="font-display text-xl font-semibold">US dollars</h2>
-        <Link href={one ? `/money/${one.id}` : "/money"} className="text-sm font-extrabold text-sea">
+        <h2 id="dollars-heading" className="font-display text-xl font-semibold">
+          US dollars
+        </h2>
+        <Link
+          href={one ? `/money/${one.id}` : "/money"}
+          className="text-sm font-extrabold text-sea"
+        >
           {one ? `${one.name} ›` : "Money ›"}
         </Link>
       </div>
@@ -362,18 +445,30 @@ async function DollarsCard({ wallets, today }: { wallets: Account[]; today: stri
         {rate ? (
           <p className="flex flex-wrap items-baseline justify-between gap-x-3">
             <span>
-              US$1 = <strong className="font-display text-[22px] font-semibold">{formatPeso(rate.rate)}</strong>
+              US$1 ={" "}
+              <strong className="font-display text-[22px] font-semibold">
+                {formatPeso(rate.rate)}
+              </strong>
             </span>
             <span className="text-xs text-muted">
-              {rate.asOf === today ? "today's rate" : `rate as of ${formatShortDay(rate.asOf, today)}`} ·{" "}
-              <a href={rate.source.url} target="_blank" rel="noopener noreferrer" className="underline">
+              {rate.asOf === today
+                ? "today's rate"
+                : `rate as of ${formatShortDay(rate.asOf, today)}`}{" "}
+              ·{" "}
+              <a
+                href={rate.source.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
                 {rate.source.name}
               </a>
             </span>
           </p>
         ) : (
           <p className="text-[13px] text-muted">
-            Couldn&apos;t get today&apos;s rate, so this uses the rate you set on your dollar wallet. It tries again in a few minutes.
+            Couldn&apos;t get today&apos;s rate, so this uses the rate you set on your dollar
+            wallet. It tries again in a few minutes.
           </p>
         )}
         <p className="text-[15px]">
@@ -381,7 +476,9 @@ async function DollarsCard({ wallets, today }: { wallets: Account[]; today: stri
           <strong className="font-display text-[17px] font-semibold">{formatPeso(worth)}</strong>
         </p>
         {rate && (
-          <p className={`text-[15px] font-extrabold ${gain > 0 ? "text-sea-dark" : gain < 0 ? "text-coral-text" : "text-muted"}`}>
+          <p
+            className={`text-[15px] font-extrabold ${gain > 0 ? "text-sea-dark" : gain < 0 ? "text-coral-text" : "text-muted"}`}
+          >
             {gain > 0 ? "▲ " : gain < 0 ? "▼ " : ""}
             {gain === 0 ? "No change" : `${gain > 0 ? "+" : "−"}${formatPeso(Math.abs(gain))}`}
             <span className="font-semibold text-muted">
@@ -398,7 +495,8 @@ async function DollarsCard({ wallets, today }: { wallets: Account[]; today: stri
                 <span className="truncate">{a.name}</span>
                 <span className="text-muted">
                   {formatBalance(a)} ≈ {formatPeso(pesoValue(a))}
-                  {fxGain(a) !== 0 && ` (${fxGain(a) > 0 ? "+" : "−"}${formatPeso(Math.abs(fxGain(a)))})`}
+                  {fxGain(a) !== 0 &&
+                    ` (${fxGain(a) > 0 ? "+" : "−"}${formatPeso(Math.abs(fxGain(a)))})`}
                 </span>
               </li>
             ))}
@@ -411,7 +509,16 @@ async function DollarsCard({ wallets, today }: { wallets: Account[]; today: stri
 
 function PersonIcon() {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
       <circle cx="12" cy="8" r="4" />
       <path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" />
     </svg>

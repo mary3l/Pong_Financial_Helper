@@ -1,6 +1,13 @@
 import { addDays, dateInMonth, formatShortDay, weekdayOf, type Period } from "@/lib/dates";
 import { roundCents } from "@/lib/money";
-import { MAX_GAP_DAYS, WEEKDAYS, occurrences, previousOccurrence, type Frequency, type Schedule } from "@/lib/schedule";
+import {
+  MAX_GAP_DAYS,
+  WEEKDAYS,
+  occurrences,
+  previousOccurrence,
+  type Frequency,
+  type Schedule,
+} from "@/lib/schedule";
 
 // Payroll calculator (see 0013_payroll.sql). Pay per day: your daily rate
 // times the days you worked in a cutoff (no work, no pay). Pay per month
@@ -161,14 +168,26 @@ export function isCutoffMonthDay(value: unknown): value is number {
 
 /** Your cutoffs, from how often you're paid and the days you set. */
 export function cutoffRuleOf(
-  s: Pick<PayrollSettings, "cutoffDays" | "cutoffWeekday" | "cutoffMonthDay" | "frequency" | "cutoffChanges">,
+  s: Pick<
+    PayrollSettings,
+    "cutoffDays" | "cutoffWeekday" | "cutoffMonthDay" | "frequency" | "cutoffChanges"
+  >,
 ): CutoffRule {
   if (s.frequency === "daily") return { every: "day" };
   const changes = s.cutoffChanges?.length ? { changes: s.cutoffChanges } : {};
   if (s.frequency === "weekly") {
-    return { every: "week", weekday: isCutoffWeekday(s.cutoffWeekday) ? s.cutoffWeekday : DEFAULT_CUTOFF_WEEKDAY, ...changes };
+    return {
+      every: "week",
+      weekday: isCutoffWeekday(s.cutoffWeekday) ? s.cutoffWeekday : DEFAULT_CUTOFF_WEEKDAY,
+      ...changes,
+    };
   }
-  if (s.frequency === "monthly") return { every: "month", day: isCutoffMonthDay(s.cutoffMonthDay) ? s.cutoffMonthDay : 1, ...changes };
+  if (s.frequency === "monthly")
+    return {
+      every: "month",
+      day: isCutoffMonthDay(s.cutoffMonthDay) ? s.cutoffMonthDay : 1,
+      ...changes,
+    };
   return { every: "half_month", days: cutoffDaysOf(s), ...changes };
 }
 
@@ -182,7 +201,9 @@ export function pageRule(cutoffs: Cutoffs): CutoffRule {
 export type Cutoffs = CutoffDays | CutoffRule;
 
 function ruleOf(cutoffs: Cutoffs): CutoffRule {
-  return Array.isArray(cutoffs) ? { every: "half_month", days: cutoffs as CutoffDays } : (cutoffs as CutoffRule);
+  return Array.isArray(cutoffs)
+    ? { every: "half_month", days: cutoffs as CutoffDays }
+    : (cutoffs as CutoffRule);
 }
 
 /**
@@ -195,7 +216,11 @@ export function cutoffContaining(date: string, cutoffs: Cutoffs = KINSENA): Peri
   const rule = ruleOf(cutoffs);
   const usual = usualCutoff(date, rule);
   if (!rule.changes?.length || rule.every === "day") return usual;
-  const candidates = [usualCutoff(addDays(usual.start, -1), rule), usual, usualCutoff(addDays(usual.end, 1), rule)];
+  const candidates = [
+    usualCutoff(addDays(usual.start, -1), rule),
+    usual,
+    usualCutoff(addDays(usual.end, 1), rule),
+  ];
   for (const c of candidates) {
     const moved = withChanges(c, rule);
     if (moved.start <= date && date <= moved.end) return moved;
@@ -210,7 +235,10 @@ function withChanges(usual: Period, rule: CutoffRule): Period {
   if (own) return { start: own.start, end: own.end };
   const before = changes.find((c) => c.usual === usualCutoff(addDays(usual.start, -1), rule).start);
   const after = changes.find((c) => c.usual === usualCutoff(addDays(usual.end, 1), rule).start);
-  return { start: before ? addDays(before.end, 1) : usual.start, end: after ? addDays(after.start, -1) : usual.end };
+  return {
+    start: before ? addDays(before.end, 1) : usual.start,
+    end: after ? addDays(after.start, -1) : usual.end,
+  };
 }
 
 /** The cutoff as the rule alone has it, before any changes. */
@@ -255,7 +283,11 @@ export function usualFor(cutoff: Period, cutoffs: Cutoffs): Period {
   const own = rule.changes?.find((c) => c.start === cutoff.start && c.end === cutoff.end);
   if (own) return usualCutoff(own.usual, rule);
   const first = usualCutoff(cutoff.start, rule);
-  for (const u of [first, usualCutoff(addDays(first.end, 1), rule), usualCutoff(cutoff.end, rule)]) {
+  for (const u of [
+    first,
+    usualCutoff(addDays(first.end, 1), rule),
+    usualCutoff(cutoff.end, rule),
+  ]) {
     const moved = withChanges(u, rule);
     if (moved.start === cutoff.start && moved.end === cutoff.end) return u;
   }
@@ -264,7 +296,9 @@ export function usualFor(cutoff: Period, cutoffs: Cutoffs): Period {
 
 /** The change that made this cutoff, if it's on other dates than usual. */
 export function changeOf(cutoff: Period, cutoffs: Cutoffs): CutoffChange | null {
-  return ruleOf(cutoffs).changes?.find((c) => c.start === cutoff.start && c.end === cutoff.end) ?? null;
+  return (
+    ruleOf(cutoffs).changes?.find((c) => c.start === cutoff.start && c.end === cutoff.end) ?? null
+  );
 }
 
 /**
@@ -272,7 +306,11 @@ export function changeOf(cutoff: Period, cutoffs: Cutoffs): CutoffChange | null 
  * leave the cutoffs either side at least a day, and meet any change next to
  * it. Null when it's fine.
  */
-export function cutoffChangeProblem(change: CutoffChange, cutoffs: Cutoffs, today: string): string | null {
+export function cutoffChangeProblem(
+  change: CutoffChange,
+  cutoffs: Cutoffs,
+  today: string,
+): string | null {
   const rule = ruleOf(cutoffs);
   if (rule.every === "day") return "Each day is its own cutoff with daily pay.";
   const usual = usualCutoff(change.usual, rule);
@@ -280,8 +318,10 @@ export function cutoffChangeProblem(change: CutoffChange, cutoffs: Cutoffs, toda
   if (change.end < change.start) return "The cutoff can't end before it starts.";
   const before = usualCutoff(addDays(usual.start, -1), rule);
   const after = usualCutoff(addDays(usual.end, 1), rule);
-  if (change.start <= before.start) return `Start it after ${formatShortDay(before.start, today)}: the cutoff before needs a day.`;
-  if (change.end >= after.end) return `End it before ${formatShortDay(after.end, today)}: the cutoff after needs a day.`;
+  if (change.start <= before.start)
+    return `Start it after ${formatShortDay(before.start, today)}: the cutoff before needs a day.`;
+  if (change.end >= after.end)
+    return `End it before ${formatShortDay(after.end, today)}: the cutoff after needs a day.`;
   const others = (rule.changes ?? []).filter((c) => c.usual !== change.usual);
   const changedBefore = others.find((c) => c.usual === before.start);
   const changedAfter = others.find((c) => c.usual === after.start);
@@ -291,13 +331,17 @@ export function cutoffChangeProblem(change: CutoffChange, cutoffs: Cutoffs, toda
   if (changedAfter && change.end !== addDays(changedAfter.start, -1)) {
     return `The cutoff after starts ${formatShortDay(changedAfter.start, today)}, so this one ends ${formatShortDay(addDays(changedAfter.start, -1), today)}.`;
   }
-  if (change.paidOn !== null && change.paidOn < change.start) return "It can't be paid before it starts.";
+  if (change.paidOn !== null && change.paidOn < change.start)
+    return "It can't be paid before it starts.";
   return null;
 }
 
 /** "Nov 3 – 17", or "Nov 18 – Dec 2" across months. */
 export function formatCutoff(cutoff: Period, today: string): string {
-  const end = cutoff.end.slice(0, 7) === cutoff.start.slice(0, 7) ? String(Number(cutoff.end.slice(8))) : formatShortDay(cutoff.end, today);
+  const end =
+    cutoff.end.slice(0, 7) === cutoff.start.slice(0, 7)
+      ? String(Number(cutoff.end.slice(8)))
+      : formatShortDay(cutoff.end, today);
   return `${formatShortDay(cutoff.start, today)} – ${end}`;
 }
 
@@ -312,8 +356,11 @@ export function cutoffRuleText(cutoffs: Cutoffs): string {
   const rule = ruleOf(cutoffs);
   if (rule.every === "day") return "each day";
   if (rule.every === "half_month") return cutoffDaysText(rule.days);
-  if (rule.every === "week") return `${WEEKDAYS[rule.weekday]} to ${WEEKDAYS[(rule.weekday + 6) % 7]}`;
-  return rule.day === 1 ? "the 1st to the end of the month" : `the ${ordinal(rule.day)} to the ${ordinal(rule.day - 1)} of the next month`;
+  if (rule.every === "week")
+    return `${WEEKDAYS[rule.weekday]} to ${WEEKDAYS[(rule.weekday + 6) % 7]}`;
+  return rule.day === 1
+    ? "the 1st to the end of the month"
+    : `the ${ordinal(rule.day)} to the ${ordinal(rule.day - 1)} of the next month`;
 }
 
 /** What each pay covers, in a few words: "cutoffs 3–17 and 18–2", "weeks Monday to Sunday", "each day's pay that day". */
@@ -388,7 +435,10 @@ export function hourlyRate(s: Pick<PayrollSettings, "dailyRate" | "hoursPerDay">
 }
 
 /** Minutes after the start time, never more than a full day's hours. */
-export function minutesLate(timeIn: string | null, s: Pick<PayrollSettings, "startTime" | "hoursPerDay">): number {
+export function minutesLate(
+  timeIn: string | null,
+  s: Pick<PayrollSettings, "startTime" | "hoursPerDay">,
+): number {
   if (!timeIn) return 0;
   return Math.min(s.hoursPerDay * 60, Math.max(0, minutesOf(timeIn) - minutesOf(s.startTime)));
 }
@@ -417,7 +467,11 @@ export function dayKind(date: string, weekends: Weekends = {}): WeekendMode {
 }
 
 /** Regular days are worked, other days off, and nothing before you started. */
-export function defaultDay(date: string, startedOn: string | null = null, weekends: Weekends = {}): PayrollDay {
+export function defaultDay(
+  date: string,
+  startedOn: string | null = null,
+  weekends: Weekends = {},
+): PayrollDay {
   const before = startedOn !== null && date < startedOn;
   const off = before || dayKind(date, weekends) !== "regular";
   return { date, status: off ? "off" : "worked", leaveType: null, note: null, timeIn: null };
@@ -430,7 +484,9 @@ export function daysFor(
   startedOn: string | null,
   weekends: Weekends = {},
 ): PayrollDay[] {
-  return cutoffDates(period).map((date) => saved.get(date) ?? defaultDay(date, startedOn, weekends));
+  return cutoffDates(period).map(
+    (date) => saved.get(date) ?? defaultDay(date, startedOn, weekends),
+  );
 }
 
 /** Regular work days in a week: Monday to Friday, and a weekend day set as regular. */
@@ -468,7 +524,13 @@ export type CutoffPay = {
  */
 export function shareOf(cutoffs: Cutoffs): number | null {
   const rule = ruleOf(cutoffs);
-  return rule.every === "month" ? 1 : rule.every === "half_month" ? 0.5 : rule.every === "week" ? 12 / 52 : null;
+  return rule.every === "month"
+    ? 1
+    : rule.every === "half_month"
+      ? 0.5
+      : rule.every === "week"
+        ? 12 / 52
+        : null;
 }
 
 /**
@@ -478,7 +540,12 @@ export function shareOf(cutoffs: Cutoffs): number | null {
  * in that's usually off. Then minus late, plus overtime. Leave is unpaid. A
  * weekend set as overtime only pays its overtime hours.
  */
-export function cutoffPay(s: PayrollSettings, days: PayrollDay[], overtime: OvertimeEntry[], share: number | null = null): CutoffPay {
+export function cutoffPay(
+  s: PayrollSettings,
+  days: PayrollDay[],
+  overtime: OvertimeEntry[],
+  share: number | null = null,
+): CutoffPay {
   const counted = days.filter((d) => s.startedOn === null || d.date >= s.startedOn);
   const regular = counted.filter((d) => dayKind(d.date, s) === "regular");
   // A day's pay: any day worked but a weekend set as overtime.
@@ -490,7 +557,11 @@ export function cutoffPay(s: PayrollSettings, days: PayrollDay[], overtime: Over
   const monthly = s.monthlyPay && share !== null ? share : null;
   const missedDays = monthly !== null ? regular.filter((d) => d.status !== "worked").length : 0;
   const extraDays = monthly !== null ? worked.length - (regular.length - missedDays) : 0;
-  const basePay = roundCents(monthly !== null ? s.monthlyPay! * monthly + extraDays * s.dailyRate : worked.length * s.dailyRate);
+  const basePay = roundCents(
+    monthly !== null
+      ? s.monthlyPay! * monthly + extraDays * s.dailyRate
+      : worked.length * s.dailyRate,
+  );
   const missedDeduction = roundCents(missedDays * s.dailyRate);
   const lateDeduction = roundCents(lateMinutes * perMinute);
   const overtimePay = roundCents(otMinutes * perMinute * s.overtimeRate);
@@ -512,7 +583,10 @@ export function cutoffPay(s: PayrollSettings, days: PayrollDay[], overtime: Over
 }
 
 /** The parts of your pay that can change from one cutoff on. */
-export type CutoffRate = Pick<PayrollSettings, "dailyRate" | "hoursPerDay" | "startTime" | "overtimeRate" | "monthlyPay">;
+export type CutoffRate = Pick<
+  PayrollSettings,
+  "dailyRate" | "hoursPerDay" | "startTime" | "overtimeRate" | "monthlyPay"
+>;
 
 /**
  * Your pay from one cutoff on (a raise, new hours, a new start time), until
@@ -559,15 +633,22 @@ export function dailyFromMonthly(monthly: number): number {
 }
 
 /** The change in effect for the cutoff that has `date`, or null for the rate in your settings. */
-export function changeFor(records: Pick<PayrollRecords, "settings" | "changes">, date: string): PayChange | null {
+export function changeFor(
+  records: Pick<PayrollRecords, "settings" | "changes">,
+  date: string,
+): PayChange | null {
   const start = cutoffContaining(date, cutoffRuleOf(records.settings)).start;
   let found: PayChange | null = null;
-  for (const c of records.changes ?? []) if (c.from <= start && (!found || c.from > found.from)) found = c;
+  for (const c of records.changes ?? [])
+    if (c.from <= start && (!found || c.from > found.from)) found = c;
   return found;
 }
 
 /** Your settings with the pay for the cutoff that has `date`. */
-export function settingsFor(records: Pick<PayrollRecords, "settings" | "changes">, date: string): PayrollSettings {
+export function settingsFor(
+  records: Pick<PayrollRecords, "settings" | "changes">,
+  date: string,
+): PayrollSettings {
   const change = changeFor(records, date);
   return change ? { ...records.settings, ...rateOf(change) } : records.settings;
 }
@@ -579,13 +660,23 @@ export type CutoffResult = CutoffPay & {
 };
 
 /** Pay for the cutoff `period`, from saved days or the default work week. */
-export function payForCutoff(records: PayrollRecords, period: Period, today: string, index?: RecordIndex): CutoffResult {
+export function payForCutoff(
+  records: PayrollRecords,
+  period: Period,
+  today: string,
+  index?: RecordIndex,
+): CutoffResult {
   const { byDate, saved } = index ?? indexRecords(records);
   const days = daysFor(period, byDate, records.settings.startedOn, records.settings);
   const overtime = records.overtime.filter((o) => o.date >= period.start && o.date <= period.end);
   const isSaved = cutoffDates(period).some((d) => saved.has(d));
   return {
-    ...cutoffPay(settingsFor(records, period.start), days, overtime, shareOf(cutoffRuleOf(records.settings))),
+    ...cutoffPay(
+      settingsFor(records, period.start),
+      days,
+      overtime,
+      shareOf(cutoffRuleOf(records.settings)),
+    ),
     period,
     estimate: !isSaved || period.end >= today,
   };
@@ -617,7 +708,11 @@ export function cutoffFor(payday: string, cutoffs: Cutoffs = KINSENA): Period {
  * pays; with daily pay, the day and any days since the last payday (a
  * Sunday worked goes with Monday).
  */
-export function cutoffsPaidOn(payday: string, schedule: Schedule, cutoffs: Cutoffs = KINSENA): Period[] {
+export function cutoffsPaidOn(
+  payday: string,
+  schedule: Schedule,
+  cutoffs: Cutoffs = KINSENA,
+): Period[] {
   const daily = ruleOf(cutoffs).every === "day";
   const last = cutoffFor(payday, cutoffs);
   const before = previousOccurrence(schedule, payday);
@@ -625,7 +720,11 @@ export function cutoffsPaidOn(payday: string, schedule: Schedule, cutoffs: Cutof
   if (!before) return paid;
   // Daily: the days after the last payday. Others: cutoffs that ended on or after it.
   const stillPaid = (c: Period) => (daily ? c.end > before : c.end >= before);
-  for (let c = previousCutoff(last, cutoffs); stillPaid(c) && paid.length < 10; c = previousCutoff(c, cutoffs)) {
+  for (
+    let c = previousCutoff(last, cutoffs);
+    stillPaid(c) && paid.length < 10;
+    c = previousCutoff(c, cutoffs)
+  ) {
     paid.unshift(c);
   }
   return paid;
@@ -639,7 +738,9 @@ export function paydayFor(cutoff: Period, schedule: Schedule, cutoffs?: Cutoffs)
   const moved = cutoffs ? changeOf(cutoff, cutoffs)?.paidOn : null;
   if (moved) return moved;
   const after = cutoffs && ruleOf(cutoffs).every === "day" ? cutoff.end : addDays(cutoff.end, 1);
-  return occurrences(schedule, after, addDays(after, MAX_GAP_DAYS + 1))[0] ?? nextCutoff(cutoff).end;
+  return (
+    occurrences(schedule, after, addDays(after, MAX_GAP_DAYS + 1))[0] ?? nextCutoff(cutoff).end
+  );
 }
 
 export type PaydayAmount = {
@@ -687,7 +788,10 @@ export function typicalCutoffPay(s: PayrollSettings): number {
   if (s.monthlyPay) return roundCents(s.monthlyPay * share);
   const perWeek = regularDaysPerWeek(s);
   // A week is its work days; a month 22 of them (more with a regular Saturday).
-  const days = rule.every === "week" ? perWeek : RATES.workDaysPerMonth * (perWeek / RATES.workDaysPerWeek) * share;
+  const days =
+    rule.every === "week"
+      ? perWeek
+      : RATES.workDaysPerMonth * (perWeek / RATES.workDaysPerWeek) * share;
   return roundCents(s.dailyRate * days);
 }
 
@@ -742,11 +846,22 @@ export function contributions(s: PayrollSettings): Contribution[] {
   const calculated = calculatedContributions(s);
   const all: { key: ContributionKey; name: string; own: number | null; on: boolean }[] = [
     { key: "sss", name: "SSS contribution", own: s.sssAmount, on: s.paySss },
-    { key: "philhealth", name: "PhilHealth contribution", own: s.philhealthAmount, on: s.payPhilhealth },
+    {
+      key: "philhealth",
+      name: "PhilHealth contribution",
+      own: s.philhealthAmount,
+      on: s.payPhilhealth,
+    },
     { key: "pagibig", name: "Pag-IBIG contribution", own: s.pagibigAmount, on: s.payPagibig },
   ];
   return all
-    .map(({ key, name, own, on }) => ({ key, name, on, custom: own !== null, amount: own ?? calculated[key] }))
+    .map(({ key, name, own, on }) => ({
+      key,
+      name,
+      on,
+      custom: own !== null,
+      amount: own ?? calculated[key],
+    }))
     .filter((c) => c.on && c.amount > 0)
     .map(({ key, name, amount, custom }) => ({ key, name, amount, custom }));
 }
@@ -793,7 +908,10 @@ export function taxPayments(records: PayrollRecords, year: number, today: string
   const index = indexRecords(records);
   const days = cutoffRuleOf(records.settings);
   const pay = new Map(
-    cutoffsThrough(year, 12, days).map((p) => [p.start, payForCutoff(records, p, today, index).total]),
+    cutoffsThrough(year, 12, days).map((p) => [
+      p.start,
+      payForCutoff(records, p, today, index).total,
+    ]),
   );
   let coveredTax = 0;
   return QUARTERS.map(({ q, months, due, label }) => {
@@ -814,7 +932,11 @@ export function taxPayments(records: PayrollRecords, year: number, today: string
 }
 
 /** The next `count` tax payments due on or after today, including ones that come to ₱0. */
-export function upcomingTaxPayments(records: PayrollRecords, today: string, count = 4): TaxPayment[] {
+export function upcomingTaxPayments(
+  records: PayrollRecords,
+  today: string,
+  count = 4,
+): TaxPayment[] {
   const year = Number(today.slice(0, 4));
   return [year - 1, year, year + 1]
     .flatMap((y) => taxPayments(records, y, today))

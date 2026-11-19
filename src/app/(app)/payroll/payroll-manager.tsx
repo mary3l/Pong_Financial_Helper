@@ -16,8 +16,21 @@ import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import { FormDialog } from "@/components/form-dialog";
 import { ChevronIcon } from "@/components/icons";
-import { PaydayPicker, choiceFrom, ordinal, scheduleFrom, type PayKind } from "@/components/payday-picker";
-import { addDays, formatLongDay, formatShortDay, isValidDate, weekdayOf, type Period } from "@/lib/dates";
+import {
+  PaydayPicker,
+  choiceFrom,
+  ordinal,
+  scheduleFrom,
+  type PayKind,
+} from "@/components/payday-picker";
+import {
+  addDays,
+  formatLongDay,
+  formatShortDay,
+  isValidDate,
+  weekdayOf,
+  type Period,
+} from "@/lib/dates";
 import { formatPeso, parseAmount } from "@/lib/money";
 import {
   DEFAULT_CUTOFF_WEEKDAY,
@@ -66,7 +79,15 @@ import {
   type PayrollSettings,
   type WeekendMode,
 } from "@/lib/payroll";
-import { MAX_GAP_DAYS, SHORT_WEEKDAYS, WEEKDAYS, describeSchedule, occurrences, type Frequency, type Schedule } from "@/lib/schedule";
+import {
+  MAX_GAP_DAYS,
+  SHORT_WEEKDAYS,
+  WEEKDAYS,
+  describeSchedule,
+  occurrences,
+  type Frequency,
+  type Schedule,
+} from "@/lib/schedule";
 
 const STATUSES: { value: DayStatus; label: string }[] = [
   { value: "worked", label: "Worked" },
@@ -131,7 +152,9 @@ export function PayrollManager({
           <SelfPaidCard records={records} today={today} payday={payday} days={contributionDays} />
         </>
       )}
-      {records && !payday && <Notice>Pick when you get paid (Your pay › Edit), so each cutoff has a payday.</Notice>}
+      {records && !payday && (
+        <Notice>Pick when you get paid (Your pay › Edit), so each cutoff has a payday.</Notice>
+      )}
     </div>
   );
 }
@@ -140,7 +163,15 @@ function Notice({ children }: { children: React.ReactNode }) {
   return <p className="rounded-[20px] bg-sun-tint p-4 text-[15px] leading-relaxed">{children}</p>;
 }
 
-function Card({ title, children, aside }: { title: string; children: React.ReactNode; aside?: React.ReactNode }) {
+function Card({
+  title,
+  children,
+  aside,
+}: {
+  title: string;
+  children: React.ReactNode;
+  aside?: React.ReactNode;
+}) {
   return (
     <section className="flex flex-col gap-3 rounded-[20px] bg-card p-4 sm:p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -152,10 +183,23 @@ function Card({ title, children, aside }: { title: string; children: React.React
   );
 }
 
-function Toggle({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: React.ReactNode }) {
+function Toggle({
+  checked,
+  onChange,
+  children,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  children: React.ReactNode;
+}) {
   return (
     <label className="flex min-h-11 items-center gap-2.5 text-[15px] font-bold">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-5 w-5 accent-sea" />
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-5 w-5 accent-sea"
+      />
       {children}
     </label>
   );
@@ -163,9 +207,16 @@ function Toggle({ checked, onChange, children }: { checked: boolean; onChange: (
 
 // ---------------------------------------------------------------- Your pay
 
-function rateText(s: Pick<PayrollSettings, "dailyRate" | "hoursPerDay" | "startTime" | "overtimeRate" | "monthlyPay">): string {
+function rateText(
+  s: Pick<
+    PayrollSettings,
+    "dailyRate" | "hoursPerDay" | "startTime" | "overtimeRate" | "monthlyPay"
+  >,
+): string {
   return [
-    s.monthlyPay ? `${formatPeso(s.monthlyPay)} a month (${formatPeso(s.dailyRate)} a day)` : `${formatPeso(s.dailyRate)} a day`,
+    s.monthlyPay
+      ? `${formatPeso(s.monthlyPay)} a month (${formatPeso(s.dailyRate)} a day)`
+      : `${formatPeso(s.dailyRate)} a day`,
     `${s.hoursPerDay} hours`,
     `starts ${formatTime(s.startTime)}`,
     `overtime ${s.overtimeRate}×`,
@@ -173,7 +224,8 @@ function rateText(s: Pick<PayrollSettings, "dailyRate" | "hoursPerDay" | "startT
 }
 
 function weekendText(s: Pick<PayrollSettings, "saturday" | "sunday">): string {
-  const label = (m: WeekendMode | undefined) => WEEKEND_MODES.find((w) => w.value === (m ?? "off"))!.label.toLowerCase();
+  const label = (m: WeekendMode | undefined) =>
+    WEEKEND_MODES.find((w) => w.value === (m ?? "off"))!.label.toLowerCase();
   return `Saturdays ${label(s.saturday)} · Sundays ${label(s.sunday)}`;
 }
 
@@ -209,14 +261,18 @@ function SettingsCard({
         }
       >
         <p className="text-[15px] text-muted">
-          {changes.length > 0 && <strong className="text-ink">{formatCutoff(period, today)} cutoff: </strong>}
+          {changes.length > 0 && (
+            <strong className="text-ink">{formatCutoff(period, today)} cutoff: </strong>
+          )}
           {rateText(settings)}
         </p>
         <p className="text-[15px] text-muted">
           {payday ? (
             <>
-              <strong className="text-ink">Paid {describeSchedule(payday).replace(/^Every/, "every")}</strong> ·{" "}
-              {coversText(cutoffRuleOf(records.settings))}
+              <strong className="text-ink">
+                Paid {describeSchedule(payday).replace(/^Every/, "every")}
+              </strong>{" "}
+              · {coversText(cutoffRuleOf(records.settings))}
             </>
           ) : (
             "No payday yet: pick when you get paid."
@@ -225,7 +281,9 @@ function SettingsCard({
         <p className="text-[15px] text-muted">
           {weekendText(records.settings)} · late is {formatPeso(hourlyRate(settings) / 60)} a minute
         </p>
-        {changes.length > 0 && <PayByCutoff records={records} changes={changes} period={period} today={today} />}
+        {changes.length > 0 && (
+          <PayByCutoff records={records} changes={changes} period={period} today={today} />
+        )}
         {editing && (
           <FormDialog title="Your pay" onClose={() => setEditing(false)} wide>
             <SettingsForm
@@ -278,7 +336,13 @@ function PayByCutoff({
   const sorted = [...changes].sort((a, b) => a.from.localeCompare(b.from));
   const onScreen = changeFor(records, period.start);
   const rows = [
-    { key: "base", when: `Until ${formatShortDay(addDays(sorted[0].from, -1), today)}`, rate: records.settings, from: null, on: onScreen === null },
+    {
+      key: "base",
+      when: `Until ${formatShortDay(addDays(sorted[0].from, -1), today)}`,
+      rate: records.settings,
+      from: null,
+      on: onScreen === null,
+    },
     ...sorted.map((c, i) => ({
       key: c.from,
       when: sorted[i + 1]
@@ -303,7 +367,10 @@ function PayByCutoff({
       <h3 className="text-sm font-extrabold">Pay by cutoff</h3>
       <ul className="flex flex-col rounded-2xl bg-mint px-3 py-1">
         {rows.map((r) => (
-          <li key={r.key} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line-soft py-2 last:border-0">
+          <li
+            key={r.key}
+            className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line-soft py-2 last:border-0"
+          >
             <span className="flex min-w-0 flex-col">
               <span className="text-sm font-extrabold">
                 {r.when}
@@ -325,7 +392,9 @@ function PayByCutoff({
           </li>
         ))}
       </ul>
-      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
     </div>
   );
 }
@@ -343,7 +412,12 @@ function Segmented<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <div role="group" aria-label={label} className={`grid gap-1 rounded-xl bg-mint p-1`} style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+    <div
+      role="group"
+      aria-label={label}
+      className={`grid gap-1 rounded-xl bg-mint p-1`}
+      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+    >
       {options.map((o) => (
         <button
           key={o.value}
@@ -381,7 +455,9 @@ function SettingsForm({
   onClose: () => void;
 }) {
   const [rateType, setRateType] = useState<"day" | "month">(initial.monthlyPay ? "month" : "day");
-  const [rate, setRate] = useState(initial.dailyRate && !initial.monthlyPay ? String(initial.dailyRate) : "");
+  const [rate, setRate] = useState(
+    initial.dailyRate && !initial.monthlyPay ? String(initial.dailyRate) : "",
+  );
   const [monthly, setMonthly] = useState(initial.monthlyPay ? String(initial.monthlyPay) : "");
   const [hours, setHours] = useState(String(initial.hoursPerDay));
   const [start, setStart] = useState(initial.startTime);
@@ -400,7 +476,10 @@ function SettingsForm({
   const [cutoffStarts, setCutoffStarts] = useState(() => cutoffDaysOf(initial).map(String));
   const [weekday, setWeekday] = useState(initial.cutoffWeekday ?? DEFAULT_CUTOFF_WEEKDAY);
   const [monthDay, setMonthDay] = useState(initial.cutoffMonthDay ?? 1);
-  const pickedDays = [Number(cutoffStarts[0]), Number(cutoffStarts[1])].sort((a, b) => a - b) as [number, number];
+  const pickedDays = [Number(cutoffStarts[0]), Number(cutoffStarts[1])].sort((a, b) => a - b) as [
+    number,
+    number,
+  ];
   const daysOk = frequency !== "twice_monthly" || pickedDays[0] !== pickedDays[1];
   // Only the cutoffs for how you're paid change; the others keep what they were.
   const days = frequency === "twice_monthly" && daysOk ? pickedDays : cutoffDaysOf(initial);
@@ -417,7 +496,12 @@ function SettingsForm({
   const [pending, startTransition] = useTransition();
 
   const monthlyPay = rateType === "month" ? parseAmount(monthly) : NaN;
-  const dailyRate = rateType === "month" ? (monthlyPay > 0 ? dailyFromMonthly(monthlyPay) : NaN) : parseAmount(rate);
+  const dailyRate =
+    rateType === "month"
+      ? monthlyPay > 0
+        ? dailyFromMonthly(monthlyPay)
+        : NaN
+      : parseAmount(rate);
   const formSettings: PayrollSettings = {
     ...initial,
     dailyRate: dailyRate > 0 ? dailyRate : 0,
@@ -433,8 +517,10 @@ function SettingsForm({
     cutoffMonthDay: monthDay,
   };
   const rule = cutoffRuleOf(formSettings);
-  const from = every || !daysOk || !isValidDate(fromDate) ? null : cutoffContaining(fromDate, rule).start;
-  const estimatedBase = dailyRate > 0 ? (formSettings.monthlyPay ?? dailyRate * RATES.workDaysPerMonth) : 0;
+  const from =
+    every || !daysOk || !isValidDate(fromDate) ? null : cutoffContaining(fromDate, rule).start;
+  const estimatedBase =
+    dailyRate > 0 ? (formSettings.monthlyPay ?? dailyRate * RATES.workDaysPerMonth) : 0;
 
   function save(e: React.FormEvent) {
     e.preventDefault();
@@ -494,19 +580,47 @@ function SettingsForm({
         />
         {rateType === "day" ? (
           <div className="flex flex-col gap-1">
-            <label htmlFor="pay-rate" className="text-sm font-bold">Daily rate</label>
+            <label htmlFor="pay-rate" className="text-sm font-bold">
+              Daily rate
+            </label>
             <div className="relative sm:w-64">
-              <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-              <AmountInput id="pay-rate" value={rate} onChange={setRate} placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8`} />
+              <span
+                aria-hidden="true"
+                className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted"
+              >
+                ₱
+              </span>
+              <AmountInput
+                id="pay-rate"
+                value={rate}
+                onChange={setRate}
+                placeholder="0.00"
+                className={`${FIELD_CLASS} w-full pl-8`}
+              />
             </div>
-            <span className="text-xs text-muted">No work, no pay: each payday is the days you worked × this.</span>
+            <span className="text-xs text-muted">
+              No work, no pay: each payday is the days you worked × this.
+            </span>
           </div>
         ) : (
           <div className="flex flex-col gap-1">
-            <label htmlFor="pay-monthly" className="text-sm font-bold">Monthly pay</label>
+            <label htmlFor="pay-monthly" className="text-sm font-bold">
+              Monthly pay
+            </label>
             <div className="relative sm:w-64">
-              <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-              <AmountInput id="pay-monthly" value={monthly} onChange={setMonthly} placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8`} />
+              <span
+                aria-hidden="true"
+                className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted"
+              >
+                ₱
+              </span>
+              <AmountInput
+                id="pay-monthly"
+                value={monthly}
+                onChange={setMonthly}
+                placeholder="0.00"
+                className={`${FIELD_CLASS} w-full pl-8`}
+              />
             </div>
             <span className="text-xs text-muted">
               {dailyRate > 0
@@ -517,16 +631,44 @@ function SettingsForm({
         )}
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="flex flex-col gap-1">
-            <label htmlFor="pay-hours" className="text-sm font-bold">Hours per day</label>
-            <input id="pay-hours" type="number" inputMode="decimal" min={1} max={24} step={0.5} value={hours} onChange={(e) => setHours(e.target.value)} className={FIELD_CLASS} />
+            <label htmlFor="pay-hours" className="text-sm font-bold">
+              Hours per day
+            </label>
+            <input
+              id="pay-hours"
+              type="number"
+              inputMode="decimal"
+              min={1}
+              max={24}
+              step={0.5}
+              value={hours}
+              onChange={(e) => setHours(e.target.value)}
+              className={FIELD_CLASS}
+            />
           </div>
           <div className="flex flex-col gap-1">
-            <label htmlFor="pay-start" className="text-sm font-bold">Work starts at</label>
-            <input id="pay-start" type="time" value={start} required onChange={(e) => setStart(e.target.value)} className={FIELD_CLASS} />
+            <label htmlFor="pay-start" className="text-sm font-bold">
+              Work starts at
+            </label>
+            <input
+              id="pay-start"
+              type="time"
+              value={start}
+              required
+              onChange={(e) => setStart(e.target.value)}
+              className={FIELD_CLASS}
+            />
           </div>
           <div className="flex flex-col gap-1">
-            <label htmlFor="pay-ot" className="text-sm font-bold">Overtime rate</label>
-            <select id="pay-ot" value={otRate} onChange={(e) => setOtRate(e.target.value)} className={FIELD_CLASS}>
+            <label htmlFor="pay-ot" className="text-sm font-bold">
+              Overtime rate
+            </label>
+            <select
+              id="pay-ot"
+              value={otRate}
+              onChange={(e) => setOtRate(e.target.value)}
+              className={FIELD_CLASS}
+            >
               <option value="1">1× (your hourly rate)</option>
               <option value="1.25">1.25×</option>
               <option value="1.3">1.3×</option>
@@ -553,35 +695,58 @@ function SettingsForm({
           </div>
         ))}
         <span className="text-xs text-muted">
-          Regular day: a day&apos;s pay, and late counts. Overtime: only the hours you work, at your overtime rate.
+          Regular day: a day&apos;s pay, and late counts. Overtime: only the hours you work, at your
+          overtime rate.
         </span>
       </fieldset>
 
       <fieldset className="flex flex-col gap-3">
-        <legend id="pay-when" className="mb-1 text-sm font-bold">When do you get paid?</legend>
-        <PaydayPicker value={choice} onChange={setChoice} kinds={PAY_KINDS} idPrefix="pay-when" labelledBy="pay-when" />
+        <legend id="pay-when" className="mb-1 text-sm font-bold">
+          When do you get paid?
+        </legend>
+        <PaydayPicker
+          value={choice}
+          onChange={setChoice}
+          kinds={PAY_KINDS}
+          idPrefix="pay-when"
+          labelledBy="pay-when"
+        />
 
         {frequency === "twice_monthly" && (
           <div className="flex flex-col gap-1">
-            <span id="cutoff-starts" className="text-sm font-bold">Cutoffs start on the</span>
-            <div role="group" aria-labelledby="cutoff-starts" className="flex flex-wrap items-center gap-2">
+            <span id="cutoff-starts" className="text-sm font-bold">
+              Cutoffs start on the
+            </span>
+            <div
+              role="group"
+              aria-labelledby="cutoff-starts"
+              className="flex flex-wrap items-center gap-2"
+            >
               {[0, 1].map((i) => (
                 <span key={i} className="contents">
                   {i === 1 && <span className="font-bold text-muted">and the</span>}
                   <select
                     aria-label={i === 0 ? "First cutoff starts on" : "Second cutoff starts on"}
                     value={cutoffStarts[i]}
-                    onChange={(e) => setCutoffStarts((c) => (i === 0 ? [e.target.value, c[1]] : [c[0], e.target.value]))}
+                    onChange={(e) =>
+                      setCutoffStarts((c) =>
+                        i === 0 ? [e.target.value, c[1]] : [c[0], e.target.value],
+                      )
+                    }
                     className={`${FIELD_CLASS} w-24`}
                   >
                     {Array.from({ length: 28 }, (_, d) => d + 1).map((d) => (
-                      <option key={d} value={d}>{ordinal(d)}</option>
+                      <option key={d} value={d}>
+                        {ordinal(d)}
+                      </option>
                     ))}
                   </select>
                 </span>
               ))}
             </div>
-            <span className="text-xs text-muted">{daysOk ? `Cutoffs ${cutoffRuleText(rule)}.` : "Pick two different days."}</span>
+            <span className="text-xs text-muted">
+              {daysOk ? `Cutoffs ${cutoffRuleText(rule)}.` : "Pick two different days."}
+            </span>
           </div>
         )}
         {(frequency === "weekly" || frequency === "monthly") && (
@@ -590,15 +755,29 @@ function SettingsForm({
               {frequency === "weekly" ? "Your work week starts on" : "Your cutoff starts on the"}
             </label>
             {frequency === "weekly" ? (
-              <select id="cutoff-start" value={weekday} onChange={(e) => setWeekday(Number(e.target.value))} className={`${FIELD_CLASS} sm:w-48`}>
+              <select
+                id="cutoff-start"
+                value={weekday}
+                onChange={(e) => setWeekday(Number(e.target.value))}
+                className={`${FIELD_CLASS} sm:w-48`}
+              >
                 {WEEKDAYS.map((name, i) => (
-                  <option key={name} value={i}>{name}</option>
+                  <option key={name} value={i}>
+                    {name}
+                  </option>
                 ))}
               </select>
             ) : (
-              <select id="cutoff-start" value={monthDay} onChange={(e) => setMonthDay(Number(e.target.value))} className={`${FIELD_CLASS} sm:w-48`}>
+              <select
+                id="cutoff-start"
+                value={monthDay}
+                onChange={(e) => setMonthDay(Number(e.target.value))}
+                className={`${FIELD_CLASS} sm:w-48`}
+              >
                 {Array.from({ length: 28 }, (_, d) => d + 1).map((d) => (
-                  <option key={d} value={d}>{ordinal(d)}</option>
+                  <option key={d} value={d}>
+                    {ordinal(d)}
+                  </option>
                 ))}
               </select>
             )}
@@ -606,7 +785,12 @@ function SettingsForm({
           </div>
         )}
 
-        <NextPaydays settings={formSettings} records={records} schedule={picked.schedule} today={today} />
+        <NextPaydays
+          settings={formSettings}
+          records={records}
+          schedule={picked.schedule}
+          today={today}
+        />
       </fieldset>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -614,15 +798,29 @@ function SettingsForm({
           <label htmlFor="pay-started" className="text-sm font-bold">
             Started working on <span className="font-semibold text-muted">(optional)</span>
           </label>
-          <input id="pay-started" type="date" value={startedOn} onChange={(e) => setStartedOn(e.target.value)} className={FIELD_CLASS} />
-          <span className="text-xs text-muted">If it was this year, tax only counts pay from then.</span>
+          <input
+            id="pay-started"
+            type="date"
+            value={startedOn}
+            onChange={(e) => setStartedOn(e.target.value)}
+            className={FIELD_CLASS}
+          />
+          <span className="text-xs text-muted">
+            If it was this year, tax only counts pay from then.
+          </span>
         </div>
         <div className="flex flex-col gap-1">
           <label htmlFor="pay-base" className="text-sm font-bold">
-            Monthly pay for contributions <span className="font-semibold text-muted">(optional)</span>
+            Monthly pay for contributions{" "}
+            <span className="font-semibold text-muted">(optional)</span>
           </label>
           <div className="relative">
-            <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
+            <span
+              aria-hidden="true"
+              className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted"
+            >
+              ₱
+            </span>
             <AmountInput
               id="pay-base"
               value={base}
@@ -632,21 +830,31 @@ function SettingsForm({
             />
           </div>
           <span className="text-xs text-muted">
-            {rateType === "month" ? "Blank: your monthly pay." : `Blank: daily rate × ${RATES.workDaysPerMonth} days.`}
+            {rateType === "month"
+              ? "Blank: your monthly pay."
+              : `Blank: daily rate × ${RATES.workDaysPerMonth} days.`}
           </span>
         </div>
       </div>
 
       {!isNew && (
         <div className="flex flex-col gap-1">
-          <span id="pay-from-label" className="text-sm font-bold">Use this pay for</span>
+          <span id="pay-from-label" className="text-sm font-bold">
+            Use this pay for
+          </span>
           <div role="group" aria-labelledby="pay-from-label" className="flex flex-wrap gap-2">
-            <ChoiceChip selected={!every} onClick={() => setEvery(false)}>From a date on</ChoiceChip>
-            <ChoiceChip selected={every} onClick={() => setEvery(true)}>Every cutoff</ChoiceChip>
+            <ChoiceChip selected={!every} onClick={() => setEvery(false)}>
+              From a date on
+            </ChoiceChip>
+            <ChoiceChip selected={every} onClick={() => setEvery(true)}>
+              Every cutoff
+            </ChoiceChip>
           </div>
           {!every && (
             <>
-              <label htmlFor="pay-from" className="sr-only">The pay starts on</label>
+              <label htmlFor="pay-from" className="sr-only">
+                The pay starts on
+              </label>
               <input
                 id="pay-from"
                 type="date"
@@ -671,19 +879,43 @@ function SettingsForm({
 
       <fieldset className="flex flex-col gap-0.5">
         <legend className="mb-1 text-sm font-bold">You pay these yourself</legend>
-        <Toggle checked={pays.paySss} onChange={(v) => setPays((p) => ({ ...p, paySss: v }))}>SSS (self-employed, 15%)</Toggle>
-        <Toggle checked={pays.payPhilhealth} onChange={(v) => setPays((p) => ({ ...p, payPhilhealth: v }))}>PhilHealth (5%)</Toggle>
-        <Toggle checked={pays.payPagibig} onChange={(v) => setPays((p) => ({ ...p, payPagibig: v }))}>Pag-IBIG</Toggle>
-        <Toggle checked={pays.payTax} onChange={(v) => setPays((p) => ({ ...p, payTax: v }))}>Income tax, 8% option</Toggle>
+        <Toggle checked={pays.paySss} onChange={(v) => setPays((p) => ({ ...p, paySss: v }))}>
+          SSS (self-employed, 15%)
+        </Toggle>
+        <Toggle
+          checked={pays.payPhilhealth}
+          onChange={(v) => setPays((p) => ({ ...p, payPhilhealth: v }))}
+        >
+          PhilHealth (5%)
+        </Toggle>
+        <Toggle
+          checked={pays.payPagibig}
+          onChange={(v) => setPays((p) => ({ ...p, payPagibig: v }))}
+        >
+          Pag-IBIG
+        </Toggle>
+        <Toggle checked={pays.payTax} onChange={(v) => setPays((p) => ({ ...p, payTax: v }))}>
+          Income tax, 8% option
+        </Toggle>
       </fieldset>
 
-      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
       <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
+        <button
+          type="submit"
+          disabled={pending}
+          className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60"
+        >
           {pending ? "Saving…" : isNew ? "Calculate my pay" : "Update pay settings"}
         </button>
         {!isNew && (
-          <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card"
+          >
             Cancel
           </button>
         )}
@@ -707,7 +939,11 @@ function NextPaydays({
   if (!schedule || !(settings.dailyRate > 0)) return null;
   const rule = cutoffRuleOf({ ...settings, cutoffChanges: records?.settings.cutoffChanges });
   // This pay for every cutoff: a preview, not your pay by cutoff.
-  const preview: PayrollRecords = { settings: { ...settings, cutoffChanges: records?.settings.cutoffChanges }, days: records?.days ?? [], overtime: records?.overtime ?? [] };
+  const preview: PayrollRecords = {
+    settings: { ...settings, cutoffChanges: records?.settings.cutoffChanges },
+    days: records?.days ?? [],
+    overtime: records?.overtime ?? [],
+  };
   const dates = occurrences(schedule, today, addDays(today, MAX_GAP_DAYS + 1)).slice(0, 3);
   return (
     <div className="flex flex-col gap-1.5">
@@ -720,12 +956,18 @@ function NextPaydays({
           const worked = pays.reduce((s, p) => s + p.workedDays, 0);
           const total = pays.reduce((s, p) => s + p.total, 0);
           return (
-            <li key={date} className="flex flex-wrap items-baseline justify-between gap-x-3 border-b border-line-soft py-2 last:border-0">
+            <li
+              key={date}
+              className="flex flex-wrap items-baseline justify-between gap-x-3 border-b border-line-soft py-2 last:border-0"
+            >
               <span>
                 <strong>{formatShortDay(date, today)}</strong>{" "}
                 <span className="text-muted">
-                  pays {covers.start === covers.end ? formatShortDay(covers.start, today) : formatCutoff(covers, today)} · {worked}{" "}
-                  {worked === 1 ? "day" : "days"}
+                  pays{" "}
+                  {covers.start === covers.end
+                    ? formatShortDay(covers.start, today)
+                    : formatCutoff(covers, today)}{" "}
+                  · {worked} {worked === 1 ? "day" : "days"}
                 </span>
               </span>
               <span className="font-bold">{formatPeso(total)}</span>
@@ -733,7 +975,9 @@ function NextPaydays({
           );
         })}
       </ul>
-      <span className="text-xs text-muted">Days you haven&apos;t marked count as your usual work days.</span>
+      <span className="text-xs text-muted">
+        Days you haven&apos;t marked count as your usual work days.
+      </span>
     </div>
   );
 }
@@ -751,7 +995,17 @@ function shareLabel(share: number): string {
   return "A week of monthly pay (× 12 ÷ 52)";
 }
 
-function CutoffCard({ records, period, payday, today }: { records: PayrollRecords; period: Period; payday: Schedule; today: string }) {
+function CutoffCard({
+  records,
+  period,
+  payday,
+  today,
+}: {
+  records: PayrollRecords;
+  period: Period;
+  payday: Schedule;
+  today: string;
+}) {
   // This cutoff's own pay: a raise from a later cutoff doesn't touch it.
   const settings = settingsFor(records, period.start);
   const rule = cutoffRuleOf(records.settings);
@@ -760,15 +1014,23 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
   const page = pageRule(rule);
   const savedDays = useMemo(() => new Map(records.days.map((d) => [d.date, d])), [records.days]);
   const saved = records.days.some((d) => d.date >= period.start && d.date <= period.end);
-  const [days, setDays] = useState<PayrollDay[]>(() => daysFor(period, savedDays, settings.startedOn, settings));
+  const [days, setDays] = useState<PayrollDay[]>(() =>
+    daysFor(period, savedDays, settings.startedOn, settings),
+  );
   const [overtime, setOvertime] = useState<OvertimeRow[]>(() =>
-    records.overtime.filter((o) => o.date >= period.start && o.date <= period.end).map((o) => ({ ...o, key: nextKey++ })),
+    records.overtime
+      .filter((o) => o.date >= period.start && o.date <= period.end)
+      .map((o) => ({ ...o, key: nextKey++ })),
   );
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [changing, setChanging] = useState(false);
   // The day being edited, and the cutoff as it was when you tapped it.
-  const [open, setOpen] = useState<{ date: string; days: PayrollDay[]; overtime: OvertimeRow[] } | null>(null);
+  const [open, setOpen] = useState<{
+    date: string;
+    days: PayrollDay[];
+    overtime: OvertimeRow[];
+  } | null>(null);
   const [pending, startTransition] = useTransition();
 
   const pay = cutoffPay(settings, days, overtime, daily ? null : shareOf(rule));
@@ -842,8 +1104,14 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
       }
       onSaved?.();
       if (daily) setNotice(`Saved. This week's pay is ${formatPeso(pay.total)}.`);
-      else if (paidWith > 0) setNotice(`Saved. ${formatPeso(pay.total)} of your ${formatShortDay(paidOn!, today)} payday is from this cutoff.`);
-      else setNotice(`Saved. Your ${formatShortDay(paidOn!, today)} payday is now ${formatPeso(pay.total)}.`);
+      else if (paidWith > 0)
+        setNotice(
+          `Saved. ${formatPeso(pay.total)} of your ${formatShortDay(paidOn!, today)} payday is from this cutoff.`,
+        );
+      else
+        setNotice(
+          `Saved. Your ${formatShortDay(paidOn!, today)} payday is now ${formatPeso(pay.total)}.`,
+        );
     });
   }
 
@@ -861,7 +1129,9 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
           >
             <ChevronIcon direction="left" size={20} />
           </Link>
-          <span className="min-w-28 text-center text-[15px] font-extrabold">{formatCutoff(period, today)}</span>
+          <span className="min-w-28 text-center text-[15px] font-extrabold">
+            {formatCutoff(period, today)}
+          </span>
           <Link
             href={`/payroll?cutoff=${nextCutoff(period, page).start}`}
             replace
@@ -881,9 +1151,13 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
           ) : (
             <>
               Paid on {formatShortDay(paidOn!, today)}
-              {paidWith > 0 && `, with ${paidWith === 1 ? "the cutoff" : `the ${paidWith} cutoffs`} before it`}.
+              {paidWith > 0 &&
+                `, with ${paidWith === 1 ? "the cutoff" : `the ${paidWith} cutoffs`} before it`}
+              .
               {changed && (
-                <span className="ml-1.5 rounded-full bg-sun-tint px-2 py-0.5 text-xs font-extrabold text-ink">Changed dates</span>
+                <span className="ml-1.5 rounded-full bg-sun-tint px-2 py-0.5 text-xs font-extrabold text-ink">
+                  Changed dates
+                </span>
               )}
             </>
           )}
@@ -900,16 +1174,28 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
         )}
       </div>
       <p className="text-sm text-muted">
-        {saved ? "Saved." : "Not saved yet: your usual work days count as worked until you save."} Tap a day to mark leave or a
-        day off, add your time in if you were late, or add overtime.
+        {saved ? "Saved." : "Not saved yet: your usual work days count as worked until you save."}{" "}
+        Tap a day to mark leave or a day off, add your time in if you were late, or add overtime.
       </p>
       {changing && (
         <FormDialog title="Change this cutoff" onClose={() => setChanging(false)}>
-          <CutoffChangeForm period={period} rule={rule} payday={payday} today={today} onClose={() => setChanging(false)} />
+          <CutoffChangeForm
+            period={period}
+            rule={rule}
+            payday={payday}
+            today={today}
+            onClose={() => setChanging(false)}
+          />
         </FormDialog>
       )}
 
-      <CutoffCalendar days={days} overtime={overtime} settings={settings} today={today} onOpen={openDay} />
+      <CutoffCalendar
+        days={days}
+        overtime={overtime}
+        settings={settings}
+        today={today}
+        onOpen={openDay}
+      />
 
       {editingDay && (
         <FormDialog title={formatLongDay(editingDay.date)} onClose={cancelDay}>
@@ -926,7 +1212,9 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
               onChangeOvertime={updateOvertime}
               onRemoveOvertime={(key) => setOvertime((os) => os.filter((x) => x.key !== key))}
             />
-            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+              {error}
+            </p>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -936,7 +1224,11 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
               >
                 {pending ? "Saving…" : "Save"}
               </button>
-              <button type="button" onClick={cancelDay} className="h-12 rounded-[14px] px-5 font-extrabold text-ink hover:bg-card">
+              <button
+                type="button"
+                onClick={cancelDay}
+                className="h-12 rounded-[14px] px-5 font-extrabold text-ink hover:bg-card"
+              >
                 Cancel
               </button>
             </div>
@@ -947,9 +1239,15 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
       <dl className="flex flex-col gap-1.5 rounded-2xl bg-mint p-4 text-[15px]">
         {pay.share !== null ? (
           <>
-            <Line label={shareLabel(pay.share)} value={formatPeso(pay.basePay - pay.extraDays * settings.dailyRate)} />
+            <Line
+              label={shareLabel(pay.share)}
+              value={formatPeso(pay.basePay - pay.extraDays * settings.dailyRate)}
+            />
             {pay.extraDays > 0 && (
-              <Line label={`${pay.extraDays} usual day${pay.extraDays === 1 ? "" : "s"} off worked × ${formatPeso(settings.dailyRate)}`} value={`+${formatPeso(pay.extraDays * settings.dailyRate)}`} />
+              <Line
+                label={`${pay.extraDays} usual day${pay.extraDays === 1 ? "" : "s"} off worked × ${formatPeso(settings.dailyRate)}`}
+                value={`+${formatPeso(pay.extraDays * settings.dailyRate)}`}
+              />
             )}
             {pay.missedDays > 0 && (
               <Line
@@ -960,30 +1258,60 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
             )}
           </>
         ) : (
-          <Line label={`${pay.workedDays} days × ${formatPeso(settings.dailyRate)}`} value={formatPeso(pay.basePay)} />
+          <Line
+            label={`${pay.workedDays} days × ${formatPeso(settings.dailyRate)}`}
+            value={formatPeso(pay.basePay)}
+          />
         )}
         {pay.share === null && (pay.sickDays > 0 || pay.personalDays > 0) && (
           <Line
-            label={[pay.sickDays && `${pay.sickDays} sick`, pay.personalDays && `${pay.personalDays} personal`].filter(Boolean).join(", ") + " leave (unpaid)"}
+            label={
+              [
+                pay.sickDays && `${pay.sickDays} sick`,
+                pay.personalDays && `${pay.personalDays} personal`,
+              ]
+                .filter(Boolean)
+                .join(", ") + " leave (unpaid)"
+            }
             value="₱0.00"
             muted
           />
         )}
-        {pay.lateMinutes > 0 && <Line label={`Late, ${formatMinutes(pay.lateMinutes)}`} value={`−${formatPeso(pay.lateDeduction)}`} coral />}
+        {pay.lateMinutes > 0 && (
+          <Line
+            label={`Late, ${formatMinutes(pay.lateMinutes)}`}
+            value={`−${formatPeso(pay.lateDeduction)}`}
+            coral
+          />
+        )}
         {pay.overtimeMinutes > 0 && (
-          <Line label={`Overtime, ${formatMinutes(pay.overtimeMinutes)} × ${settings.overtimeRate}`} value={`+${formatPeso(pay.overtimePay)}`} />
+          <Line
+            label={`Overtime, ${formatMinutes(pay.overtimeMinutes)} × ${settings.overtimeRate}`}
+            value={`+${formatPeso(pay.overtimePay)}`}
+          />
         )}
         <div className="mt-1 flex items-baseline justify-between gap-3 border-t-2 border-line pt-2">
           <dt className="font-extrabold">
-            {daily ? "This week" : `${paidWith > 0 ? "This cutoff" : "Payday"}, ${formatShortDay(paidOn!, today)}`}
+            {daily
+              ? "This week"
+              : `${paidWith > 0 ? "This cutoff" : "Payday"}, ${formatShortDay(paidOn!, today)}`}
           </dt>
           <dd className="font-display text-2xl font-semibold text-sea">{formatPeso(pay.total)}</dd>
         </div>
       </dl>
 
-      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
-      <p role="status" className="text-sm font-bold text-sea-dark empty:hidden">{notice}</p>
-      <button type="button" onClick={() => save()} disabled={pending} className="h-12 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60 sm:self-start">
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
+      <p role="status" className="text-sm font-bold text-sea-dark empty:hidden">
+        {notice}
+      </p>
+      <button
+        type="button"
+        onClick={() => save()}
+        disabled={pending}
+        className="h-12 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60 sm:self-start"
+      >
         {pending ? "Updating…" : daily ? "Save this week" : "Update my payday"}
       </button>
     </Card>
@@ -1016,7 +1344,10 @@ function CutoffCalendar({
   const blanks = days.length > 0 ? weekdayOf(days[0].date) : 0;
   return (
     <div className="flex flex-col gap-2">
-      <div aria-hidden="true" className="grid grid-cols-7 gap-1 text-center text-xs font-extrabold text-muted sm:gap-1.5">
+      <div
+        aria-hidden="true"
+        className="grid grid-cols-7 gap-1 text-center text-xs font-extrabold text-muted sm:gap-1.5"
+      >
         {SHORT_WEEKDAYS.map((w) => (
           <span key={w}>{w}</span>
         ))}
@@ -1027,7 +1358,8 @@ function CutoffCalendar({
         ))}
         {days.map((day, i) => {
           const overtimeDay = dayKind(day.date, settings) === "overtime";
-          const late = day.status === "worked" && !overtimeDay ? minutesLate(day.timeIn, settings) : 0;
+          const late =
+            day.status === "worked" && !overtimeDay ? minutesLate(day.timeIn, settings) : 0;
           const extra = overtimeOn(day.date, overtime);
           const dayNumber = Number(day.date.slice(8));
           const label =
@@ -1041,8 +1373,16 @@ function CutoffCalendar({
                   ? "Overtime"
                   : "Worked";
           const tone =
-            day.status === "leave" ? "bg-coral-tint" : day.status === "off" ? "bg-mint text-muted" : "bg-sea-tint";
-          const details = [label, late > 0 && `${formatMinutes(late)} late`, extra > 0 && `${formatMinutes(extra)} overtime`]
+            day.status === "leave"
+              ? "bg-coral-tint"
+              : day.status === "off"
+                ? "bg-mint text-muted"
+                : "bg-sea-tint";
+          const details = [
+            label,
+            late > 0 && `${formatMinutes(late)} late`,
+            extra > 0 && `${formatMinutes(extra)} overtime`,
+          ]
             .filter(Boolean)
             .join(", ");
           return (
@@ -1059,7 +1399,9 @@ function CutoffCalendar({
                 <span className="flex items-baseline gap-1 leading-none">
                   <span className="text-sm font-extrabold sm:text-[15px]">{dayNumber}</span>
                   {(i === 0 || dayNumber === 1) && (
-                    <span className="text-[10px] font-extrabold uppercase text-muted">{MONTH.format(new Date(day.date))}</span>
+                    <span className="text-[10px] font-extrabold uppercase text-muted">
+                      {MONTH.format(new Date(day.date))}
+                    </span>
                   )}
                 </span>
                 <span className="hidden text-xs font-bold sm:block">{label}</span>
@@ -1080,11 +1422,26 @@ function CutoffCalendar({
           );
         })}
       </ul>
-      <div aria-hidden="true" className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold text-muted">
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-sea-tint" />Worked</span>
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-coral-tint" />Leave</span>
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border border-line bg-mint" />Off</span>
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded ring-2 ring-sea" />Today</span>
+      <div
+        aria-hidden="true"
+        className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold text-muted"
+      >
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded bg-sea-tint" />
+          Worked
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded bg-coral-tint" />
+          Leave
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded border border-line bg-mint" />
+          Off
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded ring-2 ring-sea" />
+          Today
+        </span>
       </div>
     </div>
   );
@@ -1131,21 +1488,32 @@ function DayEditor({
       )}
 
       {overtimeDay ? (
-        <div role="group" aria-label="Off or overtime" className="grid grid-cols-2 gap-1 rounded-xl bg-card p-1">
+        <div
+          role="group"
+          aria-label="Off or overtime"
+          className="grid grid-cols-2 gap-1 rounded-xl bg-card p-1"
+        >
           {[false, true].map((on) => (
             <button
               key={String(on)}
               type="button"
               aria-pressed={(day.status === "worked") === on}
               onClick={() => onOvertimeDay(on)}
-              className={segment((day.status === "worked") === on, on ? "bg-sea text-white" : "bg-ink text-mint")}
+              className={segment(
+                (day.status === "worked") === on,
+                on ? "bg-sea text-white" : "bg-ink text-mint",
+              )}
             >
               {on ? "Overtime" : "Off"}
             </button>
           ))}
         </div>
       ) : (
-        <div role="group" aria-label="Worked, leave or off" className="grid grid-cols-3 gap-1 rounded-xl bg-card p-1">
+        <div
+          role="group"
+          aria-label="Worked, leave or off"
+          className="grid grid-cols-3 gap-1 rounded-xl bg-card p-1"
+        >
           {STATUSES.map((s) => (
             <button
               key={s.value}
@@ -1154,7 +1522,11 @@ function DayEditor({
               onClick={() => onStatus(s.value)}
               className={segment(
                 day.status === s.value,
-                s.value === "leave" ? "bg-coral text-white" : s.value === "worked" ? "bg-sea text-white" : "bg-ink text-mint",
+                s.value === "leave"
+                  ? "bg-coral text-white"
+                  : s.value === "worked"
+                    ? "bg-sea text-white"
+                    : "bg-ink text-mint",
               )}
             >
               {s.label}
@@ -1165,7 +1537,9 @@ function DayEditor({
 
       {day.status === "worked" && !overtimeDay && (
         <div className="flex flex-col gap-1.5">
-          <label htmlFor={`in-${day.date}`} className="text-sm font-bold">Time in</label>
+          <label htmlFor={`in-${day.date}`} className="text-sm font-bold">
+            Time in
+          </label>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <input
               id={`in-${day.date}`}
@@ -1182,7 +1556,9 @@ function DayEditor({
               <span className="text-sm text-muted">On time</span>
             )}
           </div>
-          {kind === "off" && <p className="text-sm text-muted">Usually off: paid a day&apos;s rate.</p>}
+          {kind === "off" && (
+            <p className="text-sm text-muted">Usually off: paid a day&apos;s rate.</p>
+          )}
         </div>
       )}
 
@@ -1196,7 +1572,9 @@ function DayEditor({
                 aria-pressed={day.leaveType === t.value}
                 onClick={() => onChange({ leaveType: t.value })}
                 className={`h-10 shrink-0 rounded-full px-3.5 text-sm font-extrabold ${
-                  day.leaveType === t.value ? "bg-ink text-mint" : "bg-card text-ink hover:bg-sea-tint"
+                  day.leaveType === t.value
+                    ? "bg-ink text-mint"
+                    : "bg-card text-ink hover:bg-sea-tint"
                 }`}
               >
                 {t.label}
@@ -1227,7 +1605,9 @@ function DayEditor({
                 onChange={(e) => onChangeOvertime(o.key, { start: e.target.value })}
                 className="h-12 rounded-xl border-2 border-line bg-card px-3 text-[15px] outline-none focus:border-sea"
               />
-              <span aria-hidden="true" className="text-muted">to</span>
+              <span aria-hidden="true" className="text-muted">
+                to
+              </span>
               <input
                 type="time"
                 aria-label="Overtime end"
@@ -1254,7 +1634,11 @@ function DayEditor({
         </div>
       )}
       {(!overtimeDay || day.status === "worked") && (
-        <button type="button" onClick={onAddOvertime} className="self-start text-sm font-extrabold text-sea-dark hover:underline">
+        <button
+          type="button"
+          onClick={onAddOvertime}
+          className="self-start text-sm font-extrabold text-sea-dark hover:underline"
+        >
           + Overtime
         </button>
       )}
@@ -1293,7 +1677,12 @@ function CutoffChangeForm({
   const [pending, startTransition] = useTransition();
 
   const valid = isValidDate(start) && isValidDate(end);
-  const change = { usual: usual.start, start, end, paidOn: paidOn && isValidDate(paidOn) ? paidOn : null };
+  const change = {
+    usual: usual.start,
+    start,
+    end,
+    paidOn: paidOn && isValidDate(paidOn) ? paidOn : null,
+  };
   const problem = valid ? cutoffChangeProblem(change, rule, today) : "Pick the dates.";
   const withThis: CutoffRule = { ...rule, changes: [...others, change] };
   const next = problem ? null : nextCutoff({ start, end }, withThis);
@@ -1327,7 +1716,9 @@ function CutoffChangeForm({
       </p>
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="flex flex-col gap-1">
-          <label htmlFor="change-start" className="text-sm font-bold">Starts</label>
+          <label htmlFor="change-start" className="text-sm font-bold">
+            Starts
+          </label>
           <input
             id="change-start"
             type="date"
@@ -1338,7 +1729,9 @@ function CutoffChangeForm({
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="change-end" className="text-sm font-bold">Ends</label>
+          <label htmlFor="change-end" className="text-sm font-bold">
+            Ends
+          </label>
           <input
             id="change-end"
             type="date"
@@ -1349,15 +1742,25 @@ function CutoffChangeForm({
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="change-paid" className="text-sm font-bold">Paid on</label>
-          <input id="change-paid" type="date" value={paidOn || usualPayday} onChange={(e) => setPaidOn(e.target.value === usualPayday ? "" : e.target.value)} className={FIELD_CLASS} />
+          <label htmlFor="change-paid" className="text-sm font-bold">
+            Paid on
+          </label>
+          <input
+            id="change-paid"
+            type="date"
+            value={paidOn || usualPayday}
+            onChange={(e) => setPaidOn(e.target.value === usualPayday ? "" : e.target.value)}
+            className={FIELD_CLASS}
+          />
         </div>
       </div>
       <p className="text-sm text-muted">
         {problem
           ? problem
           : [
-              before && before.end !== addDays(usual.start, -1) ? `The cutoff before now ends ${formatShortDay(before.end, today)}.` : null,
+              before && before.end !== addDays(usual.start, -1)
+                ? `The cutoff before now ends ${formatShortDay(before.end, today)}.`
+                : null,
               next && next.start !== addDays(usual.end, 1)
                 ? `The next cutoff starts ${formatShortDay(next.start, today)} instead of ${formatShortDay(addDays(usual.end, 1), today)} (${formatCutoff(next, today)}).`
                 : null,
@@ -1366,9 +1769,15 @@ function CutoffChangeForm({
               .filter(Boolean)
               .join(" ")}
       </p>
-      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
       <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
+        <button
+          type="submit"
+          disabled={pending}
+          className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60"
+        >
           {pending ? "Saving…" : "Save for this cutoff"}
         </button>
         {current && (
@@ -1381,7 +1790,11 @@ function CutoffChangeForm({
             Back to usual
           </button>
         )}
-        <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card">
+        <button
+          type="button"
+          onClick={onClose}
+          className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card"
+        >
           Cancel
         </button>
       </div>
@@ -1389,9 +1802,21 @@ function CutoffChangeForm({
   );
 }
 
-function Line({ label, value, muted, coral }: { label: string; value: string; muted?: boolean; coral?: boolean }) {
+function Line({
+  label,
+  value,
+  muted,
+  coral,
+}: {
+  label: string;
+  value: string;
+  muted?: boolean;
+  coral?: boolean;
+}) {
   return (
-    <div className={`flex items-baseline justify-between gap-3 ${muted ? "text-muted" : ""} ${coral ? "text-coral-text" : ""}`}>
+    <div
+      className={`flex items-baseline justify-between gap-3 ${muted ? "text-muted" : ""} ${coral ? "text-coral-text" : ""}`}
+    >
       <dt>{label}</dt>
       <dd className="font-bold">{value}</dd>
     </div>
@@ -1437,8 +1862,11 @@ function SelfPaidCard({
     >
       <p className="text-sm text-muted">
         These are in{" "}
-        <Link href="/plan/scheduled" className="font-extrabold text-sea-dark underline">Money going out</Link>, so your
-        forecast and Safe to spend set the money aside. They update when you save your pay or a cutoff.
+        <Link href="/plan/scheduled" className="font-extrabold text-sea-dark underline">
+          Money going out
+        </Link>
+        , so your forecast and Safe to spend set the money aside. They update when you save your pay
+        or a cutoff.
       </p>
 
       {editing && (
@@ -1449,14 +1877,22 @@ function SelfPaidCard({
       {monthly.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <h3 className="text-sm font-extrabold">
-            Each month · {allCustom ? "the amounts you entered" : `based on ${formatPeso(monthlyBase(settings))} a month`}
+            Each month ·{" "}
+            {allCustom
+              ? "the amounts you entered"
+              : `based on ${formatPeso(monthlyBase(settings))} a month`}
           </h3>
           <dl className="flex flex-col gap-2.5 text-[15px]">
             {monthly.map((c) => (
-              <div key={c.key} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+              <div
+                key={c.key}
+                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1"
+              >
                 <dt className="min-w-0 flex-1">
                   {c.name}
-                  {c.custom && !allCustom && <span className="block text-xs text-muted">Your amount</span>}
+                  {c.custom && !allCustom && (
+                    <span className="block text-xs text-muted">Your amount</span>
+                  )}
                 </dt>
                 {payday.frequency === "twice_monthly" ? (
                   <ContributionDay
@@ -1466,7 +1902,9 @@ function SelfPaidCard({
                     paydays={[payday.day1, payday.day2 ?? RATES.contributionDay]}
                   />
                 ) : (
-                  <span className="text-xs font-bold text-muted">Due the {ordinal(days[c.key] ?? RATES.contributionDay)}</span>
+                  <span className="text-xs font-bold text-muted">
+                    Due the {ordinal(days[c.key] ?? RATES.contributionDay)}
+                  </span>
                 )}
                 <dd className="w-20 text-right font-bold">{formatPeso(c.amount)}</dd>
               </div>
@@ -1481,7 +1919,9 @@ function SelfPaidCard({
 
       {settings.payTax && (
         <div className="flex flex-col gap-1.5">
-          <h3 className="text-sm font-extrabold">Income tax, 8% of yearly pay above {formatPeso(RATES.tax.exempt)}</h3>
+          <h3 className="text-sm font-extrabold">
+            Income tax, 8% of yearly pay above {formatPeso(RATES.tax.exempt)}
+          </h3>
           <dl className="flex flex-col gap-1.5 text-[15px]">
             {taxes.map((t) => (
               <div key={t.key} className="flex items-baseline justify-between gap-3">
@@ -1491,17 +1931,24 @@ function SelfPaidCard({
                     Due {formatShortDay(t.dueOn, today)} · pay so far {formatPeso(t.grossToDate)}
                   </span>
                 </dt>
-                <dd className={`font-bold ${t.amount ? "" : "text-muted"}`}>{t.amount ? formatPeso(t.amount) : "Nothing due"}</dd>
+                <dd className={`font-bold ${t.amount ? "" : "text-muted"}`}>
+                  {t.amount ? formatPeso(t.amount) : "Nothing due"}
+                </dd>
               </div>
             ))}
           </dl>
           <p className="text-xs text-muted">
-            Cutoffs you haven&apos;t saved count as a normal work week, so these are estimates until the year is in.
+            Cutoffs you haven&apos;t saved count as a normal work week, so these are estimates until
+            the year is in.
           </p>
         </div>
       )}
 
-      {!monthly.length && !settings.payTax && <p className="text-[15px] text-muted">You haven&apos;t picked any. Edit your pay to add them.</p>}
+      {!monthly.length && !settings.payTax && (
+        <p className="text-[15px] text-muted">
+          You haven&apos;t picked any. Edit your pay to add them.
+        </p>
+      )}
     </Card>
   );
 }
@@ -1525,7 +1972,11 @@ function ContributionDay({
   const current = paydays.includes(picked) ? picked : null;
   return (
     <span className="flex flex-col items-end">
-      <span role="group" aria-label={`${name}: which pay it comes out of`} className="flex rounded-full bg-mint p-0.5">
+      <span
+        role="group"
+        aria-label={`${name}: which pay it comes out of`}
+        className="flex rounded-full bg-mint p-0.5"
+      >
         {paydays.map((p) => (
           <button
             key={p}
@@ -1553,7 +2004,9 @@ function ContributionDay({
           </button>
         ))}
       </span>
-      <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">{error}</span>
+      <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">
+        {error}
+      </span>
     </span>
   );
 }
@@ -1568,11 +2021,14 @@ const AMOUNT_FIELDS = [
 function AmountsForm({ settings, onClose }: { settings: PayrollSettings; onClose: () => void }) {
   const calculated = calculatedContributions(settings);
   const fields = AMOUNT_FIELDS.filter((f) => settings[f.on]);
-  const [values, setValues] = useState(() =>
-    Object.fromEntries(AMOUNT_FIELDS.map((f) => [f.field, settings[f.field] === null ? "" : String(settings[f.field])])) as Record<
-      (typeof AMOUNT_FIELDS)[number]["field"],
-      string
-    >,
+  const [values, setValues] = useState(
+    () =>
+      Object.fromEntries(
+        AMOUNT_FIELDS.map((f) => [
+          f.field,
+          settings[f.field] === null ? "" : String(settings[f.field]),
+        ]),
+      ) as Record<(typeof AMOUNT_FIELDS)[number]["field"], string>,
   );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -1604,15 +2060,22 @@ function AmountsForm({ settings, onClose }: { settings: PayrollSettings; onClose
   return (
     <form onSubmit={save} className="flex flex-col gap-4">
       <p className="text-[15px]">
-        Enter what your company actually takes each month. Leave one blank to use the standard rate, based on{" "}
-        {formatPeso(monthlyBase(settings))} a month.
+        Enter what your company actually takes each month. Leave one blank to use the standard rate,
+        based on {formatPeso(monthlyBase(settings))} a month.
       </p>
       <div className="grid gap-3 sm:grid-cols-3">
         {fields.map((f) => (
           <div key={f.key} className="flex flex-col gap-1">
-            <label htmlFor={`own-${f.key}`} className="text-sm font-bold">{f.label}</label>
+            <label htmlFor={`own-${f.key}`} className="text-sm font-bold">
+              {f.label}
+            </label>
             <div className="relative">
-              <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
+              <span
+                aria-hidden="true"
+                className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted"
+              >
+                ₱
+              </span>
               <AmountInput
                 id={`own-${f.key}`}
                 value={values[f.field]}
@@ -1621,16 +2084,28 @@ function AmountsForm({ settings, onClose }: { settings: PayrollSettings; onClose
                 className={`${FIELD_CLASS} w-full pl-8`}
               />
             </div>
-            <span className="text-xs text-muted">Blank: {formatPeso(calculated[f.key])}, calculated.</span>
+            <span className="text-xs text-muted">
+              Blank: {formatPeso(calculated[f.key])}, calculated.
+            </span>
           </div>
         ))}
       </div>
-      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
       <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
+        <button
+          type="submit"
+          disabled={pending}
+          className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60"
+        >
           {pending ? "Saving…" : "Use these amounts"}
         </button>
-        <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card">
+        <button
+          type="button"
+          onClick={onClose}
+          className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card"
+        >
           Cancel
         </button>
       </div>

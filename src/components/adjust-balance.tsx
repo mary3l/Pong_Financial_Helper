@@ -47,7 +47,15 @@ export function WalletButtons({ account, today }: { account: Account; today: str
   );
 }
 
-function AdjustBalanceForm({ account, today, onDone }: { account: Account; today: string; onDone: () => void }) {
+function AdjustBalanceForm({
+  account,
+  today,
+  onDone,
+}: {
+  account: Account;
+  today: string;
+  onDone: () => void;
+}) {
   const [actual, setActual] = useState("");
   const [date, setDate] = useState(today);
   const [note, setNote] = useState("");
@@ -109,18 +117,33 @@ function AdjustBalanceForm({ account, today, onDone }: { account: Account; today
           <>Pong has {money(account.balance)}. Count what&apos;s really there and type it in.</>
         ) : (
           <>
-            That&apos;s <strong className={change > 0 ? "text-sea-dark" : "text-coral-text"}>{money(Math.abs(change))} {change > 0 ? "more" : "less"}</strong>{" "}
-            than the {money(account.balance)} Pong has. It&apos;s logged as a balance adjustment, not as spending or income.
+            That&apos;s{" "}
+            <strong className={change > 0 ? "text-sea-dark" : "text-coral-text"}>
+              {money(Math.abs(change))} {change > 0 ? "more" : "less"}
+            </strong>{" "}
+            than the {money(account.balance)} Pong has. It&apos;s logged as a balance adjustment,
+            not as spending or income.
           </>
         )}
       </p>
       <div className="grid grid-cols-2 gap-2.5">
         <div className="flex flex-col gap-1">
-          <label htmlFor="adjust-date" className="text-[13px] font-extrabold">Date</label>
-          <input id="adjust-date" type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} className={FIELD_CLASS} />
+          <label htmlFor="adjust-date" className="text-[13px] font-extrabold">
+            Date
+          </label>
+          <input
+            id="adjust-date"
+            type="date"
+            value={date}
+            max={today}
+            onChange={(e) => setDate(e.target.value)}
+            className={FIELD_CLASS}
+          />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="adjust-note" className="text-[13px] font-extrabold">Note</label>
+          <label htmlFor="adjust-note" className="text-[13px] font-extrabold">
+            Note
+          </label>
           <input
             id="adjust-note"
             value={note}
@@ -131,12 +154,22 @@ function AdjustBalanceForm({ account, today, onDone }: { account: Account; today
           />
         </div>
       </div>
-      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
       <div className="flex gap-2.5">
-        <button type="button" onClick={onDone} className="h-12 flex-1 rounded-[18px] bg-card font-extrabold">
+        <button
+          type="button"
+          onClick={onDone}
+          className="h-12 flex-1 rounded-[18px] bg-card font-extrabold"
+        >
           Cancel
         </button>
-        <button type="submit" disabled={pending} className="h-12 flex-[2] rounded-[18px] bg-sun font-extrabold text-ink disabled:opacity-60">
+        <button
+          type="submit"
+          disabled={pending}
+          className="h-12 flex-[2] rounded-[18px] bg-sun font-extrabold text-ink disabled:opacity-60"
+        >
           {pending
             ? "Saving…"
             : change
@@ -161,7 +194,9 @@ export function AdjustmentEditor({
   today: string;
 }) {
   const router = useRouter();
-  const [direction, setDirection] = useState<"up" | "down">(transaction.type === "income" ? "up" : "down");
+  const [direction, setDirection] = useState<"up" | "down">(
+    transaction.type === "income" ? "up" : "down",
+  );
   const [amount, setAmount] = useState(String(transaction.amount));
   const [date, setDate] = useState(transaction.occurredOn);
   const [note, setNote] = useState(transaction.note ?? "");
@@ -177,7 +212,10 @@ export function AdjustmentEditor({
       return;
     }
     startTransition(async () => {
-      const result = await updateAdjustment(transaction.id, direction === "up" ? value : -value, { occurredOn: date, note });
+      const result = await updateAdjustment(transaction.id, direction === "up" ? value : -value, {
+        occurredOn: date,
+        note,
+      });
       if (result.error) setError(result.error);
       else router.push(closeHref);
     });
@@ -210,11 +248,17 @@ export function AdjustmentEditor({
         </span>
       </div>
       <div role="group" aria-label="Direction" className="flex gap-2">
-        <ChoiceChip selected={direction === "up"} onClick={() => setDirection("up")}>Adjusted up</ChoiceChip>
-        <ChoiceChip selected={direction === "down"} onClick={() => setDirection("down")}>Adjusted down</ChoiceChip>
+        <ChoiceChip selected={direction === "up"} onClick={() => setDirection("up")}>
+          Adjusted up
+        </ChoiceChip>
+        <ChoiceChip selected={direction === "down"} onClick={() => setDirection("down")}>
+          Adjusted down
+        </ChoiceChip>
       </div>
       <div className="flex flex-col gap-1">
-        <label htmlFor="adjustment-amount" className="text-sm font-extrabold">By how much</label>
+        <label htmlFor="adjustment-amount" className="text-sm font-extrabold">
+          By how much
+        </label>
         <AmountInput
           id="adjustment-amount"
           label="Adjustment"
@@ -228,11 +272,22 @@ export function AdjustmentEditor({
       </div>
       <div className="grid grid-cols-2 gap-2.5">
         <div className="flex flex-col gap-1">
-          <label htmlFor="adjustment-date" className="text-[13px] font-extrabold">Date</label>
-          <input id="adjustment-date" type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} className={FIELD_CLASS} />
+          <label htmlFor="adjustment-date" className="text-[13px] font-extrabold">
+            Date
+          </label>
+          <input
+            id="adjustment-date"
+            type="date"
+            value={date}
+            max={today}
+            onChange={(e) => setDate(e.target.value)}
+            className={FIELD_CLASS}
+          />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="adjustment-note" className="text-[13px] font-extrabold">Note</label>
+          <label htmlFor="adjustment-note" className="text-[13px] font-extrabold">
+            Note
+          </label>
           <input
             id="adjustment-note"
             value={note}
@@ -243,7 +298,9 @@ export function AdjustmentEditor({
           />
         </div>
       </div>
-      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
       <div className="flex gap-2.5">
         <button
           type="button"
@@ -254,11 +311,17 @@ export function AdjustmentEditor({
         >
           {confirmDelete ? "Tap again to delete" : "Delete"}
         </button>
-        <button type="submit" disabled={pending} className="h-14 flex-[2] rounded-[18px] bg-sun text-[17px] font-extrabold text-ink disabled:opacity-60">
+        <button
+          type="submit"
+          disabled={pending}
+          className="h-14 flex-[2] rounded-[18px] bg-sun text-[17px] font-extrabold text-ink disabled:opacity-60"
+        >
           {pending ? "Updating…" : "Update adjustment"}
         </button>
       </div>
-      <Link href={closeHref} className="w-fit font-extrabold text-sea-dark">Cancel</Link>
+      <Link href={closeHref} className="w-fit font-extrabold text-sea-dark">
+        Cancel
+      </Link>
     </form>
   );
 }

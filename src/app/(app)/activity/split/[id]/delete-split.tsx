@@ -25,7 +25,9 @@ export function DeleteSplit({ splitId, back }: { splitId: string; back: string }
 
   return (
     <div className="flex flex-col gap-2">
-      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
       <button
         type="button"
         onClick={remove}
@@ -35,7 +37,11 @@ export function DeleteSplit({ splitId, back }: { splitId: string; back: string }
           confirm ? "bg-coral text-white" : "bg-card text-coral-text"
         }`}
       >
-        {pending ? "Deleting…" : confirm ? "Tap again to delete the whole split" : "Delete this split"}
+        {pending
+          ? "Deleting…"
+          : confirm
+            ? "Tap again to delete the whole split"
+            : "Delete this split"}
       </button>
     </div>
   );

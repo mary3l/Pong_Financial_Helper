@@ -22,7 +22,12 @@ const settings: PayrollSettings = {
 const records: PayrollRecords = { settings, days: [], overtime: [] };
 const PAYDAY = { frequency: "twice_monthly" as const, day1: 15, day2: 30 };
 
-function item(kind: ForecastItem["kind"], dueOn: string, amount: number, flow: "in" | "out" = "out"): ForecastItem {
+function item(
+  kind: ForecastItem["kind"],
+  dueOn: string,
+  amount: number,
+  flow: "in" | "out" = "out",
+): ForecastItem {
   return {
     key: `${kind}|${dueOn}|${amount}`,
     kind,
@@ -41,7 +46,12 @@ function item(kind: ForecastItem["kind"], dueOn: string, amount: number, flow: "
 describe("office days in a cutoff", () => {
   // Monday Nov 9, 2026: Nov 1–15 has 10 weekdays, 5 of them before today (Nov 2–6).
   it("counts what's earned before today and the work days left", () => {
-    const days = officeDays(records, { start: "2026-11-01", end: "2026-11-15" }, "2026-11-09", 7200);
+    const days = officeDays(
+      records,
+      { start: "2026-11-01", end: "2026-11-15" },
+      "2026-11-09",
+      7200,
+    );
     expect(days.earned).toBe(5000);
     expect(days.daysLeft).toBe(5);
     expect(days.firstDay).toBe("2026-11-09");
@@ -66,7 +76,9 @@ describe("office days in a cutoff", () => {
   });
 
   it("needs no days when what's earned already covers it", () => {
-    expect(officeDays(records, { start: "2026-11-01", end: "2026-11-15" }, "2026-11-09", 4000).needed).toBe(0);
+    expect(
+      officeDays(records, { start: "2026-11-01", end: "2026-11-15" }, "2026-11-09", 4000).needed,
+    ).toBe(0);
   });
 });
 
@@ -84,7 +96,14 @@ describe("bills by payday", () => {
   ];
 
   it("puts each bill with the pay that covers it, late ones before the first payday", () => {
-    const periods = billsByPayday({ items, today: "2026-11-09", payday: PAYDAY, inWallets: 5000, payroll: records, count: 2 });
+    const periods = billsByPayday({
+      items,
+      today: "2026-11-09",
+      payday: PAYDAY,
+      inWallets: 5000,
+      payroll: records,
+      count: 2,
+    });
     expect(periods.map((p) => [p.payday, p.from, p.to])).toEqual([
       [null, "2026-11-09", "2026-11-14"],
       ["2026-11-15", "2026-11-15", "2026-11-29"],
@@ -109,7 +128,14 @@ describe("bills by payday", () => {
 
   it("carries what a pay can't cover into the next one", () => {
     const big = [...items, item("installment", "2026-11-20", 20000)];
-    const periods = billsByPayday({ items: big, today: "2026-11-09", payday: PAYDAY, inWallets: 5000, payroll: records, count: 2 });
+    const periods = billsByPayday({
+      items: big,
+      today: "2026-11-09",
+      payday: PAYDAY,
+      inWallets: 5000,
+      payroll: records,
+      count: 2,
+    });
     // ₱27,000 needed, and Oct 16–31 already earned ₱11,000 with no days left: ₱16,000 short.
     expect(periods[1].office?.needed).toBeNull();
     expect(periods[1].office?.short).toBe(16000);
@@ -120,7 +146,14 @@ describe("bills by payday", () => {
   });
 
   it("works without the payroll calculator, from the payday amount", () => {
-    const periods = billsByPayday({ items, today: "2026-11-09", payday: PAYDAY, inWallets: 500, payroll: null, count: 2 });
+    const periods = billsByPayday({
+      items,
+      today: "2026-11-09",
+      payday: PAYDAY,
+      inWallets: 500,
+      payroll: null,
+      count: 2,
+    });
     expect(periods[0].left).toBe(-500);
     expect(periods[1].office).toBeNull();
     expect(periods[1].carriedIn).toBe(500);
@@ -129,15 +162,33 @@ describe("bills by payday", () => {
 
   it("skips the days before payday when nothing's due in them", () => {
     const later = items.filter((i) => i.dueOn >= "2026-11-15");
-    const periods = billsByPayday({ items: later, today: "2026-11-09", payday: PAYDAY, inWallets: 0, payroll: null, count: 2 });
+    const periods = billsByPayday({
+      items: later,
+      today: "2026-11-09",
+      payday: PAYDAY,
+      inWallets: 0,
+      payroll: null,
+      count: 2,
+    });
     expect(periods[0].payday).toBe("2026-11-15");
   });
 
   it("lists bills paid in advance under their pay without counting them", () => {
     // The Dec 5 bill, paid on Nov 9 from what you had then.
-    const early = { ...item("bill", "2026-12-05", 2000), transactionId: "t1", paidOn: "2026-11-09" };
+    const early = {
+      ...item("bill", "2026-12-05", 2000),
+      transactionId: "t1",
+      paidOn: "2026-11-09",
+    };
     const paid = items.map((i) => (i.dueOn === "2026-12-05" ? early : i));
-    const periods = billsByPayday({ items: paid, today: "2026-11-09", payday: PAYDAY, inWallets: 5000, payroll: records, count: 2 });
+    const periods = billsByPayday({
+      items: paid,
+      today: "2026-11-09",
+      payday: PAYDAY,
+      inWallets: 5000,
+      payroll: records,
+      count: 2,
+    });
     expect(periods[2].paidEarly.map((i) => i.dueOn)).toEqual(["2026-12-05"]);
     expect(periods[2].bills.some((i) => i.dueOn === "2026-12-05")).toBe(false);
     // ₱1,100 less the ₱2,000 bill, with the ₱900 pautang still counted: nothing left to cover.
@@ -150,7 +201,13 @@ describe("bills by payday", () => {
     expect(paidInAdvance({ ...bill, transactionId: "t", paidOn: "2026-11-09" })).toBe(true);
     expect(paidInAdvance({ ...bill, transactionId: "t", paidOn: "2026-12-05" })).toBe(false);
     expect(paidInAdvance({ ...bill, transactionId: null, paidOn: null })).toBe(false);
-    expect(paidInAdvance({ ...item("income", "2026-12-05", 500, "in"), transactionId: "t", paidOn: "2026-11-09" })).toBe(false);
+    expect(
+      paidInAdvance({
+        ...item("income", "2026-12-05", 500, "in"),
+        transactionId: "t",
+        paidOn: "2026-11-09",
+      }),
+    ).toBe(false);
   });
 });
 

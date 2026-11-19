@@ -58,7 +58,7 @@ export function buildPaymentPlan({
   const segments: PlanSegment[] = [];
   let balance = start;
   let short = false;
-  for (let s = 0; s < days; ) {
+  for (let s = 0; s < days;) {
     let cum = 0;
     let best = Infinity;
     let end = s;
@@ -82,7 +82,9 @@ export function buildPaymentPlan({
 
   const balances = endOfDay(start, change, segments, today, days);
   const firstEnd = daysBetween(today, segments[0].until);
-  const lowest = balances.slice(0, firstEnd).reduce((low, d) => (d.balance < low.balance ? d : low), balances[0]);
+  const lowest = balances
+    .slice(0, firstEnd)
+    .reduce((low, d) => (d.balance < low.balance ? d : low), balances[0]);
   return {
     segments,
     perDay: segments[0].perDay,
@@ -105,7 +107,13 @@ function dailyChanges(items: ForecastItem[], today: string, days: number): numbe
   return change;
 }
 
-function endOfDay(start: number, change: number[], segments: PlanSegment[], today: string, days: number): DayBalance[] {
+function endOfDay(
+  start: number,
+  change: number[],
+  segments: PlanSegment[],
+  today: string,
+  days: number,
+): DayBalance[] {
   const out: DayBalance[] = [];
   let balance = start;
   for (let d = 0; d < days; d++) {
@@ -123,7 +131,8 @@ function endOfDay(start: number, change: number[], segments: PlanSegment[], toda
  * safe now (or already due); its own due date when no earlier day is.
  */
 export function earliestToPay(item: ForecastItem, plan: PaymentPlan, today: string): string {
-  if (item.flow !== "out" || item.amount === null || item.transactionId || item.dueOn <= today) return today;
+  if (item.flow !== "out" || item.amount === null || item.transactionId || item.dueOn <= today)
+    return today;
   const due = daysBetween(today, item.dueOn);
   let low = Infinity;
   let earliest = item.dueOn;
@@ -146,14 +155,27 @@ export type PlanRow = { item: ForecastItem; date: string; balanceAfter: number }
  * day's spending comes off at the end of the day, so the last row of a day
  * is the day's balance before spending. Paydays with no amount stay in, at 0.
  */
-export function planRows(plan: PaymentPlan, start: number, items: ForecastItem[], today: string): PlanRow[] {
+export function planRows(
+  plan: PaymentPlan,
+  start: number,
+  items: ForecastItem[],
+  today: string,
+): PlanRow[] {
   const index = new Map(plan.days.map((d, i) => [d.date, i]));
   const rows: PlanRow[] = [];
   let date = "";
   let running = start;
   const events = items
-    .map((item) => ({ item, date: item.dueOn < today ? today : item.dueOn, change: itemEffect(item) }))
-    .filter((e) => index.has(e.date) && (e.change !== 0 || (e.item.kind === "payday" && e.item.amount === null)))
+    .map((item) => ({
+      item,
+      date: item.dueOn < today ? today : item.dueOn,
+      change: itemEffect(item),
+    }))
+    .filter(
+      (e) =>
+        index.has(e.date) &&
+        (e.change !== 0 || (e.item.kind === "payday" && e.item.amount === null)),
+    )
     .sort((a, b) => a.date.localeCompare(b.date));
   for (const e of events) {
     if (e.date !== date) {
@@ -191,9 +213,7 @@ export function tomorrowsAmount({
   cashSpentToday: number;
   days?: number;
 }): number {
-  const todays = items
-    .filter((i) => i.dueOn <= today)
-    .reduce((sum, i) => sum + itemEffect(i), 0);
+  const todays = items.filter((i) => i.dueOn <= today).reduce((sum, i) => sum + itemEffect(i), 0);
   return buildPaymentPlan({
     start: roundCents(start + todays - cashSpentToday),
     items: items.filter((i) => i.dueOn > today),
@@ -223,7 +243,11 @@ export type CapLine = {
 export type BillCycle = { lineId: string; due: string; from: string; until: string; days: number };
 
 /** Each bill a line has from the one today's buys land on, while it's due within `days`. */
-export function billCycles(line: Pick<CapLine, "id" | "dueDay" | "cutoffDay">, today: string, days = PLAN_DAYS): BillCycle[] {
+export function billCycles(
+  line: Pick<CapLine, "id" | "dueDay" | "cutoffDay">,
+  today: string,
+  days = PLAN_DAYS,
+): BillCycle[] {
   const end = addDays(today, days);
   const byDue = new Map<string, BillCycle>();
   // A cycle is a month at most, so 40 days back finds the start of today's.
@@ -360,7 +384,9 @@ export function planToday({
   const { plan, caps, held, perDay } = cappedPlan({ start, items, today, lines });
   const left = roundCents(plan.perDay - cash);
   const tomorrow =
-    -left > plan.cushion ? tomorrowsAmount({ start, items: [...items, ...held], today, cashSpentToday: cash }) : null;
+    -left > plan.cushion
+      ? tomorrowsAmount({ start, items: [...items, ...held], today, cashSpentToday: cash })
+      : null;
   return { plan, start, cash, left, tomorrow, caps, capPerDay: perDay, held };
 }
 
@@ -370,7 +396,10 @@ export function isBnplBill(item: ForecastItem, creditLineIds: Set<string>): bool
 }
 
 /** Days with something to pay or receive, with the gaps between them long enough to breathe. */
-export function breathers(dates: string[], today: string): { after: string | null; from: string; until: string; days: number }[] {
+export function breathers(
+  dates: string[],
+  today: string,
+): { after: string | null; from: string; until: string; days: number }[] {
   const sorted = [...new Set(dates)].sort();
   const out: { after: string | null; from: string; until: string; days: number }[] = [];
   let prev: string | null = null;

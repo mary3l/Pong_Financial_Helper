@@ -8,7 +8,10 @@ import { createClient } from "@/lib/supabase/server";
  * breaks Home: before step 20 is run the columns are missing, and any error
  * is ignored.
  */
-export async function saveWidgetSnapshot(sts: { perDay: number; until: string }, today: string): Promise<void> {
+export async function saveWidgetSnapshot(
+  sts: { perDay: number; until: string },
+  today: string,
+): Promise<void> {
   try {
     const supabase = await createClient();
     const { data } = await supabase.auth.getClaims();

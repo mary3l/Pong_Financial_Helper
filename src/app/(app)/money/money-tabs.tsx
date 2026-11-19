@@ -15,7 +15,9 @@ export function MoneyTabs({ current }: { current: "wallets" | "savings" | "peopl
           href={t.href}
           aria-current={current === t.key ? "page" : undefined}
           className={`-mb-0.5 shrink-0 border-b-[3px] py-2 ${
-            current === t.key ? "border-sea font-extrabold" : "border-transparent font-bold text-muted hover:text-ink"
+            current === t.key
+              ? "border-sea font-extrabold"
+              : "border-transparent font-bold text-muted hover:text-ink"
           }`}
         >
           {t.label}

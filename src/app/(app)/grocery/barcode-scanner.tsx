@@ -44,12 +44,20 @@ async function zxingDecoder(): Promise<Decode> {
   const { decodeLuminance, luminance } = await import("@/lib/barcode-decode");
   return async (frame) => {
     const { width, height } = frame;
-    const rgba = frame.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, width, height).data;
+    const rgba = frame
+      .getContext("2d", { willReadFrequently: true })!
+      .getImageData(0, 0, width, height).data;
     return decodeLuminance(luminance(rgba, width, height), width, height);
   };
 }
 
-export function BarcodeScanner({ onDetected, onClose }: { onDetected: (code: string) => void; onClose: () => void }) {
+export function BarcodeScanner({
+  onDetected,
+  onClose,
+}: {
+  onDetected: (code: string) => void;
+  onClose: () => void;
+}) {
   const video = useRef<HTMLVideoElement>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [slow, setSlow] = useState(false);
@@ -66,7 +74,11 @@ export function BarcodeScanner({ onDetected, onClose }: { onDetected: (code: str
 
     async function start() {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
         audio: false,
       });
       if (stopped) {
@@ -76,7 +88,9 @@ export function BarcodeScanner({ onDetected, onClose }: { onDetected: (code: str
       const [track] = stream.getVideoTracks();
       const caps = track.getCapabilities?.() as { focusMode?: string[] } | undefined;
       if (caps?.focusMode?.includes("continuous")) {
-        track.applyConstraints({ advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet] }).catch(() => {});
+        track
+          .applyConstraints({ advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet] })
+          .catch(() => {});
       }
       el.srcObject = stream;
       await el.play();
@@ -85,7 +99,13 @@ export function BarcodeScanner({ onDetected, onClose }: { onDetected: (code: str
       async function tick() {
         if (stopped) return;
         if (el.readyState >= 2 && el.videoWidth) {
-          const { source, outW, outH } = scanStrip(el.videoWidth, el.videoHeight, el.clientWidth, el.clientHeight, STRIP_H);
+          const { source, outW, outH } = scanStrip(
+            el.videoWidth,
+            el.videoHeight,
+            el.clientWidth,
+            el.clientHeight,
+            STRIP_H,
+          );
           if (canvas.width !== outW || canvas.height !== outH) {
             canvas.width = outW;
             canvas.height = outH;
@@ -123,9 +143,18 @@ export function BarcodeScanner({ onDetected, onClose }: { onDetected: (code: str
   return (
     <div className="relative overflow-hidden rounded-[20px] bg-scrim">
       <video ref={video} muted playsInline className="aspect-[4/3] w-full object-cover" />
-      <div aria-hidden="true" className="pointer-events-none absolute inset-x-10 top-1/2 h-24 -translate-y-1/2 rounded-2xl border-4 border-sun" />
-      <p role="status" className="absolute inset-x-0 bottom-0 bg-scrim/80 px-4 py-2 text-center text-sm font-bold text-white">
-        {problem ?? (slow ? "Still looking. Fill the box with the barcode and hold still." : "Point at the barcode")}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-10 top-1/2 h-24 -translate-y-1/2 rounded-2xl border-4 border-sun"
+      />
+      <p
+        role="status"
+        className="absolute inset-x-0 bottom-0 bg-scrim/80 px-4 py-2 text-center text-sm font-bold text-white"
+      >
+        {problem ??
+          (slow
+            ? "Still looking. Fill the box with the barcode and hold still."
+            : "Point at the barcode")}
       </p>
       <button
         type="button"

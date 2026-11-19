@@ -108,8 +108,15 @@ export function estimateMonth({
   const monthOut = addDays(today, 30);
   const next = items.filter((i) => i.dueOn >= today && i.dueOn < monthOut && i.amount !== null);
   const sum = (list: ForecastItem[]) => list.reduce((total, i) => total + i.amount!, 0);
-  const income = sum(next.filter((i) => i.kind === "payday" || i.kind === "income" || (i.kind === "planned" && i.flow === "in")));
-  const bills = sum(next.filter((i) => i.kind === "bill" || (i.kind === "planned" && i.flow === "out")));
+  const income = sum(
+    next.filter(
+      (i) =>
+        i.kind === "payday" || i.kind === "income" || (i.kind === "planned" && i.flow === "in"),
+    ),
+  );
+  const bills = sum(
+    next.filter((i) => i.kind === "bill" || (i.kind === "planned" && i.flow === "out")),
+  );
   return {
     income: roundCents(income),
     spending: roundCents(bills + (dayToDay / daysLogged) * 30),
@@ -187,15 +194,36 @@ export function bnplCap({
       .reduce((sum, i) => sum + (i.amount ?? 0), 0),
   );
   const estimated = Boolean(history.estimated);
-  const base = { income, estimated, spending, surplus, months, byIncome, bySurplus, ceiling, debtPayments, used };
-  const paused = (reason: string): BnplCap => ({ ...base, status: "paused", reason, cap: 0, left: 0 });
+  const base = {
+    income,
+    estimated,
+    spending,
+    surplus,
+    months,
+    byIncome,
+    bySurplus,
+    ceiling,
+    debtPayments,
+    used,
+  };
+  const paused = (reason: string): BnplCap => ({
+    ...base,
+    status: "paused",
+    reason,
+    cap: 0,
+    left: 0,
+  });
 
   // These two don't need any history: they pause BNPL from day one.
-  const late = items.find((i) => (i.kind === "bill" || i.kind === "installment") && isOwed(i) && i.dueOn < today);
+  const late = items.find(
+    (i) => (i.kind === "bill" || i.kind === "installment") && isOwed(i) && i.dueOn < today,
+  );
   if (late) return paused(`${late.name} is late. Pay it first, then BNPL opens again.`);
   const low = project(start, items, today, 30).lowest;
   if (low.balance < 0) {
-    return paused(`Your forecast dips below ₱0 on ${formatShortDay(low.date, today)}, so no new BNPL for now.`);
+    return paused(
+      `Your forecast dips below ₱0 on ${formatShortDay(low.date, today)}, so no new BNPL for now.`,
+    );
   }
   if (!months || income <= 0) {
     return {
@@ -206,7 +234,10 @@ export function bnplCap({
       left: null,
     };
   }
-  if (surplus <= 0) return paused("You've been spending all you take home, so there's nothing to pay BNPL back with.");
+  if (surplus <= 0)
+    return paused(
+      "You've been spending all you take home, so there's nothing to pay BNPL back with.",
+    );
 
   const cap = floorTo100(ceiling - debtPayments);
   if (cap === 0) {
@@ -218,7 +249,10 @@ export function bnplCap({
   return {
     ...base,
     status: "set",
-    reason: left > 0 ? `Up to ${formatPeso(cap)} of new BNPL this month.` : "You've reached this month's cap.",
+    reason:
+      left > 0
+        ? `Up to ${formatPeso(cap)} of new BNPL this month.`
+        : "You've reached this month's cap.",
     cap,
     left,
   };
@@ -304,10 +338,27 @@ export function affordWithCredit({
       const payment = splitAmount(purchase.amount, purchase.months)[0];
       const fits = purchase.amount <= room;
       const verdict = fits
-        ? affordVerdict({ start, items, purchase: { ...purchase, first: firstDue }, today, nextPayday: null })
+        ? affordVerdict({
+            start,
+            items,
+            purchase: { ...purchase, first: firstDue },
+            today,
+            nextPayday: null,
+          })
         : null;
       const cycle = payday ? payCycle(payday, firstDue) : null;
       const perDay = cycle ? Math.ceil(payment / daysBetween(cycle.from, cycle.until)) : null;
-      return { line, room, capped, fits, firstDue, payment, months: purchase.months, verdict, perDay, cycle };
+      return {
+        line,
+        room,
+        capped,
+        fits,
+        firstDue,
+        payment,
+        months: purchase.months,
+        verdict,
+        perDay,
+        cycle,
+      };
     });
 }

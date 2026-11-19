@@ -12,7 +12,12 @@ export const metadata = { title: "Lend / borrow · Pong Money" };
 export default function LendPage({ searchParams }: PageProps<"/money/people/new">) {
   return (
     <div className="flex flex-col gap-4 lg:max-w-xl">
-      <Link href="/money/people" className="flex h-10 w-fit items-center font-extrabold text-sea-dark">‹ Utang &amp; pautang</Link>
+      <Link
+        href="/money/people"
+        className="flex h-10 w-fit items-center font-extrabold text-sea-dark"
+      >
+        ‹ Utang &amp; pautang
+      </Link>
       <h1 className="font-display text-3xl font-semibold">Utang / Pautang</h1>
       <Suspense fallback={<div className="h-[560px] rounded-[20px] bg-line-soft" />}>
         <Lend searchParams={searchParams} />
@@ -38,7 +43,12 @@ async function Lend({ searchParams }: Pick<PageProps<"/money/people/new">, "sear
         .flatMap((p) => p.payments)
         .filter((p) => !p.transactionId)
         .reduce((sum, p) => sum + p.principalPart, 0);
-      return { id: a.id, name: a.name, dueDay: a.dueDay, unscheduled: Math.max(0, roundCents(-a.balance - planned)) };
+      return {
+        id: a.id,
+        name: a.name,
+        dueDay: a.dueDay,
+        unscheduled: Math.max(0, roundCents(-a.balance - planned)),
+      };
     });
   return (
     <LendForm

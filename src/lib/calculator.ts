@@ -3,8 +3,21 @@
 
 export const OPERATORS = ["+", "−", "×", "÷"] as const;
 export type Key =
-  | "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
-  | "." | "C" | "⌫" | "=" | (typeof OPERATORS)[number];
+  | "0"
+  | "1"
+  | "2"
+  | "3"
+  | "4"
+  | "5"
+  | "6"
+  | "7"
+  | "8"
+  | "9"
+  | "."
+  | "C"
+  | "⌫"
+  | "="
+  | (typeof OPERATORS)[number];
 
 const isOperator = (c: string) => (OPERATORS as readonly string[]).includes(c);
 

@@ -79,7 +79,9 @@ type Valued = { balance: number; currency?: Currency; fxRate?: number | null };
 
 /** A wallet's balance in pesos: dollars at the rate set on it. */
 export function pesoValue(account: Valued): number {
-  return account.currency === "USD" ? roundCents(account.balance * (account.fxRate ?? 0)) : account.balance;
+  return account.currency === "USD"
+    ? roundCents(account.balance * (account.fxRate ?? 0))
+    : account.balance;
 }
 
 /**
@@ -87,7 +89,12 @@ export function pesoValue(account: Valued): number {
  * for it: balance × (rate now − rate you got). Below 0 when the peso got
  * stronger. Interest isn't in it, only the rate's move.
  */
-export function fxGain(account: { balance: number; currency?: Currency; fxRate?: number | null; boughtAt?: number | null }): number {
+export function fxGain(account: {
+  balance: number;
+  currency?: Currency;
+  fxRate?: number | null;
+  boughtAt?: number | null;
+}): number {
   if (account.currency !== "USD" || !account.fxRate || !account.boughtAt) return 0;
   return roundCents(account.balance * (account.fxRate - account.boughtAt));
 }
@@ -127,7 +134,12 @@ export function dailyInterest(balance: number, ratePerYear: number, tax = INTERE
 }
 
 /** Interest after tax over `days` days on a steady balance. */
-export function interestFor(balance: number, ratePerYear: number, days: number, tax = INTEREST_TAX): number {
+export function interestFor(
+  balance: number,
+  ratePerYear: number,
+  days: number,
+  tax = INTEREST_TAX,
+): number {
   return roundCents(dailyInterest(balance, ratePerYear, tax) * Math.max(0, days));
 }
 
@@ -209,25 +221,49 @@ export function interestEstimate(
 
   if (wallet.interestPayout === "daily") {
     const days = Math.max(0, daysBetween(start, today));
-    return { perDay, since: start, days, amount: interestFor(balance, rate, days, tax), credited: null, nextPayout: null };
+    return {
+      perDay,
+      since: start,
+      days,
+      amount: interestFor(balance, rate, days, tax),
+      credited: null,
+      nextPayout: null,
+    };
   }
 
   if (wallet.interestPayout === "maturity") {
     const matures = wallet.maturesOn ?? today;
     if (today < matures) {
       const days = Math.max(0, daysBetween(start, today));
-      return { perDay, since: start, days, amount: interestFor(balance, rate, days, tax), credited: null, nextPayout: matures };
+      return {
+        perDay,
+        since: start,
+        days,
+        amount: interestFor(balance, rate, days, tax),
+        credited: null,
+        nextPayout: matures,
+      };
     }
     // Matured: it stops earning, and what it earned is credited that day.
     const credited =
-      start < matures ? { on: matures, from: start, amount: interestFor(balance, rate, daysBetween(start, matures), tax) } : null;
+      start < matures
+        ? {
+            on: matures,
+            from: start,
+            amount: interestFor(balance, rate, daysBetween(start, matures), tax),
+          }
+        : null;
     return { perDay: 0, since: matures, days: 0, amount: 0, credited, nextPayout: null };
   }
 
   const payday = firstOfMonth(today);
   const credited =
     start < payday
-      ? { on: payday, from: start, amount: interestFor(balance, rate, daysBetween(start, payday), tax) }
+      ? {
+          on: payday,
+          from: start,
+          amount: interestFor(balance, rate, daysBetween(start, payday), tax),
+        }
       : null;
   const since = credited ? payday : start;
   const days = Math.max(0, daysBetween(since, today));
@@ -301,7 +337,11 @@ export function formatPeso(value: number): string {
   return rounded < 0 ? `−${text}` : text;
 }
 
-const USD_WHOLE = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+const USD_WHOLE = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 0,
+});
 const USD_CENTS = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
@@ -313,7 +353,9 @@ const USD_CENTS = new Intl.NumberFormat("en-US", {
 export function formatMoney(value: number, currency: Currency = "PHP"): string {
   if (currency !== "USD") return formatPeso(value);
   const rounded = roundCents(value);
-  const text = Number.isInteger(rounded) ? USD_WHOLE.format(Math.abs(rounded)) : USD_CENTS.format(Math.abs(rounded));
+  const text = Number.isInteger(rounded)
+    ? USD_WHOLE.format(Math.abs(rounded))
+    : USD_CENTS.format(Math.abs(rounded));
   return rounded < 0 ? `−${text}` : text;
 }
 
@@ -355,10 +397,14 @@ export function inPesos<T extends { type: TransactionType; amount: number; accou
   txns: T[],
   accounts: { id: string; currency?: Currency; fxRate?: number | null }[],
 ): T[] {
-  const rates = new Map(accounts.filter((a) => a.currency === "USD").map((a) => [a.id, a.fxRate ?? 0]));
+  const rates = new Map(
+    accounts.filter((a) => a.currency === "USD").map((a) => [a.id, a.fxRate ?? 0]),
+  );
   if (!rates.size) return txns;
   return txns.map((t) =>
-    t.type !== "transfer" && rates.has(t.accountId) ? { ...t, amount: roundCents(t.amount * rates.get(t.accountId)!) } : t,
+    t.type !== "transfer" && rates.has(t.accountId)
+      ? { ...t, amount: roundCents(t.amount * rates.get(t.accountId)!) }
+      : t,
   );
 }
 
@@ -366,7 +412,9 @@ export function inPesos<T extends { type: TransactionType; amount: number; accou
  * Money in and out for a list of transactions. Transfers and balance
  * adjustments (category "adjustment") count as neither.
  */
-export function cashflow(txns: { type: TransactionType; amount: number; category?: string | null }[]) {
+export function cashflow(
+  txns: { type: TransactionType; amount: number; category?: string | null }[],
+) {
   let moneyIn = 0;
   let moneyOut = 0;
   for (const t of txns) {
@@ -386,7 +434,13 @@ export function cashflow(txns: { type: TransactionType; amount: number; category
  * ₱500 from GCash to MariBank is ₱500 out of GCash and ₱500 into MariBank.
  */
 export function walletFlow(
-  txns: { type: TransactionType; amount: number; accountId: string; toAccountId: string | null; toAmount?: number | null }[],
+  txns: {
+    type: TransactionType;
+    amount: number;
+    accountId: string;
+    toAccountId: string | null;
+    toAmount?: number | null;
+  }[],
   accountId: string,
 ) {
   let moneyIn = 0;

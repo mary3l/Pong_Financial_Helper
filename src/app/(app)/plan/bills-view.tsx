@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useSyncExternalStore, type ReactNode } from "react";
-import { BILLS_VIEW_KEY, formatPesoShort, parseBillsView, type BillsView, type CalendarDay } from "@/lib/bill-calendar";
+import {
+  BILLS_VIEW_KEY,
+  formatPesoShort,
+  parseBillsView,
+  type BillsView,
+  type CalendarDay,
+} from "@/lib/bill-calendar";
 import { formatLongDay } from "@/lib/dates";
 import { formatPeso } from "@/lib/money";
 import { SHORT_WEEKDAYS } from "@/lib/schedule";
@@ -46,14 +52,24 @@ const OPTIONS: { value: BillsView; label: string }[] = [
  * The section around the payday cards, with the List / Calendar switch by
  * its heading. Inside, `group-data-[view=calendar]/bills:` shows the calendar.
  */
-export function BillsViewSection({ heading, children }: { heading: ReactNode; children: ReactNode }) {
+export function BillsViewSection({
+  heading,
+  children,
+}: {
+  heading: ReactNode;
+  children: ReactNode;
+}) {
   // List on the server and during hydration, so nothing mismatches.
   const view = useSyncExternalStore(subscribe, read, () => "list" as const);
   return (
     <div data-view={view} className="group/bills flex flex-col gap-2.5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">{heading}</div>
-        <div role="group" aria-label="Show bills as" className="flex shrink-0 gap-1 rounded-full bg-card p-1">
+        <div
+          role="group"
+          aria-label="Show bills as"
+          className="flex shrink-0 gap-1 rounded-full bg-card p-1"
+        >
           {OPTIONS.map((o) => (
             <button
               key={o.value}
@@ -61,7 +77,9 @@ export function BillsViewSection({ heading, children }: { heading: ReactNode; ch
               aria-pressed={view === o.value}
               onClick={() => choose(o.value)}
               className={`h-9 rounded-full px-3 text-[13px] ${
-                view === o.value ? "bg-sea font-extrabold text-white" : "font-bold text-muted hover:text-ink"
+                view === o.value
+                  ? "bg-sea font-extrabold text-white"
+                  : "font-bold text-muted hover:text-ink"
               }`}
             >
               {o.label}
@@ -108,7 +126,10 @@ export function BillCalendarView({
     <div className="flex flex-col gap-2.5">
       {late}
       <div className="flex flex-col gap-1">
-        <div aria-hidden="true" className="grid grid-cols-7 gap-1 text-center text-xs font-extrabold text-muted sm:gap-1.5">
+        <div
+          aria-hidden="true"
+          className="grid grid-cols-7 gap-1 text-center text-xs font-extrabold text-muted sm:gap-1.5"
+        >
           {SHORT_WEEKDAYS.map((_, i) => SHORT_WEEKDAYS[(weekStart + i) % 7]).map((w) => (
             <span key={w}>{w}</span>
           ))}
@@ -122,16 +143,27 @@ export function BillCalendarView({
             const share = d.payShare;
             const percent = share === null ? null : Math.round(share * 100);
             // Pay is green, bills are yellow; a payday with bills is split by how big each is.
-            const tone = share === null ? "bg-mint text-muted" : share === 1 ? "bg-sea-tint" : share === 0 ? "bg-sun-tint" : "";
+            const tone =
+              share === null
+                ? "bg-mint text-muted"
+                : share === 1
+                  ? "bg-sea-tint"
+                  : share === 0
+                    ? "bg-sun-tint"
+                    : "";
             const split =
               share !== null && share > 0 && share < 1
-                ? { background: `linear-gradient(to right, var(--color-sea-tint) ${percent}%, var(--color-sun-tint) ${percent}%)` }
+                ? {
+                    background: `linear-gradient(to right, var(--color-sea-tint) ${percent}%, var(--color-sun-tint) ${percent}%)`,
+                  }
                 : undefined;
             const label = [
               formatLongDay(d.date),
               d.today && "today",
               d.payday && (pay === null ? "payday" : `payday, ${formatPeso(pay)} pay`),
-              d.count ? `${d.count} ${d.count === 1 ? "bill" : "bills"}, ${formatPeso(d.total)}` : "nothing due",
+              d.count
+                ? `${d.count} ${d.count === 1 ? "bill" : "bills"}, ${formatPeso(d.total)}`
+                : "nothing due",
               d.payday && d.count > 0 && `${percent}% pay, ${100 - percent!}% bills`,
             ]
               .filter(Boolean)
@@ -140,12 +172,22 @@ export function BillCalendarView({
               <>
                 <span className="flex items-baseline gap-1 leading-none">
                   <span className="text-sm font-extrabold sm:text-[15px]">{d.dayOfMonth}</span>
-                  {d.showMonth && <span className="text-[10px] font-extrabold uppercase text-muted">{MONTH.format(new Date(d.date))}</span>}
+                  {d.showMonth && (
+                    <span className="text-[10px] font-extrabold uppercase text-muted">
+                      {MONTH.format(new Date(d.date))}
+                    </span>
+                  )}
                 </span>
-                {d.payday && <span className="text-[11px] font-extrabold leading-tight text-sea-dark">Pay</span>}
+                {d.payday && (
+                  <span className="text-[11px] font-extrabold leading-tight text-sea-dark">
+                    Pay
+                  </span>
+                )}
                 {d.count > 0 && (
                   <>
-                    <span className="text-[11px] font-extrabold leading-tight sm:text-xs">{formatPesoShort(d.total)}</span>
+                    <span className="text-[11px] font-extrabold leading-tight sm:text-xs">
+                      {formatPesoShort(d.total)}
+                    </span>
                     <span className="hidden text-[11px] leading-tight text-muted sm:block">
                       {d.count} {d.count === 1 ? "bill" : "bills"}
                     </span>
@@ -155,7 +197,9 @@ export function BillCalendarView({
                   <span
                     aria-hidden="true"
                     className="mt-auto h-1 w-full rounded-full"
-                    style={{ background: `linear-gradient(to right, var(--color-sea) ${percent}%, var(--color-sun) ${percent}%)` }}
+                    style={{
+                      background: `linear-gradient(to right, var(--color-sea) ${percent}%, var(--color-sun) ${percent}%)`,
+                    }}
                   />
                 )}
               </>
@@ -185,17 +229,35 @@ export function BillCalendarView({
             );
           })}
         </ul>
-        <div aria-hidden="true" className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs font-bold text-muted">
-          <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-sea" />Pay</span>
-          <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-sun" />Bills due</span>
+        <div
+          aria-hidden="true"
+          className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs font-bold text-muted"
+        >
+          <span className="flex items-center gap-1.5">
+            <span className="h-3 w-3 rounded bg-sea" />
+            Pay
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-3 w-3 rounded bg-sun" />
+            Bills due
+          </span>
           {days.some((d) => d.payday && d.count > 0) && (
             <span className="flex items-center gap-1.5">
-              <span className="h-3 w-6 rounded" style={{ background: "linear-gradient(to right, var(--color-sea) 50%, var(--color-sun) 50%)" }} />
+              <span
+                className="h-3 w-6 rounded"
+                style={{
+                  background:
+                    "linear-gradient(to right, var(--color-sea) 50%, var(--color-sun) 50%)",
+                }}
+              />
               Both, by how big each is
             </span>
           )}
           {days.some((d) => d.today) && (
-            <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border-2 border-dashed border-ink" />Today</span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded border-2 border-dashed border-ink" />
+              Today
+            </span>
           )}
         </div>
       </div>
@@ -211,8 +273,9 @@ export function BillCalendarView({
             </h4>
             {day.payday && pay !== null && day.payShare !== null && (
               <p className="text-[13px] text-muted">
-                <strong className="text-sea-dark">{formatPeso(pay)} pay</strong> comes in the same day:{" "}
-                {Math.round(day.payShare * 100)}% pay, {100 - Math.round(day.payShare * 100)}% bills.
+                <strong className="text-sea-dark">{formatPeso(pay)} pay</strong> comes in the same
+                day: {Math.round(day.payShare * 100)}% pay, {100 - Math.round(day.payShare * 100)}%
+                bills.
               </p>
             )}
             {details[day.date]}

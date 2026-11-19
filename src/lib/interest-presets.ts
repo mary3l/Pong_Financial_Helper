@@ -77,7 +77,8 @@ export const INTEREST_PRESETS: readonly InterestPreset[] = [
       "Held in US dollars for 3 or 6 months, from $1. Interest builds up daily and is added when it " +
       "matures, after a 15% tax (not 20%). Taking it out early loses the interest. Type the rate and " +
       "maturity date from the app.",
-    match: /go\s*tyme.*(usd|dollar|\$|time\s*deposit|\btd\b)|(usd|dollar|\$|time\s*deposit|\btd\b).*go\s*tyme/i,
+    match:
+      /go\s*tyme.*(usd|dollar|\$|time\s*deposit|\btd\b)|(usd|dollar|\$|time\s*deposit|\btd\b).*go\s*tyme/i,
   },
   {
     key: "gotyme",
@@ -86,7 +87,8 @@ export const INTEREST_PRESETS: readonly InterestPreset[] = [
     payout: "monthly",
     type: "bank",
     savings: true,
-    about: "3% a year, worked out daily and added on the 1st after tax. Add each GoalSave (up to 5) as its own wallet.",
+    about:
+      "3% a year, worked out daily and added on the 1st after tax. Add each GoalSave (up to 5) as its own wallet.",
     match: /go\s*tyme/i,
   },
 ];
@@ -99,7 +101,13 @@ export function interestPresetFor(walletName: string): InterestPreset | null {
 /** Whether a wallet is already set up the way its preset says. */
 export function matchesPreset(
   preset: InterestPreset,
-  wallet: { type: WalletType; purpose: string; rate: string; payout: InterestPayout; currency?: Currency },
+  wallet: {
+    type: WalletType;
+    purpose: string;
+    rate: string;
+    payout: InterestPayout;
+    currency?: Currency;
+  },
 ): boolean {
   return (
     wallet.type === preset.type &&

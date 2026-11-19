@@ -15,7 +15,10 @@ export type CartItem = {
 };
 
 /** Barcode → what you called it and what it cost, per store. */
-export type PriceMemory = Record<string, { name: string; prices: Record<string, number>; last: number }>;
+export type PriceMemory = Record<
+  string,
+  { name: string; prices: Record<string, number>; last: number }
+>;
 
 export function cartTotal(items: CartItem[]): number {
   return roundCents(items.reduce((sum, i) => sum + i.price * i.qty, 0));
@@ -41,10 +44,20 @@ export function budgetStatus(total: number, budget: number | null, warnAt = 0.8)
   const ratio = total / budget;
   const pct = Math.min(100, Math.round(ratio * 100));
   if (total > budget) {
-    return { tone: "over", mood: "shocked", message: `Over by ${formatPeso(total - budget)}. Remove something?`, pct };
+    return {
+      tone: "over",
+      mood: "shocked",
+      message: `Over by ${formatPeso(total - budget)}. Remove something?`,
+      pct,
+    };
   }
   if (ratio >= warnAt) {
-    return { tone: "careful", mood: "worried", message: `Careful: only ${formatPeso(budget - total)} left (${pct}%)`, pct };
+    return {
+      tone: "careful",
+      mood: "worried",
+      message: `Careful: only ${formatPeso(budget - total)} left (${pct}%)`,
+      pct,
+    };
   }
   return { tone: "ok", mood: "happy", message: `${formatPeso(budget - total)} left`, pct };
 }
@@ -53,14 +66,21 @@ export function budgetStatus(total: number, budget: number | null, warnAt = 0.8)
 export function scanNote(before: number, price: number, budget: number | null): string {
   const after = before + price;
   if (!budget) return `${formatPeso(after)} so far`;
-  if (after > budget && before <= budget) return `this item puts you over by ${formatPeso(after - budget)}`;
+  if (after > budget && before <= budget)
+    return `this item puts you over by ${formatPeso(after - budget)}`;
   if (after > budget) return `now over by ${formatPeso(after - budget)}`;
   return `${formatPeso(budget - after)} left`;
 }
 
 /** Adds one of an item, stacking it on a matching line. */
-export function addToCart(items: CartItem[], item: Omit<CartItem, "key" | "qty">, key: string): CartItem[] {
-  const i = items.findIndex((x) => x.name === item.name && x.price === item.price && x.barcode === item.barcode);
+export function addToCart(
+  items: CartItem[],
+  item: Omit<CartItem, "key" | "qty">,
+  key: string,
+): CartItem[] {
+  const i = items.findIndex(
+    (x) => x.name === item.name && x.price === item.price && x.barcode === item.barcode,
+  );
   if (i >= 0) return items.map((x, j) => (j === i ? { ...x, qty: x.qty + 1 } : x));
   return [{ ...item, key, qty: 1 }, ...items];
 }

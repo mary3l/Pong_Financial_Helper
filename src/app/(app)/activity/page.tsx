@@ -62,7 +62,10 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
 
   return (
     <>
-      <nav aria-label="Kinsenas" className="flex items-center justify-between rounded-[20px] bg-card px-2 py-2">
+      <nav
+        aria-label="Kinsenas"
+        className="flex items-center justify-between rounded-[20px] bg-card px-2 py-2"
+      >
         <Link
           href={href(previousPeriod(period).start)}
           aria-label="Previous kinsenas"
@@ -72,7 +75,9 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
         </Link>
         <div className="flex flex-col items-center">
           <span className="font-display text-lg font-semibold">{formatPeriod(period, today)}</span>
-          <span className="text-xs font-bold text-muted">{isCurrent ? "This kinsenas" : "Kinsenas"}</span>
+          <span className="text-xs font-bold text-muted">
+            {isCurrent ? "This kinsenas" : "Kinsenas"}
+          </span>
         </div>
         {next.start <= today ? (
           <Link
@@ -99,11 +104,15 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
           </div>
         ))}
       </dl>
-      <p className="-mt-2 text-xs text-muted">Transfers between your wallets aren&apos;t counted as in or out.</p>
+      <p className="-mt-2 text-xs text-muted">
+        Transfers between your wallets aren&apos;t counted as in or out.
+      </p>
 
       <Form action="/activity" className="flex gap-2" role="search">
         <input type="hidden" name="p" value={period.start} />
-        <label htmlFor="activity-search" className="sr-only">Search notes and categories</label>
+        <label htmlFor="activity-search" className="sr-only">
+          Search notes and categories
+        </label>
         <input
           id="activity-search"
           name="q"
@@ -111,7 +120,10 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
           placeholder="Search notes, categories"
           className="h-12 min-w-0 flex-1 rounded-[14px] border-2 border-line bg-card px-4 text-base outline-none focus:border-sea"
         />
-        <button type="submit" className="h-12 rounded-[14px] bg-card px-4 font-extrabold text-ink hover:bg-sea-tint">
+        <button
+          type="submit"
+          className="h-12 rounded-[14px] bg-card px-4 font-extrabold text-ink hover:bg-sea-tint"
+        >
           Search
         </button>
       </Form>
@@ -119,9 +131,18 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
       {transactions.length ? (
         <>
           <div className="rounded-[20px] bg-card px-4 pb-2">
-            <TransactionList transactions={transactions} items={shown.items} accounts={accounts} today={today} />
+            <TransactionList
+              transactions={transactions}
+              items={shown.items}
+              accounts={accounts}
+              today={today}
+            />
           </div>
-          <ListPages page={shown.page} pages={shown.pages} href={(page) => href(period.start, page)} />
+          <ListPages
+            page={shown.page}
+            pages={shown.pages}
+            href={(page) => href(period.start, page)}
+          />
         </>
       ) : (
         <div className="flex flex-col items-center gap-3 rounded-3xl bg-card px-6 py-10 text-center">
@@ -134,7 +155,10 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
                 : "Nothing logged in this kinsenas."}
           </p>
           {q && (
-            <Link href={`/activity?p=${period.start}`} className="font-extrabold text-sea-dark underline">
+            <Link
+              href={`/activity?p=${period.start}`}
+              className="font-extrabold text-sea-dark underline"
+            >
               Clear search
             </Link>
           )}

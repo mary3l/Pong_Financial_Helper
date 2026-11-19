@@ -33,7 +33,10 @@ export function BudgetManager({ rows, view }: { rows: BudgetRow[]; view: "kinsen
   return (
     <div className="flex flex-col gap-4">
       {edited && (
-        <FormDialog title={`${categoryInfo("expense", edited.category).label} budget`} onClose={() => setEditing(null)}>
+        <FormDialog
+          title={`${categoryInfo("expense", edited.category).label} budget`}
+          onClose={() => setEditing(null)}
+        >
           <BudgetForm row={edited} onDone={() => setEditing(null)} />
         </FormDialog>
       )}
@@ -54,7 +57,8 @@ export function BudgetManager({ rows, view }: { rows: BudgetRow[]; view: "kinsen
         <div className="flex flex-col items-center gap-3 rounded-3xl bg-card px-6 py-8 text-center">
           <Pong mood="listen" size={100} decorative />
           <p className="max-w-xs text-[15px] text-muted">
-            Set a limit per kinsenas for things like Food or Groceries, and I&apos;ll tell you when you&apos;re close.
+            Set a limit per kinsenas for things like Food or Groceries, and I&apos;ll tell you when
+            you&apos;re close.
           </p>
         </div>
       )}
@@ -73,7 +77,9 @@ export function BudgetManager({ rows, view }: { rows: BudgetRow[]; view: "kinsen
         </button>
       )}
       {view === "month" && rows.length > 0 && (
-        <p className="-mt-2 text-xs text-muted">Budgets are set per kinsenas, so a month is double.</p>
+        <p className="-mt-2 text-xs text-muted">
+          Budgets are set per kinsenas, so a month is double.
+        </p>
       )}
     </div>
   );
@@ -87,7 +93,9 @@ function BudgetLine({ row, onEdit }: { row: BudgetRow; onEdit: () => void }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-3">
-        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${info.tint}`}>
+        <span
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${info.tint}`}
+        >
           <PathIcon d={info.icon} size={19} />
         </span>
         <span className="flex min-w-0 flex-1 flex-col">
@@ -119,8 +127,12 @@ function BudgetLine({ row, onEdit }: { row: BudgetRow; onEdit: () => void }) {
         />
       </div>
       {(over || warn) && (
-        <span className={`text-[13px] font-extrabold ${over ? "text-coral-text" : "text-sun-text"}`}>
-          {over ? `Over by ${formatPeso(row.spent - row.limit)}` : `Heads up: ${Math.round(share * 100)}% used`}
+        <span
+          className={`text-[13px] font-extrabold ${over ? "text-coral-text" : "text-sun-text"}`}
+        >
+          {over
+            ? `Over by ${formatPeso(row.spent - row.limit)}`
+            : `Heads up: ${Math.round(share * 100)}% used`}
         </span>
       )}
       {row.category === "groceries" && (
@@ -182,18 +194,34 @@ function BudgetForm({
       <div className="flex flex-col gap-3 sm:flex-row">
         {!row && (
           <div className="flex flex-1 flex-col gap-1">
-            <label htmlFor="budget-category" className="text-sm font-bold">Category</label>
-            <select id="budget-category" value={category} onChange={(e) => setCategory(e.target.value)} className={FIELD_CLASS}>
+            <label htmlFor="budget-category" className="text-sm font-bold">
+              Category
+            </label>
+            <select
+              id="budget-category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className={FIELD_CLASS}
+            >
               {categories?.map((c) => (
-                <option key={c.key} value={c.key}>{c.label}</option>
+                <option key={c.key} value={c.key}>
+                  {c.label}
+                </option>
               ))}
             </select>
           </div>
         )}
         <div className="flex flex-col gap-1 sm:w-48">
-          <label htmlFor={`budget-amount-${id}`} className="text-sm font-bold">Per kinsenas</label>
+          <label htmlFor={`budget-amount-${id}`} className="text-sm font-bold">
+            Per kinsenas
+          </label>
           <div className="relative">
-            <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
+            <span
+              aria-hidden="true"
+              className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted"
+            >
+              ₱
+            </span>
             <AmountInput
               id={`budget-amount-${id}`}
               value={amount}
@@ -205,12 +233,22 @@ function BudgetForm({
           </div>
         </div>
       </div>
-      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
       <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
+        <button
+          type="submit"
+          disabled={pending}
+          className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60"
+        >
           {pending ? "Saving…" : row ? "Update budget" : "Add budget"}
         </button>
-        <button type="button" onClick={onDone} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card">
+        <button
+          type="button"
+          onClick={onDone}
+          className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card"
+        >
           Cancel
         </button>
         {row && (

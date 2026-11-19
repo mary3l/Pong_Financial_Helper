@@ -74,7 +74,9 @@ async function Budgets({ searchParams }: Pick<PageProps<"/plan/budgets">, "searc
 
       {rows.length > 0 && (
         <section className="flex flex-col gap-1.5 rounded-[28px] bg-sea p-6 text-white">
-          <h2 className="text-sm font-bold text-sea-text uppercase">{formatPeriod(period, today)}</h2>
+          <h2 className="text-sm font-bold text-sea-text uppercase">
+            {formatPeriod(period, today)}
+          </h2>
           <p className="font-display text-4xl leading-tight font-semibold">
             {left >= 0 ? `${formatPeso(left)} left` : `Over by ${formatPeso(-left)}`}
           </p>
@@ -90,7 +92,10 @@ async function Budgets({ searchParams }: Pick<PageProps<"/plan/budgets">, "searc
             aria-valuenow={Math.min(100, Math.round((used / budgeted) * 100))}
             className="mt-2 h-2.5 overflow-hidden rounded-full bg-sea-deep"
           >
-            <div className={`h-full rounded-full ${left < 0 ? "bg-coral" : "bg-sun"}`} style={{ width: `${Math.min(100, (used / budgeted) * 100)}%` }} />
+            <div
+              className={`h-full rounded-full ${left < 0 ? "bg-coral" : "bg-sun"}`}
+              style={{ width: `${Math.min(100, (used / budgeted) * 100)}%` }}
+            />
           </div>
         </section>
       )}
@@ -100,7 +105,9 @@ async function Budgets({ searchParams }: Pick<PageProps<"/plan/budgets">, "searc
       {unbudgeted.length > 0 && (
         <p className="text-sm text-muted">
           <strong className="text-ink">No budget:</strong>{" "}
-          {unbudgeted.map(([key, amount]) => `${categoryInfo("expense", key).label} ${formatPeso(amount)}`).join(" · ")}
+          {unbudgeted
+            .map(([key, amount]) => `${categoryInfo("expense", key).label} ${formatPeso(amount)}`)
+            .join(" · ")}
         </p>
       )}
     </>

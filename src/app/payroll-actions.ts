@@ -47,27 +47,39 @@ type Client = NonNullable<Awaited<ReturnType<typeof signedInClient>>>;
 
 const FAILED = { error: "Couldn't save that. Please try again." };
 const MISSING = { error: "Run step 13 in supabase/SQL_GUIDE.md first, then try again." };
-const STEP_23 = (what: string) => ({ error: `To ${what}, run step 23 in supabase/SQL_GUIDE.md first.` });
+const STEP_23 = (what: string) => ({
+  error: `To ${what}, run step 23 in supabase/SQL_GUIDE.md first.`,
+});
 
 function validateSettings(s: PayrollSettings): string | null {
-  if (s.monthlyPay != null && !(s.monthlyPay > 0 && s.monthlyPay <= MAX_AMOUNT)) return "Enter your monthly pay.";
+  if (s.monthlyPay != null && !(s.monthlyPay > 0 && s.monthlyPay <= MAX_AMOUNT))
+    return "Enter your monthly pay.";
   if (!(s.dailyRate > 0 && s.dailyRate <= MAX_AMOUNT)) return "Enter your daily rate.";
-  if (!(s.hoursPerDay > 0 && s.hoursPerDay <= 24)) return "Hours per day should be between 1 and 24.";
+  if (!(s.hoursPerDay > 0 && s.hoursPerDay <= 24))
+    return "Hours per day should be between 1 and 24.";
   if (!isTime(s.startTime)) return "Check your start time.";
-  if (!(s.overtimeRate >= 1 && s.overtimeRate <= 5)) return "Overtime rate should be between 1 and 5.";
+  if (!(s.overtimeRate >= 1 && s.overtimeRate <= 5))
+    return "Overtime rate should be between 1 and 5.";
   if (s.monthlyBase !== null && !(s.monthlyBase > 0 && s.monthlyBase <= MAX_AMOUNT)) {
     return "Check the monthly pay for contributions, or leave it blank.";
   }
-  if (s.startedOn !== null && !isValidDate(s.startedOn)) return "Check the date you started, or leave it blank.";
-  if (s.cutoffDays !== undefined && !isCutoffDays(s.cutoffDays)) return "Pick two different days, 1 to 28, for your cutoffs.";
-  if (s.cutoffWeekday !== undefined && !isCutoffWeekday(s.cutoffWeekday)) return "Pick the day your cutoff week starts.";
-  if (s.cutoffMonthDay !== undefined && !isCutoffMonthDay(s.cutoffMonthDay)) return "Pick a day, 1 to 28, for your cutoff to start.";
+  if (s.startedOn !== null && !isValidDate(s.startedOn))
+    return "Check the date you started, or leave it blank.";
+  if (s.cutoffDays !== undefined && !isCutoffDays(s.cutoffDays))
+    return "Pick two different days, 1 to 28, for your cutoffs.";
+  if (s.cutoffWeekday !== undefined && !isCutoffWeekday(s.cutoffWeekday))
+    return "Pick the day your cutoff week starts.";
+  if (s.cutoffMonthDay !== undefined && !isCutoffMonthDay(s.cutoffMonthDay))
+    return "Pick a day, 1 to 28, for your cutoff to start.";
   if (s.saturday !== undefined && !isWeekendMode(s.saturday)) return "Pick what a Saturday is.";
   if (s.sunday !== undefined && !isWeekendMode(s.sunday)) return "Pick what a Sunday is.";
   return null;
 }
 
-type SavedParts = Pick<PayrollSettings, "cutoffDays" | "cutoffWeekday" | "cutoffMonthDay" | "monthlyPay" | "saturday" | "sunday">;
+type SavedParts = Pick<
+  PayrollSettings,
+  "cutoffDays" | "cutoffWeekday" | "cutoffMonthDay" | "monthlyPay" | "saturday" | "sunday"
+>;
 
 /**
  * Your cutoff days and weekends as saved, each null (or 'off') when it's the
@@ -94,7 +106,8 @@ function partColumns(s: SavedParts) {
 }
 
 /** PostgREST says PGRST204 for a column it doesn't know, Postgres 42703. */
-const missingColumn = (error: { code?: string } | null) => error?.code === "PGRST204" || error?.code === "42703";
+const missingColumn = (error: { code?: string } | null) =>
+  error?.code === "PGRST204" || error?.code === "42703";
 
 /**
  * Writes `row` with your cutoff days, weekends and monthly pay. Before
@@ -114,25 +127,39 @@ async function writeWithCutoffDays(
   const second = await write({ ...row, ...v21, ...v22 });
   if (!missingColumn(second.error)) return second.error ? FAILED : null;
   if (v22.cutoff_weekday !== null || v22.cutoff_month_day !== null) {
-    return { error: "To pick when your cutoff starts, run step 22 in supabase/SQL_GUIDE.md first." };
+    return {
+      error: "To pick when your cutoff starts, run step 22 in supabase/SQL_GUIDE.md first.",
+    };
   }
   const third = await write({ ...row, ...v21 });
   if (!missingColumn(third.error)) return third.error ? FAILED : null;
-  if (v21.cutoff_day1 !== null) return { error: "To use your own cutoff days, run step 21 in supabase/SQL_GUIDE.md first." };
+  if (v21.cutoff_day1 !== null)
+    return { error: "To use your own cutoff days, run step 21 in supabase/SQL_GUIDE.md first." };
   const fourth = await write(row);
   return fourth.error ? FAILED : null;
 }
 
 /** How often you're paid: your payday's schedule. Twice a month without one. */
 async function payFrequency(supabase: Client): Promise<Frequency> {
-  const { data } = await supabase.from("recurring_items").select("frequency").eq("kind", "payday").maybeSingle();
+  const { data } = await supabase
+    .from("recurring_items")
+    .select("frequency")
+    .eq("kind", "payday")
+    .maybeSingle();
   return (data?.frequency as Frequency | undefined) ?? "twice_monthly";
 }
 
 /** Cutoffs on other dates than usual. None before migration 0023. */
 async function savedCutoffChanges(supabase: Client): Promise<CutoffChange[]> {
-  const { data } = await supabase.from("payroll_cutoff_changes").select("usual_start, starts_on, ends_on, paid_on");
-  return (data ?? []).map((c) => ({ usual: c.usual_start, start: c.starts_on, end: c.ends_on, paidOn: c.paid_on }));
+  const { data } = await supabase
+    .from("payroll_cutoff_changes")
+    .select("usual_start, starts_on, ends_on, paid_on");
+  return (data ?? []).map((c) => ({
+    usual: c.usual_start,
+    start: c.starts_on,
+    end: c.ends_on,
+    paidOn: c.paid_on,
+  }));
 }
 
 /** Your cutoffs, from your settings, how often you're paid, and any on other dates. */
@@ -157,32 +184,52 @@ async function savedCutoffRule(supabase: Client): Promise<CutoffRule> {
  * Saves how you're paid on your payday, adding one if you had none. Amounts
  * typed per payday go: the calculator works each one out.
  */
-async function savePaydaySchedule(supabase: Client, schedule: Schedule): Promise<PayrollResult | null> {
-  const weeks = schedule.frequency === "weekly" && schedule.weeks?.length ? [...schedule.weeks] : null;
-  const weekdays = schedule.frequency === "daily" && schedule.weekdays?.length ? [...schedule.weekdays] : null;
+async function savePaydaySchedule(
+  supabase: Client,
+  schedule: Schedule,
+): Promise<PayrollResult | null> {
+  const weeks =
+    schedule.frequency === "weekly" && schedule.weeks?.length ? [...schedule.weeks] : null;
+  const weekdays =
+    schedule.frequency === "daily" && schedule.weekdays?.length ? [...schedule.weekdays] : null;
   const base = { frequency: schedule.frequency, day1: schedule.day1, day2: schedule.day2 };
-  const found = await supabase.from("recurring_items").select("id").eq("kind", "payday").maybeSingle();
+  const found = await supabase
+    .from("recurring_items")
+    .select("id")
+    .eq("kind", "payday")
+    .maybeSingle();
   if (found.error) return FAILED;
   const write = (row: Record<string, unknown>) =>
     found.data
       ? supabase.from("recurring_items").update(row).eq("id", found.data.id)
-      : supabase.from("recurring_items").insert({ kind: "payday", name: "Payday", amount_varies: true, ...row });
+      : supabase
+          .from("recurring_items")
+          .insert({ kind: "payday", name: "Payday", amount_varies: true, ...row });
 
-  let result = await write({ ...base, pay_weeks: weeks, pay_amounts: null, pay_weekdays: weekdays });
+  let result = await write({
+    ...base,
+    pay_weeks: weeks,
+    pay_amounts: null,
+    pay_weekdays: weekdays,
+  });
   if (missingColumn(result.error)) {
     if (schedule.frequency === "daily") return STEP_23("get paid every work day");
     result = await write({ ...base, pay_weeks: weeks, pay_amounts: null });
     if (missingColumn(result.error)) {
-      if (weeks) return { error: "To pick which weeks pay, run step 22 in supabase/SQL_GUIDE.md first." };
+      if (weeks)
+        return { error: "To pick which weeks pay, run step 22 in supabase/SQL_GUIDE.md first." };
       result = await write(base);
     }
   }
   // 23514: a check failed, so 'daily' isn't allowed yet.
-  if (result.error?.code === "23514" && schedule.frequency === "daily") return STEP_23("get paid every work day");
+  if (result.error?.code === "23514" && schedule.frequency === "daily")
+    return STEP_23("get paid every work day");
   return result.error ? FAILED : null;
 }
 
-const CHANGES_MISSING = { error: "To change your pay from one cutoff on, run step 21 in supabase/SQL_GUIDE.md first." };
+const CHANGES_MISSING = {
+  error: "To change your pay from one cutoff on, run step 21 in supabase/SQL_GUIDE.md first.",
+};
 
 /** The rate columns, rounded like the database keeps them. monthly_pay only when set (migration 0023). */
 function rateRow(r: CutoffRate) {
@@ -226,8 +273,13 @@ export async function savePayrollSettings(
     sunday: input.sunday,
   };
   const frequency = schedule?.frequency ?? (await payFrequency(supabase));
-  const rule = cutoffRuleOf({ ...parts, frequency, cutoffChanges: await savedCutoffChanges(supabase) });
-  if (from !== null && (!isValidDate(from) || cutoffContaining(from, rule).start !== from)) return { error: "Pick a cutoff." };
+  const rule = cutoffRuleOf({
+    ...parts,
+    frequency,
+    cutoffChanges: await savedCutoffChanges(supabase),
+  });
+  if (from !== null && (!isValidDate(from) || cutoffContaining(from, rule).start !== from))
+    return { error: "Pick a cutoff." };
 
   const shared = {
     monthly_base: input.monthlyBase === null ? null : roundCents(input.monthlyBase),
@@ -251,11 +303,16 @@ export async function savePayrollSettings(
   if (!existing.data || from === null) {
     const userId = existing.data?.user_id;
     const failed = await writeWithCutoffDays(parts, { ...rateRow(input), ...shared }, (row) =>
-      userId ? supabase.from("payroll_settings").update(row).eq("user_id", userId) : supabase.from("payroll_settings").insert(row),
+      userId
+        ? supabase.from("payroll_settings").update(row).eq("user_id", userId)
+        : supabase.from("payroll_settings").insert(row),
     );
     if (failed) return failed;
     if (existing.data) {
-      const cleared = await supabase.from("payroll_pay_changes").delete().not("starts_on", "is", null);
+      const cleared = await supabase
+        .from("payroll_pay_changes")
+        .delete()
+        .not("starts_on", "is", null);
       if (cleared.error && cleared.error.code !== "PGRST205") return FAILED;
     }
     return sync(supabase);
@@ -275,7 +332,9 @@ export async function savePayrollSettings(
   const unchanged = sameRate(rateOf(input), settingsFor(before, addDays(from, -1)));
   const { error } = unchanged
     ? await supabase.from("payroll_pay_changes").delete().eq("starts_on", from)
-    : await supabase.from("payroll_pay_changes").upsert({ starts_on: from, ...rateRow(input) }, { onConflict: "user_id,starts_on" });
+    : await supabase
+        .from("payroll_pay_changes")
+        .upsert({ starts_on: from, ...rateRow(input) }, { onConflict: "user_id,starts_on" });
   if (error?.code === "PGRST205") return CHANGES_MISSING;
   if (missingColumn(error)) return STEP_23("use a monthly rate");
   if (error) return FAILED;
@@ -290,8 +349,10 @@ const CUTOFF_CHANGES_MISSING = STEP_23("change a cutoff's dates");
  * `paidOn`). The cutoffs either side move to meet it.
  */
 export async function saveCutoffChange(change: CutoffChange): Promise<PayrollResult> {
-  if (![change.usual, change.start, change.end].every(isValidDate)) return { error: "Pick the dates." };
-  if (change.paidOn !== null && !isValidDate(change.paidOn)) return { error: "Check the day it's paid." };
+  if (![change.usual, change.start, change.end].every(isValidDate))
+    return { error: "Pick the dates." };
+  if (change.paidOn !== null && !isValidDate(change.paidOn))
+    return { error: "Check the day it's paid." };
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
@@ -299,7 +360,12 @@ export async function saveCutoffChange(change: CutoffChange): Promise<PayrollRes
   const problem = cutoffChangeProblem(change, rule, getToday());
   if (problem) return { error: problem };
   const { error } = await supabase.from("payroll_cutoff_changes").upsert(
-    { usual_start: change.usual, starts_on: change.start, ends_on: change.end, paid_on: change.paidOn },
+    {
+      usual_start: change.usual,
+      starts_on: change.start,
+      ends_on: change.end,
+      paid_on: change.paidOn,
+    },
     { onConflict: "user_id,usual_start" },
   );
   if (error?.code === "PGRST205") return CUTOFF_CHANGES_MISSING;
@@ -329,7 +395,10 @@ export async function removePayChange(from: string): Promise<PayrollResult> {
   return sync(supabase);
 }
 
-export type ContributionAmounts = Pick<PayrollSettings, "sssAmount" | "philhealthAmount" | "pagibigAmount">;
+export type ContributionAmounts = Pick<
+  PayrollSettings,
+  "sssAmount" | "philhealthAmount" | "pagibigAmount"
+>;
 
 /**
  * What your company actually takes for SSS, PhilHealth and Pag-IBIG. Null
@@ -381,11 +450,13 @@ function validateCutoff(input: CutoffInput, cutoffDays: CutoffRule): string | nu
     return "Reload the page and try again.";
   }
   for (const d of input.days) {
-    if (!["worked", "leave", "off"].includes(d.status)) return "Pick worked, leave or off for each day.";
+    if (!["worked", "leave", "off"].includes(d.status))
+      return "Pick worked, leave or off for each day.";
     if (d.status === "leave" && d.leaveType !== "sick" && d.leaveType !== "personal") {
       return "Pick sick or personal leave for each leave day.";
     }
-    if (d.note !== null && (typeof d.note !== "string" || d.note.length > 100)) return "Keep leave reasons to 100 characters.";
+    if (d.note !== null && (typeof d.note !== "string" || d.note.length > 100))
+      return "Keep leave reasons to 100 characters.";
     if (d.timeIn !== null && !isTime(d.timeIn)) return "Check your time in.";
   }
   if (input.overtime.length > 60) return "That's a lot of overtime entries. Combine some.";
@@ -419,7 +490,9 @@ export async function saveCutoff(input: CutoffInput): Promise<PayrollResult> {
     };
   });
 
-  const savedDays = await supabase.from("payroll_days").upsert(days, { onConflict: "user_id,work_date" });
+  const savedDays = await supabase
+    .from("payroll_days")
+    .upsert(days, { onConflict: "user_id,work_date" });
   if (savedDays.error?.code === "PGRST205") return MISSING;
   if (savedDays.error) return FAILED;
 
@@ -430,9 +503,11 @@ export async function saveCutoff(input: CutoffInput): Promise<PayrollResult> {
     .lte("work_date", period.end);
   if (cleared.error) return FAILED;
   if (input.overtime.length) {
-    const { error } = await supabase.from("payroll_overtime").insert(
-      input.overtime.map((o) => ({ work_date: o.date, starts_at: o.start, ends_at: o.end })),
-    );
+    const { error } = await supabase
+      .from("payroll_overtime")
+      .insert(
+        input.overtime.map((o) => ({ work_date: o.date, starts_at: o.start, ends_at: o.end })),
+      );
     if (error) return FAILED;
   }
 
@@ -444,7 +519,10 @@ export async function saveCutoff(input: CutoffInput): Promise<PayrollResult> {
  * your paydays (the 15th or the 30th). Your forecast, Safe to spend and Bills
  * by payday follow it.
  */
-export async function setContributionDay(key: ContributionKey, day: number): Promise<PayrollResult> {
+export async function setContributionDay(
+  key: ContributionKey,
+  day: number,
+): Promise<PayrollResult> {
   if (!["sss", "philhealth", "pagibig"].includes(key)) return { error: "Pick a contribution." };
   if (!(Number.isInteger(day) && day >= 1 && day <= 31)) return { error: "Pick a day." };
   const supabase = await signedInClient();
@@ -480,13 +558,20 @@ async function sync(supabase: Client): Promise<PayrollResult> {
   // The forecast works out each payday from its cutoffs, so amounts typed
   // per week or per payday give way to the calculator's.
   const typical = { amount: typicalCutoffPay(settings), amount_varies: true };
-  let payday = await supabase.from("recurring_items").update({ ...typical, pay_amounts: null }).eq("kind", "payday");
+  let payday = await supabase
+    .from("recurring_items")
+    .update({ ...typical, pay_amounts: null })
+    .eq("kind", "payday");
   // Before migration 0022 there are no amounts per payday to clear.
-  if (missingColumn(payday.error)) payday = await supabase.from("recurring_items").update(typical).eq("kind", "payday");
+  if (missingColumn(payday.error))
+    payday = await supabase.from("recurring_items").update(typical).eq("kind", "payday");
   if (payday.error) return FAILED;
 
   // SSS, PhilHealth and Pag-IBIG: monthly, on the 30th unless you picked the 15th (setContributionDay).
-  const bills = await supabase.from("recurring_items").select("id, payroll_key, day1").not("payroll_key", "is", null);
+  const bills = await supabase
+    .from("recurring_items")
+    .select("id, payroll_key, day1")
+    .not("payroll_key", "is", null);
   if (bills.error) return FAILED;
   const wanted = contributions(settings);
   for (const c of wanted) {
@@ -507,7 +592,9 @@ async function sync(supabase: Client): Promise<PayrollResult> {
       : await supabase.from("recurring_items").insert(row);
     if (error) return FAILED;
   }
-  const dropped = bills.data.filter((b) => !wanted.some((c) => c.key === b.payroll_key)).map((b) => b.id);
+  const dropped = bills.data
+    .filter((b) => !wanted.some((c) => c.key === b.payroll_key))
+    .map((b) => b.id);
   if (dropped.length) {
     const { error } = await supabase.from("recurring_items").delete().in("id", dropped);
     if (error) return FAILED;
@@ -519,7 +606,9 @@ async function sync(supabase: Client): Promise<PayrollResult> {
     .select("id, payroll_key, due_on, transaction_id")
     .not("payroll_key", "is", null);
   if (taxes.error) return FAILED;
-  const due = settings.payTax ? upcomingTaxPayments(payroll, today).filter((t) => t.amount > 0) : [];
+  const due = settings.payTax
+    ? upcomingTaxPayments(payroll, today).filter((t) => t.amount > 0)
+    : [];
   for (const t of due) {
     const found = taxes.data.find((row) => row.payroll_key === t.key);
     if (found?.transaction_id) continue;
@@ -539,7 +628,10 @@ async function sync(supabase: Client): Promise<PayrollResult> {
   // Upcoming unpaid ones that are no longer owed (pay went down, or tax
   // turned off). Late ones stay: they're still owed.
   const stale = taxes.data
-    .filter((row) => !row.transaction_id && row.due_on >= today && !due.some((t) => t.key === row.payroll_key))
+    .filter(
+      (row) =>
+        !row.transaction_id && row.due_on >= today && !due.some((t) => t.key === row.payroll_key),
+    )
     .map((row) => row.id);
   if (stale.length) {
     const { error } = await supabase.from("planned_expenses").delete().in("id", stale);

@@ -18,13 +18,18 @@ const HORIZON_DAYS = 420;
 export default function AffordPage() {
   return (
     <div className="flex flex-col gap-4 lg:max-w-4xl">
-      <Link href="/plan" className="flex h-11 items-center gap-1 self-start font-bold text-sea-dark">
+      <Link
+        href="/plan"
+        className="flex h-11 items-center gap-1 self-start font-bold text-sea-dark"
+      >
         <ChevronIcon direction="left" size={20} />
         Forecast
       </Link>
       <div className="flex flex-col gap-1">
         <h1 className="font-display text-3xl font-semibold">Can I afford this?</h1>
-        <p className="text-[15px] text-muted">Test a purchase against your forecast before you spend.</p>
+        <p className="text-[15px] text-muted">
+          Test a purchase against your forecast before you spend.
+        </p>
       </div>
       <Suspense fallback={<div className="h-96 rounded-[20px] bg-line-soft" aria-hidden="true" />}>
         <Afford />

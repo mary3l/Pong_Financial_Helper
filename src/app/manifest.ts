@@ -20,8 +20,18 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     // Long-press the app icon to jump straight in.
     shortcuts: [
-      { name: "Input transaction", short_name: "Add", url: "/add", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
-      { name: "Grocery mode", short_name: "Grocery", url: "/grocery", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
+      {
+        name: "Input transaction",
+        short_name: "Add",
+        url: "/add",
+        icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }],
+      },
+      {
+        name: "Grocery mode",
+        short_name: "Grocery",
+        url: "/grocery",
+        icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }],
+      },
       { name: "Plan", url: "/plan", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
     ],
   };

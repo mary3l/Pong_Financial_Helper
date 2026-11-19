@@ -30,7 +30,10 @@ async function Scheduled({ searchParams }: Pick<PageProps<"/plan/scheduled">, "s
   // Read the clock only at request time (Cache Components).
   await connection();
   const today = getToday();
-  const [{ edit }, { accounts, recurring, planned, items, payroll }] = await Promise.all([searchParams, getScheduled(today)]);
+  const [{ edit }, { accounts, recurring, planned, items, payroll }] = await Promise.all([
+    searchParams,
+    getScheduled(today),
+  ]);
   return (
     <ScheduledManager
       accounts={accounts}

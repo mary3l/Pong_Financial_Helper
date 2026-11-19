@@ -6,13 +6,35 @@ import { groupByPayee } from "@/lib/pay-periods";
 // A card whose statement cuts off on the 10th, with the bill due on the 16th.
 const atome = { id: "atome", dueDay: 16, cutoffDay: 10 };
 
-function item(kind: ForecastItem["kind"], dueOn: string, amount: number, accountId: string | null, extra: Partial<ForecastItem> = {}): ForecastItem {
-  return { key: `${kind}|${dueOn}|${amount}`, kind, flow: "out", id: `${kind}-${dueOn}`, name: kind, amount, dueOn, accountId, category: null, estimate: false, transactionId: null, ...extra };
+function item(
+  kind: ForecastItem["kind"],
+  dueOn: string,
+  amount: number,
+  accountId: string | null,
+  extra: Partial<ForecastItem> = {},
+): ForecastItem {
+  return {
+    key: `${kind}|${dueOn}|${amount}`,
+    kind,
+    flow: "out",
+    id: `${kind}-${dueOn}`,
+    name: kind,
+    amount,
+    dueOn,
+    accountId,
+    category: null,
+    estimate: false,
+    transactionId: null,
+    ...extra,
+  };
 }
 
 describe("bought on a credit line", () => {
   it("is due with the card bill its cutoff puts it on, not the day you buy", () => {
-    const [mat] = onCardBills([item("planned", "2026-11-16", 1368, "atome", { name: "Yoga Mat and Kettleball" })], [atome]);
+    const [mat] = onCardBills(
+      [item("planned", "2026-11-16", 1368, "atome", { name: "Yoga Mat and Kettleball" })],
+      [atome],
+    );
     // After the Nov 10 cutoff: the Dec 10 statement, due Dec 16.
     expect(mat).toMatchObject({ boughtOn: "2026-11-16", dueOn: "2026-12-16", lenderId: "atome" });
     const [early] = onCardBills([item("planned", "2026-11-08", 500, "atome")], [atome]);
@@ -44,9 +66,19 @@ describe("bought on a credit line", () => {
       ],
       [atome],
     );
-    const groups = groupByPayee(items, (id) => (id === "atome" ? "Atome" : undefined), "2026-11-11");
+    const groups = groupByPayee(
+      items,
+      (id) => (id === "atome" ? "Atome" : undefined),
+      "2026-11-11",
+    );
     expect(groups).toHaveLength(1);
-    expect(groups[0]).toMatchObject({ name: "Atome", lenderId: "atome", count: 2, total: 8806.24, firstDue: "2026-12-16" });
+    expect(groups[0]).toMatchObject({
+      name: "Atome",
+      lenderId: "atome",
+      count: 2,
+      total: 8806.24,
+      firstDue: "2026-12-16",
+    });
   });
 });
 
@@ -68,15 +100,37 @@ describe("purchases on the wrong bill for the cutoff", () => {
   it("moves a purchase after the cutoff to the next bill", () => {
     // Nov 10 is after the Nov 6 cutoff: the Dec 6 statement, due Dec 16 (Pong had guessed Nov 16).
     expect(misdatedPlans([plan("mat", "2026-11-16")], bought, line, "2026-11-11")).toEqual([
-      { planId: "mat", name: "mat", purchasedOn: "2026-11-10", from: "2026-11-16", to: "2026-12-16" },
+      {
+        planId: "mat",
+        name: "mat",
+        purchasedOn: "2026-11-10",
+        from: "2026-11-16",
+        to: "2026-12-16",
+      },
     ]);
   });
 
   it("leaves ones already right, paid, by hand, or without a cutoff", () => {
     expect(misdatedPlans([plan("shoes", "2026-11-16")], bought, line, "2026-11-11")).toEqual([]);
-    expect(misdatedPlans([plan("paid", "2026-11-16", true)], bought, line, "2026-11-11")).toEqual([]);
-    expect(misdatedPlans([{ ...plan("mat", "2026-11-16"), sourceTxnId: null }], bought, line, "2026-11-11")).toEqual([]);
-    expect(misdatedPlans([plan("mat", "2026-11-16")], bought, { dueDay: 16, cutoffDay: null }, "2026-11-11")).toEqual([]);
+    expect(misdatedPlans([plan("paid", "2026-11-16", true)], bought, line, "2026-11-11")).toEqual(
+      [],
+    );
+    expect(
+      misdatedPlans(
+        [{ ...plan("mat", "2026-11-16"), sourceTxnId: null }],
+        bought,
+        line,
+        "2026-11-11",
+      ),
+    ).toEqual([]);
+    expect(
+      misdatedPlans(
+        [plan("mat", "2026-11-16")],
+        bought,
+        { dueDay: 16, cutoffDay: null },
+        "2026-11-11",
+      ),
+    ).toEqual([]);
   });
 
   it("doesn't move a bill that's already past", () => {

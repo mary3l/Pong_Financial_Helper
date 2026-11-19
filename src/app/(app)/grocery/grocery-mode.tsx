@@ -76,14 +76,26 @@ export function GroceryMode({
     return (
       <div className="flex flex-col items-center gap-3 rounded-3xl bg-card px-6 py-10 text-center">
         <Pong mood="ask" size={100} decorative />
-        <p className="text-[15px] text-muted">Add a wallet first, so I know what you&apos;ll pay with.</p>
-        <Link href="/money" className="font-extrabold text-sea-dark underline">Add a wallet</Link>
+        <p className="text-[15px] text-muted">
+          Add a wallet first, so I know what you&apos;ll pay with.
+        </p>
+        <Link href="/money" className="font-extrabold text-sea-dark underline">
+          Add a wallet
+        </Link>
       </div>
     );
   }
 
   if (step === "start") {
-    return <StartTrip trip={trip} wallets={wallets} stores={stores} groceriesLeft={groceriesLeft} onStart={(t) => update(t, "scan")} />;
+    return (
+      <StartTrip
+        trip={trip}
+        wallets={wallets}
+        stores={stores}
+        groceriesLeft={groceriesLeft}
+        onStart={(t) => update(t, "scan")}
+      />
+    );
   }
   if (step === "scan") {
     return (
@@ -117,9 +129,16 @@ export function GroceryMode({
     <div className="flex flex-col items-center gap-4 rounded-3xl bg-card px-6 py-10 text-center">
       <Pong mood="proud" size={120} decorative />
       <h1 className="font-display text-2xl font-semibold">Groceries saved!</h1>
-      <p className="max-w-xs text-[15px] text-muted">One Groceries expense with your items attached. I remembered the prices for next time.</p>
+      <p className="max-w-xs text-[15px] text-muted">
+        One Groceries expense with your items attached. I remembered the prices for next time.
+      </p>
       <div className="flex gap-2">
-        <Link href="/" className="flex h-12 items-center rounded-[18px] bg-sun px-5 font-extrabold text-ink">Home</Link>
+        <Link
+          href="/"
+          className="flex h-12 items-center rounded-[18px] bg-sun px-5 font-extrabold text-ink"
+        >
+          Home
+        </Link>
         <button
           type="button"
           onClick={() => {
@@ -173,7 +192,9 @@ function StartTrip({
       className="flex flex-col gap-5"
     >
       <div className="flex h-10 items-center justify-between">
-        <Link href="/" className="font-extrabold text-sea-dark">Cancel</Link>
+        <Link href="/" className="font-extrabold text-sea-dark">
+          Cancel
+        </Link>
         <span className="font-extrabold">Grocery trip</span>
         <span className="w-12" aria-hidden="true" />
       </div>
@@ -182,13 +203,16 @@ function StartTrip({
         <div className="flex flex-col gap-1 pb-2">
           <h1 className="font-display text-2xl font-semibold">Set your cart budget</h1>
           <p className="text-[15px] leading-snug text-muted">
-            Scan items as they go in the cart. You&apos;ll always see what&apos;s left before the counter.
+            Scan items as they go in the cart. You&apos;ll always see what&apos;s left before the
+            counter.
           </p>
         </div>
       </div>
 
       <div className="flex flex-col items-center gap-1 rounded-[20px] bg-card p-4">
-        <label htmlFor="trip-budget" className="text-[13px] font-extrabold text-muted">BUDGET FOR THIS TRIP</label>
+        <label htmlFor="trip-budget" className="text-[13px] font-extrabold text-muted">
+          BUDGET FOR THIS TRIP
+        </label>
         <AmountInput
           id="trip-budget"
           value={budget}
@@ -201,14 +225,19 @@ function StartTrip({
             `Prefilled: what's left in Groceries this kinsenas (${formatPeso(groceriesLeft)})`
           ) : (
             <>
-              No Groceries budget yet. <Link href="/plan/budgets" className="font-bold text-sea-dark underline">Set one</Link>
+              No Groceries budget yet.{" "}
+              <Link href="/plan/budgets" className="font-bold text-sea-dark underline">
+                Set one
+              </Link>
             </>
           )}
         </span>
       </div>
 
       <div className="flex flex-col gap-2">
-        <span id="store-label" className="text-sm font-extrabold">Store</span>
+        <span id="store-label" className="text-sm font-extrabold">
+          Store
+        </span>
         <div role="group" aria-labelledby="store-label" className="flex flex-wrap gap-2">
           {stores.slice(0, 6).map((s) => (
             <ChoiceChip
@@ -236,8 +265,17 @@ function StartTrip({
         </div>
         {other && (
           <>
-            <label htmlFor="store-name" className="sr-only">Store name</label>
-            <input id="store-name" value={store} onChange={(e) => setStore(e.target.value)} maxLength={60} placeholder="e.g. SM Hypermarket" className={FIELD_CLASS} />
+            <label htmlFor="store-name" className="sr-only">
+              Store name
+            </label>
+            <input
+              id="store-name"
+              value={store}
+              onChange={(e) => setStore(e.target.value)}
+              maxLength={60}
+              placeholder="e.g. SM Hypermarket"
+              className={FIELD_CLASS}
+            />
           </>
         )}
         <span className="text-xs text-muted">Prices are remembered per store.</span>
@@ -245,24 +283,44 @@ function StartTrip({
 
       <div className="grid grid-cols-2 gap-3 rounded-[20px] bg-card p-4">
         <div className="flex flex-col gap-1">
-          <label htmlFor="trip-wallet" className="text-sm font-bold">Pay with</label>
-          <select id="trip-wallet" value={accountId} onChange={(e) => setAccountId(e.target.value)} className={FIELD_CLASS}>
+          <label htmlFor="trip-wallet" className="text-sm font-bold">
+            Pay with
+          </label>
+          <select
+            id="trip-wallet"
+            value={accountId}
+            onChange={(e) => setAccountId(e.target.value)}
+            className={FIELD_CLASS}
+          >
             {wallets.map((w) => (
-              <option key={w.id} value={w.id}>{w.name}</option>
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
             ))}
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="trip-warn" className="text-sm font-bold">Warn me at</label>
-          <select id="trip-warn" value={warnAt} onChange={(e) => setWarnAt(Number(e.target.value))} className={FIELD_CLASS}>
+          <label htmlFor="trip-warn" className="text-sm font-bold">
+            Warn me at
+          </label>
+          <select
+            id="trip-warn"
+            value={warnAt}
+            onChange={(e) => setWarnAt(Number(e.target.value))}
+            className={FIELD_CLASS}
+          >
             {WARN_LEVELS.map((w) => (
-              <option key={w} value={w}>{Math.round(w * 100)}%</option>
+              <option key={w} value={w}>
+                {Math.round(w * 100)}%
+              </option>
             ))}
           </select>
         </div>
       </div>
 
-      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
       <button type="submit" className="h-14 rounded-[20px] bg-sun text-lg font-extrabold text-ink">
         {trip.items.length ? "Back to scanning" : "Start scanning"}
       </button>
@@ -303,9 +361,14 @@ function Scanning({
   function add(item: Omit<CartItem, "key" | "qty">) {
     const key = crypto.randomUUID();
     const items = addToCart(trip.items, item, key);
-    const added = items.find((i) => i.name === item.name && i.price === item.price && i.barcode === item.barcode)!;
+    const added = items.find(
+      (i) => i.name === item.name && i.price === item.price && i.barcode === item.barcode,
+    )!;
     setHistory((h) => [...h, added.key]);
-    setLast({ name: `${item.name} ${formatPeso(item.price)}`, note: scanNote(total, item.price, trip.budget) });
+    setLast({
+      name: `${item.name} ${formatPeso(item.price)}`,
+      note: scanNote(total, item.price, trip.budget),
+    });
     onChange({ ...trip, items });
   }
 
@@ -325,7 +388,9 @@ function Scanning({
   function setQty(key: string, delta: number) {
     onChange({
       ...trip,
-      items: trip.items.map((i) => (i.key === key ? { ...i, qty: i.qty + delta } : i)).filter((i) => i.qty > 0),
+      items: trip.items
+        .map((i) => (i.key === key ? { ...i, qty: i.qty + delta } : i))
+        .filter((i) => i.qty > 0),
     });
   }
 
@@ -343,8 +408,12 @@ function Scanning({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex h-10 items-center justify-between">
-        <button type="button" onClick={onBack} className="font-extrabold text-sea-dark">‹ Trip</button>
-        <span className="font-extrabold">{trip.store} · {count} {count === 1 ? "item" : "items"}</span>
+        <button type="button" onClick={onBack} className="font-extrabold text-sea-dark">
+          ‹ Trip
+        </button>
+        <span className="font-extrabold">
+          {trip.store} · {count} {count === 1 ? "item" : "items"}
+        </span>
         <button
           type="button"
           onBlur={() => setConfirmClear(false)}
@@ -371,7 +440,9 @@ function Scanning({
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div className="flex items-baseline justify-between gap-2">
             <span className="font-display text-4xl font-semibold">{formatPeso(total)}</span>
-            {trip.budget && <span className="text-[15px] font-bold opacity-80">of {formatPeso(trip.budget)}</span>}
+            {trip.budget && (
+              <span className="text-[15px] font-bold opacity-80">of {formatPeso(trip.budget)}</span>
+            )}
           </div>
           {trip.budget && (
             <div
@@ -397,10 +468,19 @@ function Scanning({
         <BarcodeScanner onDetected={onScan} onClose={() => setScanning(false)} />
       ) : (
         <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-          <button type="button" onClick={() => setScanning(true)} className="h-[52px] rounded-[18px] bg-sea font-extrabold text-white">
+          <button
+            type="button"
+            onClick={() => setScanning(true)}
+            className="h-[52px] rounded-[18px] bg-sea font-extrabold text-white"
+          >
             Scan barcode
           </button>
-          <button type="button" onClick={undo} disabled={!history.length} className="h-[52px] rounded-[18px] bg-card px-5 font-extrabold text-ink disabled:opacity-50">
+          <button
+            type="button"
+            onClick={undo}
+            disabled={!history.length}
+            className="h-[52px] rounded-[18px] bg-card px-5 font-extrabold text-ink disabled:opacity-50"
+          >
             Undo
           </button>
         </div>
@@ -408,7 +488,8 @@ function Scanning({
 
       {last && (
         <p role="status" className="rounded-2xl bg-card px-4 py-2.5 text-[15px]">
-          <strong>{last.name}</strong> {last.note === "removed" ? "removed" : `added · ${last.note}`}
+          <strong>{last.name}</strong>{" "}
+          {last.note === "removed" ? "removed" : `added · ${last.note}`}
         </p>
       )}
 
@@ -428,14 +509,43 @@ function Scanning({
         >
           <span className="text-sm font-extrabold">New item · I&apos;ll remember it next time</span>
           <div className="grid grid-cols-[minmax(0,1fr)_8rem] gap-2">
-            <label htmlFor="new-name" className="sr-only">Item name</label>
-            <input id="new-name" autoFocus value={unknownName} onChange={(e) => setUnknownName(e.target.value)} maxLength={80} placeholder="Name, e.g. Rice 5 kg" className={FIELD_CLASS} />
-            <label htmlFor="new-price" className="sr-only">Price</label>
-            <AmountInput id="new-price" value={unknownPrice} onChange={setUnknownPrice} placeholder="₱ 0" className={`${FIELD_CLASS} pl-3 text-right`} />
+            <label htmlFor="new-name" className="sr-only">
+              Item name
+            </label>
+            <input
+              id="new-name"
+              autoFocus
+              value={unknownName}
+              onChange={(e) => setUnknownName(e.target.value)}
+              maxLength={80}
+              placeholder="Name, e.g. Rice 5 kg"
+              className={FIELD_CLASS}
+            />
+            <label htmlFor="new-price" className="sr-only">
+              Price
+            </label>
+            <AmountInput
+              id="new-price"
+              value={unknownPrice}
+              onChange={setUnknownPrice}
+              placeholder="₱ 0"
+              className={`${FIELD_CLASS} pl-3 text-right`}
+            />
           </div>
           <div className="flex gap-2">
-            <button type="submit" className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink">Add</button>
-            <button type="button" onClick={() => setUnknown(null)} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-mint">Skip</button>
+            <button
+              type="submit"
+              className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink"
+            >
+              Add
+            </button>
+            <button
+              type="button"
+              onClick={() => setUnknown(null)}
+              className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-mint"
+            >
+              Skip
+            </button>
           </div>
         </form>
       )}
@@ -456,39 +566,87 @@ function Scanning({
         className="grid grid-cols-[minmax(0,1fr)_7.5rem_auto] items-end gap-2"
       >
         <div className="flex flex-col gap-1">
-          <label htmlFor="manual-name" className="text-xs font-extrabold">No barcode? Item</label>
-          <input id="manual-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="e.g. Pechay" className={FIELD_CLASS} />
+          <label htmlFor="manual-name" className="text-xs font-extrabold">
+            No barcode? Item
+          </label>
+          <input
+            id="manual-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={80}
+            placeholder="e.g. Pechay"
+            className={FIELD_CLASS}
+          />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="manual-price" className="text-xs font-extrabold">Price</label>
-          <AmountInput id="manual-price" value={price} onChange={setPrice} placeholder="₱ 0" className={`${FIELD_CLASS} pl-3 text-right`} />
+          <label htmlFor="manual-price" className="text-xs font-extrabold">
+            Price
+          </label>
+          <AmountInput
+            id="manual-price"
+            value={price}
+            onChange={setPrice}
+            placeholder="₱ 0"
+            className={`${FIELD_CLASS} pl-3 text-right`}
+          />
         </div>
-        <button type="submit" className="h-12 rounded-[14px] bg-card px-4 font-extrabold text-ink">Add</button>
+        <button type="submit" className="h-12 rounded-[14px] bg-card px-4 font-extrabold text-ink">
+          Add
+        </button>
       </form>
-      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
 
       <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1">
         {trip.items.map((item) => (
-          <li key={item.key} className="flex items-center gap-2 border-b border-line-soft py-2.5 last:border-0">
+          <li
+            key={item.key}
+            className="flex items-center gap-2 border-b border-line-soft py-2.5 last:border-0"
+          >
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="truncate font-bold">{item.name}</span>
               <span className="text-xs text-muted">{formatPeso(item.price)} each</span>
             </span>
-            <button type="button" onClick={() => setQty(item.key, -1)} aria-label={`One less ${item.name}`} className="h-9 w-9 rounded-full bg-mint text-lg font-extrabold">−</button>
+            <button
+              type="button"
+              onClick={() => setQty(item.key, -1)}
+              aria-label={`One less ${item.name}`}
+              className="h-9 w-9 rounded-full bg-mint text-lg font-extrabold"
+            >
+              −
+            </button>
             <span className="w-6 text-center font-extrabold">{item.qty}</span>
-            <button type="button" onClick={() => setQty(item.key, 1)} aria-label={`One more ${item.name}`} className="h-9 w-9 rounded-full bg-mint text-lg font-extrabold">+</button>
-            <span className="w-20 text-right font-display font-semibold">{formatPeso(roundCents(item.price * item.qty))}</span>
+            <button
+              type="button"
+              onClick={() => setQty(item.key, 1)}
+              aria-label={`One more ${item.name}`}
+              className="h-9 w-9 rounded-full bg-mint text-lg font-extrabold"
+            >
+              +
+            </button>
+            <span className="w-20 text-right font-display font-semibold">
+              {formatPeso(roundCents(item.price * item.qty))}
+            </span>
           </li>
         ))}
         {!trip.items.length && (
-          <li className="py-8 text-center text-[15px] text-muted">Cart is empty. Tap Scan barcode to add your first item.</li>
+          <li className="py-8 text-center text-[15px] text-muted">
+            Cart is empty. Tap Scan barcode to add your first item.
+          </li>
         )}
       </ul>
 
       <p className="text-xs text-muted">
-        Scanned items are a draft, not spending yet. Your cart is saved on this phone, even with weak signal.
+        Scanned items are a draft, not spending yet. Your cart is saved on this phone, even with
+        weak signal.
       </p>
-      <button type="button" onClick={onCheckout} disabled={!trip.items.length} className="sticky bottom-24 h-14 rounded-[20px] bg-ink text-lg font-extrabold text-mint disabled:opacity-60 lg:bottom-4">
+      <button
+        type="button"
+        onClick={onCheckout}
+        disabled={!trip.items.length}
+        className="sticky bottom-24 h-14 rounded-[20px] bg-ink text-lg font-extrabold text-mint disabled:opacity-60 lg:bottom-4"
+      >
         Done shopping · {formatPeso(total)}
       </button>
     </div>
@@ -525,10 +683,18 @@ function Checkout({
 
   return (
     <div className="flex flex-col gap-4">
-      <button type="button" onClick={onBack} className="flex h-10 w-fit items-center font-extrabold text-sea-dark">‹ Back to cart</button>
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex h-10 w-fit items-center font-extrabold text-sea-dark"
+      >
+        ‹ Back to cart
+      </button>
       <div className="flex flex-col gap-1">
         <h1 className="font-display text-3xl font-semibold">Checkout</h1>
-        <p className="text-[15px] text-muted">Type the total on your receipt. That&apos;s the amount that gets saved.</p>
+        <p className="text-[15px] text-muted">
+          Type the total on your receipt. That&apos;s the amount that gets saved.
+        </p>
       </div>
 
       <div className="flex flex-col gap-3 rounded-[20px] bg-card p-4">
@@ -537,22 +703,49 @@ function Checkout({
           <span className="font-extrabold">{formatPeso(scanned)}</span>
         </div>
         <div className="flex items-center justify-between gap-3">
-          <label htmlFor="receipt" className="font-extrabold">Receipt total</label>
+          <label htmlFor="receipt" className="font-extrabold">
+            Receipt total
+          </label>
           <div className="relative w-40">
-            <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-            <AmountInput id="receipt" value={receipt} onChange={setReceipt} className={`${FIELD_CLASS} w-full pl-8 text-right font-extrabold`} />
+            <span
+              aria-hidden="true"
+              className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted"
+            >
+              ₱
+            </span>
+            <AmountInput
+              id="receipt"
+              value={receipt}
+              onChange={setReceipt}
+              className={`${FIELD_CLASS} w-full pl-8 text-right font-extrabold`}
+            />
           </div>
         </div>
         <div className="flex justify-between text-[15px]">
           <span>Difference</span>
-          <span className={`font-extrabold ${diff > 0 ? "text-coral-text" : ""}`}>{diff > 0 ? "+" : diff < 0 ? "−" : ""}{formatPeso(Math.abs(diff))}</span>
+          <span className={`font-extrabold ${diff > 0 ? "text-coral-text" : ""}`}>
+            {diff > 0 ? "+" : diff < 0 ? "−" : ""}
+            {formatPeso(Math.abs(diff))}
+          </span>
         </div>
       </div>
-      {valid && <p className="rounded-2xl bg-sun-tint px-4 py-3 text-sm leading-relaxed">{receiptNote(scanned, value)} Scanned prices go to price memory either way.</p>}
+      {valid && (
+        <p className="rounded-2xl bg-sun-tint px-4 py-3 text-sm leading-relaxed">
+          {receiptNote(scanned, value)} Scanned prices go to price memory either way.
+        </p>
+      )}
 
-      <section aria-labelledby="saved-heading" className="flex flex-col gap-2 rounded-[20px] bg-card p-4 text-[15px]">
-        <h2 id="saved-heading" className="text-[13px] font-extrabold text-muted">WHAT GETS SAVED</h2>
-        <div className="flex justify-between"><span>1 expense · Groceries</span><span className="font-extrabold">{valid ? formatPeso(value) : "—"}</span></div>
+      <section
+        aria-labelledby="saved-heading"
+        className="flex flex-col gap-2 rounded-[20px] bg-card p-4 text-[15px]"
+      >
+        <h2 id="saved-heading" className="text-[13px] font-extrabold text-muted">
+          WHAT GETS SAVED
+        </h2>
+        <div className="flex justify-between">
+          <span>1 expense · Groceries</span>
+          <span className="font-extrabold">{valid ? formatPeso(value) : "—"}</span>
+        </div>
         <div className="flex items-center justify-between gap-3">
           <label htmlFor="checkout-wallet">Paid from</label>
           <select
@@ -562,15 +755,22 @@ function Checkout({
             className="h-10 rounded-[12px] bg-mint px-2 font-extrabold outline-none focus:ring-2 focus:ring-sea"
           >
             {wallets.map((w) => (
-              <option key={w.id} value={w.id}>{w.name}</option>
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
             ))}
           </select>
         </div>
-        <div className="flex justify-between"><span>Items attached</span><span className="font-extrabold">{trip.items.length}</span></div>
+        <div className="flex justify-between">
+          <span>Items attached</span>
+          <span className="font-extrabold">{trip.items.length}</span>
+        </div>
         {groceriesLeft !== null && groceriesBudget !== null && valid && (
           <div className="flex justify-between">
             <span>Groceries budget left</span>
-            <span className={`font-extrabold ${groceriesLeft - value < 0 ? "text-coral-text" : ""}`}>
+            <span
+              className={`font-extrabold ${groceriesLeft - value < 0 ? "text-coral-text" : ""}`}
+            >
               {formatPeso(roundCents(groceriesLeft - value))} of {formatPeso(groceriesBudget)}
             </span>
           </div>
@@ -584,7 +784,9 @@ function Checkout({
         )}
       </section>
 
-      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
       <button
         type="button"
         disabled={pending || !valid}
@@ -596,7 +798,12 @@ function Checkout({
               accountId: trip.accountId,
               receiptTotal: value,
               occurredOn: today,
-              items: trip.items.map(({ barcode, name, price, qty }) => ({ barcode, name, price, qty })),
+              items: trip.items.map(({ barcode, name, price, qty }) => ({
+                barcode,
+                name,
+                price,
+                qty,
+              })),
             });
             if (result.error) setError(result.error);
             else onSaved();
@@ -604,7 +811,9 @@ function Checkout({
         }
         className="h-14 rounded-[20px] bg-sun text-lg font-extrabold text-ink disabled:opacity-60"
       >
-        {pending ? "Saving…" : `Enter ${valid ? `${formatPeso(value)} ` : ""}groceries${wallet ? ` from ${wallet.name}` : ""}`}
+        {pending
+          ? "Saving…"
+          : `Enter ${valid ? `${formatPeso(value)} ` : ""}groceries${wallet ? ` from ${wallet.name}` : ""}`}
       </button>
     </div>
   );

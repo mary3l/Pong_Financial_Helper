@@ -26,9 +26,7 @@ function fromMs(ms: number): string {
 
 export function isValidDate(value: unknown): value is string {
   return (
-    typeof value === "string" &&
-    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
-    fromMs(toMs(value)) === value
+    typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && fromMs(toMs(value)) === value
   );
 }
 
@@ -58,9 +56,7 @@ export function dateInMonth(year: number, month: number, day: number): string {
 }
 
 function format(date: string, options: Intl.DateTimeFormatOptions): string {
-  return new Intl.DateTimeFormat("en-US", { timeZone: "UTC", ...options }).format(
-    toMs(date),
-  );
+  return new Intl.DateTimeFormat("en-US", { timeZone: "UTC", ...options }).format(toMs(date));
 }
 
 /** "Mon, Nov 2" */
@@ -120,7 +116,10 @@ export function formatClock(clock: string): string {
 }
 
 /** The time a transaction shows: the one picked in Add / Edit, else when it was logged. */
-export function transactionTime(txn: { occurredTime?: string | null; createdAt: string | null }): string {
+export function transactionTime(txn: {
+  occurredTime?: string | null;
+  createdAt: string | null;
+}): string {
   return txn.occurredTime ? formatClock(txn.occurredTime) : formatTime(txn.createdAt);
 }
 

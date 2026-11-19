@@ -11,7 +11,14 @@ export type Rect = { x: number; y: number; width: number; height: number };
  * @param maxW            cap on the output width, so slow phones stay quick
  * @returns the source rect in frame pixels and the output size to draw it at
  */
-export function scanStrip(frameW: number, frameH: number, viewW: number, viewH: number, stripH: number, maxW = 1280) {
+export function scanStrip(
+  frameW: number,
+  frameH: number,
+  viewW: number,
+  viewH: number,
+  stripH: number,
+  maxW = 1280,
+) {
   const scale = Math.max(viewW / frameW, viewH / frameH);
   const visibleW = viewW / scale;
   const visibleH = viewH / scale;

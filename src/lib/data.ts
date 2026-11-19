@@ -1,7 +1,13 @@
 import "server-only";
 import { connection } from "next/server";
 import { cache } from "react";
-import { HISTORY_MONTHS, bnplCap, estimateMonth, type BnplCap, type MoneyHistory } from "@/lib/bnpl";
+import {
+  HISTORY_MONTHS,
+  bnplCap,
+  estimateMonth,
+  type BnplCap,
+  type MoneyHistory,
+} from "@/lib/bnpl";
 import { subcategoryOptions } from "@/lib/categories";
 import { addDays, dateInMonth, daysBetween, monthContaining } from "@/lib/dates";
 import { scheduledItems, sortItems, type ForecastItem, type ScheduleInputs } from "@/lib/forecast";
@@ -171,7 +177,10 @@ export type ScheduledPayment = {
 };
 
 /** A recent expense, income or transfer to repeat with one tap in Add. */
-export type Template = Omit<Transaction, "id" | "occurredOn" | "createdAt" | "occurredTime" | "splitId">;
+export type Template = Omit<
+  Transaction,
+  "id" | "occurredOn" | "createdAt" | "occurredTime" | "splitId"
+>;
 
 /**
  * Supabase errors are plain objects; wrap them so error pages and logs show
@@ -193,71 +202,75 @@ const db = cache(async () => {
  * Wallets, credit lines and loans. People (utang and pautang) are accounts
  * too, but only come back with `includePeople`: see getPeople.
  */
-export async function getAccounts({ includeArchived = false, includePeople = false } = {}): Promise<Account[]> {
+export async function getAccounts({ includeArchived = false, includePeople = false } = {}): Promise<
+  Account[]
+> {
   // Home, Plan and the Add sheet over them each ask for accounts; read once
   // per request. cache() compares arguments by identity, so pass plain flags.
   return readAccounts(includeArchived, includePeople);
 }
 
-const readAccounts = cache(async (includeArchived: boolean, includePeople: boolean): Promise<Account[]> => {
-  const supabase = await db();
-  const select = (columns: string) => {
-    let query = supabase.from("accounts").select(columns).order("created_at");
-    if (!includeArchived) query = query.eq("archived", false);
-    if (!includePeople) query = query.neq("type", "person");
-    return query;
-  };
-  const base = "id, name, type, starting_balance, credit_limit, due_day, archived";
+const readAccounts = cache(
+  async (includeArchived: boolean, includePeople: boolean): Promise<Account[]> => {
+    const supabase = await db();
+    const select = (columns: string) => {
+      let query = supabase.from("accounts").select(columns).order("created_at");
+      if (!includeArchived) query = query.eq("archived", false);
+      if (!includePeople) query = query.neq("type", "person");
+      return query;
+    };
+    const base = "id, name, type, starting_balance, credit_limit, due_day, archived";
 
-  const wallet = `${base}, purpose, interest_rate, interest_since`;
-  const payout = `${wallet}, interest_payout`;
-  const goals = `${payout}, goal_amount, goal_date`;
+    const wallet = `${base}, purpose, interest_rate, interest_since`;
+    const payout = `${wallet}, interest_payout`;
+    const goals = `${payout}, goal_amount, goal_date`;
 
-  const dollars = `${goals}, currency, fx_rate, matures_on`;
+    const dollars = `${goals}, currency, fx_rate, matures_on`;
 
-  const [first, balances] = await Promise.all([
-    select(`${dollars}, cutoff_day`),
-    supabase.from("account_balances").select("account_id, balance"),
-  ]);
-  // 42703: migration 0019 (or 0017, 0016, 0011, 0010) hasn't been run yet.
-  // Credit lines then have no cutoff day, every wallet is in pesos, wallets
-  // have no goals, interest is credited daily, and without 0010 every wallet
-  // is spending money.
-  let accounts = first;
-  for (const columns of [dollars, goals, payout, wallet, base]) {
-    if (accounts.error?.code !== "42703") break;
-    accounts = await select(columns);
-  }
-  if (accounts.error) throw dbError(accounts.error);
-  if (balances.error) throw dbError(balances.error);
+    const [first, balances] = await Promise.all([
+      select(`${dollars}, cutoff_day`),
+      supabase.from("account_balances").select("account_id, balance"),
+    ]);
+    // 42703: migration 0019 (or 0017, 0016, 0011, 0010) hasn't been run yet.
+    // Credit lines then have no cutoff day, every wallet is in pesos, wallets
+    // have no goals, interest is credited daily, and without 0010 every wallet
+    // is spending money.
+    let accounts = first;
+    for (const columns of [dollars, goals, payout, wallet, base]) {
+      if (accounts.error?.code !== "42703") break;
+      accounts = await select(columns);
+    }
+    if (accounts.error) throw dbError(accounts.error);
+    if (balances.error) throw dbError(balances.error);
 
-  const balanceById = new Map(
-    balances.data.map((b) => [b.account_id as string, Number(b.balance)]),
-  );
-  const rows = accounts.data as unknown as AccountRow[];
-  // Dollar wallets count at today's rate; only looked up when you have one.
-  const today = rows.some((a) => a.currency === "USD") ? await getUsdRate() : null;
-  return rows.map((a) => ({
-    id: a.id,
-    name: a.name,
-    type: a.type as AccountType,
-    startingBalance: Number(a.starting_balance),
-    balance: balanceById.get(a.id) ?? Number(a.starting_balance),
-    creditLimit: a.credit_limit === null ? null : Number(a.credit_limit),
-    dueDay: a.due_day,
-    cutoffDay: a.cutoff_day ?? null,
-    archived: a.archived,
-    purpose: isWalletPurpose(a.purpose) ? a.purpose : "spending",
-    interestRate: a.interest_rate == null ? null : Number(a.interest_rate),
-    interestSince: a.interest_since ?? null,
-    interestPayout: isInterestPayout(a.interest_payout) ? a.interest_payout : "daily",
-    goalAmount: a.goal_amount == null ? null : Number(a.goal_amount),
-    goalDate: a.goal_date ?? null,
-    currency: isCurrency(a.currency) ? a.currency : "PHP",
-    ...dollarRates(a, today),
-    maturesOn: a.matures_on ?? null,
-  }));
-});
+    const balanceById = new Map(
+      balances.data.map((b) => [b.account_id as string, Number(b.balance)]),
+    );
+    const rows = accounts.data as unknown as AccountRow[];
+    // Dollar wallets count at today's rate; only looked up when you have one.
+    const today = rows.some((a) => a.currency === "USD") ? await getUsdRate() : null;
+    return rows.map((a) => ({
+      id: a.id,
+      name: a.name,
+      type: a.type as AccountType,
+      startingBalance: Number(a.starting_balance),
+      balance: balanceById.get(a.id) ?? Number(a.starting_balance),
+      creditLimit: a.credit_limit === null ? null : Number(a.credit_limit),
+      dueDay: a.due_day,
+      cutoffDay: a.cutoff_day ?? null,
+      archived: a.archived,
+      purpose: isWalletPurpose(a.purpose) ? a.purpose : "spending",
+      interestRate: a.interest_rate == null ? null : Number(a.interest_rate),
+      interestSince: a.interest_since ?? null,
+      interestPayout: isInterestPayout(a.interest_payout) ? a.interest_payout : "daily",
+      goalAmount: a.goal_amount == null ? null : Number(a.goal_amount),
+      goalDate: a.goal_date ?? null,
+      currency: isCurrency(a.currency) ? a.currency : "PHP",
+      ...dollarRates(a, today),
+      maturesOn: a.matures_on ?? null,
+    }));
+  },
+);
 
 /** A USD wallet's rates: worth now (today's, else yours) and what you got. */
 function dollarRates(a: AccountRow, today: UsdRate | null) {
@@ -344,7 +357,9 @@ export async function getRecurringItems(): Promise<RecurringItem[]> {
     endsOn: r.ends_on,
     payrollKey: r.payroll_key ?? null,
     weeks: r.pay_weeks?.length ? r.pay_weeks.map(Number) : null,
-    amounts: r.pay_amounts?.length ? r.pay_amounts.map((a) => (a === null ? null : Number(a))) : null,
+    amounts: r.pay_amounts?.length
+      ? r.pay_amounts.map((a) => (a === null ? null : Number(a)))
+      : null,
     weekdays: r.pay_weekdays?.length ? r.pay_weekdays.map(Number) : null,
   }));
 }
@@ -467,7 +482,10 @@ export async function readPayroll(
     supabase.from("payroll_pay_changes").select("*").order("starts_on"),
     // Your cutoffs follow how often you're paid.
     supabase.from("recurring_items").select("frequency").eq("kind", "payday").maybeSingle(),
-    supabase.from("payroll_cutoff_changes").select("usual_start, starts_on, ends_on, paid_on").order("usual_start"),
+    supabase
+      .from("payroll_cutoff_changes")
+      .select("usual_start, starts_on, ends_on, paid_on")
+      .order("usual_start"),
   ]);
   if (s.error?.code === "PGRST205") return "missing";
   if (s.error) throw dbError(s.error);
@@ -567,7 +585,8 @@ export async function getBudgets(): Promise<Budget[]> {
  */
 export async function getInstallmentPlans(accountId?: string): Promise<InstallmentPlan[]> {
   const supabase = await db();
-  const columns = "id, kind, account_id, name, principal, fee_total, months, pay_from_account_id, source_txn_id";
+  const columns =
+    "id, kind, account_id, name, principal, fee_total, months, pay_from_account_id, source_txn_id";
   const select = (cols: string) => {
     const query = supabase.from("installment_plans").select(cols).order("created_at");
     return accountId ? query.eq("account_id", accountId) : query;
@@ -576,7 +595,9 @@ export async function getInstallmentPlans(accountId?: string): Promise<Installme
     select(`${columns}, person_id`),
     supabase
       .from("scheduled_payments")
-      .select("id, plan_id, seq, due_on, amount, principal_part, fee_part, transfer_txn_id, fee_txn_id")
+      .select(
+        "id, plan_id, seq, due_on, amount, principal_part, fee_part, transfer_txn_id, fee_txn_id",
+      )
       .order("due_on"),
   ]);
   // 42703: migration 0019 hasn't been run yet, so every plan is yours.
@@ -651,7 +672,10 @@ export async function withoutArchived(transactions: Transaction[]): Promise<Tran
     const { data: payments, error: paymentError } = await supabase
       .from("scheduled_payments")
       .select("transfer_txn_id, fee_txn_id")
-      .in("plan_id", plans.map((p) => p.id as string));
+      .in(
+        "plan_id",
+        plans.map((p) => p.id as string),
+      );
     if (paymentError) throw dbError(paymentError);
     for (const p of payments) {
       if (p.transfer_txn_id) hidden.add(p.transfer_txn_id);
@@ -660,12 +684,16 @@ export async function withoutArchived(transactions: Transaction[]): Promise<Tran
   }
   return transactions.filter(
     (t) =>
-      !hidden.has(t.id) && !accountIds.has(t.accountId) && !(t.toAccountId && accountIds.has(t.toAccountId)),
+      !hidden.has(t.id) &&
+      !accountIds.has(t.accountId) &&
+      !(t.toAccountId && accountIds.has(t.toAccountId)),
   );
 }
 
 /** Installments as forecast inputs: "Running shoes (2 of 3)". */
-export function installmentInputs(plans: InstallmentPlan[]): NonNullable<ScheduleInputs["installments"]> {
+export function installmentInputs(
+  plans: InstallmentPlan[],
+): NonNullable<ScheduleInputs["installments"]> {
   return plans.flatMap((plan) =>
     plan.payments.map((p) => ({
       id: p.id,
@@ -747,8 +775,16 @@ export async function getPriceMemory(): Promise<{ memory: PriceMemory; stores: s
   const supabase = await db();
   const [products, prices, trips] = await Promise.all([
     supabase.from("products").select("id, barcode, name").limit(2000),
-    supabase.from("product_prices").select("product_id, store, price").order("seen_at", { ascending: false }).limit(5000),
-    supabase.from("grocery_trips").select("store").order("created_at", { ascending: false }).limit(50),
+    supabase
+      .from("product_prices")
+      .select("product_id, store, price")
+      .order("seen_at", { ascending: false })
+      .limit(5000),
+    supabase
+      .from("grocery_trips")
+      .select("store")
+      .order("created_at", { ascending: false })
+      .limit(50),
   ]);
   if (products.error) throw dbError(products.error);
   if (prices.error) throw dbError(prices.error);
@@ -760,7 +796,11 @@ export async function getPriceMemory(): Promise<{ memory: PriceMemory; stores: s
   for (const row of prices.data) {
     const product = byId.get(row.product_id);
     if (!product) continue;
-    const entry = (memory[product.barcode] ??= { name: product.name, prices: {}, last: Number(row.price) });
+    const entry = (memory[product.barcode] ??= {
+      name: product.name,
+      prices: {},
+      last: Number(row.price),
+    });
     entry.prices[row.store] ??= Number(row.price);
   }
   return { memory, stores: [...new Set(trips.data.map((t) => t.store as string))] };
@@ -790,7 +830,11 @@ export async function getBnplCap(
   { accounts, inWallets, items }: Pick<PlanInputs, "accounts" | "inWallets" | "items">,
 ): Promise<BnplCap> {
   const [year, month] = today.split("-").map(Number);
-  const from = dateInMonth(month > HISTORY_MONTHS ? year : year - 1, ((month - HISTORY_MONTHS + 11) % 12) + 1, 1);
+  const from = dateInMonth(
+    month > HISTORY_MONTHS ? year : year - 1,
+    ((month - HISTORY_MONTHS + 11) % 12) + 1,
+    1,
+  );
   const thisMonth = monthContaining(today).start;
   const supabase = await db();
   const rows: {
@@ -820,13 +864,19 @@ export async function getBnplCap(
   // Dollar wallets' interest counts in pesos.
   const pesos = (t: (typeof rows)[number]) => {
     const account = byId.get(t.account_id);
-    return account?.currency === "USD" ? Number(t.amount) * (account.fxRate ?? 0) : Number(t.amount);
+    return account?.currency === "USD"
+      ? Number(t.amount) * (account.fxRate ?? 0)
+      : Number(t.amount);
   };
   const past = rows.filter((t) => t.occurred_on < thisMonth);
   const current = rows.filter((t) => t.occurred_on >= thisMonth);
   let history: MoneyHistory = {
-    income: roundCents(past.filter((t) => t.type === "income").reduce((sum, t) => sum + pesos(t), 0)),
-    spending: roundCents(past.filter((t) => t.type === "expense").reduce((sum, t) => sum + pesos(t), 0)),
+    income: roundCents(
+      past.filter((t) => t.type === "income").reduce((sum, t) => sum + pesos(t), 0),
+    ),
+    spending: roundCents(
+      past.filter((t) => t.type === "expense").reduce((sum, t) => sum + pesos(t), 0),
+    ),
     months: new Set(past.map((t) => t.occurred_on.slice(0, 7))).size,
   };
   if (!history.months && current.length) {
@@ -838,7 +888,9 @@ export async function getBnplCap(
       estimateMonth({
         items,
         today,
-        dayToDay: expenses.filter((t) => !scheduled.has(t.id)).reduce((sum, t) => sum + pesos(t), 0),
+        dayToDay: expenses
+          .filter((t) => !scheduled.has(t.id))
+          .reduce((sum, t) => sum + pesos(t), 0),
         daysLogged: daysBetween(first, today) + 1,
       }) ?? history;
   }
@@ -868,7 +920,14 @@ export async function getPlanInputs(today: string, days: number): Promise<PlanIn
   // Bought on Atome: due when its bill is, not the day you buy.
   const lines = accounts.filter((a) => a.type === "credit_line");
   const items = sortItems([
-    ...onCardBills(scheduledItems({ recurring, billPayments, planned, installments, paydayAmounts }, today, until), lines),
+    ...onCardBills(
+      scheduledItems(
+        { recurring, billPayments, planned, installments, paydayAmounts },
+        today,
+        until,
+      ),
+      lines,
+    ),
     ...personItems(people, today, until),
   ]);
   return {
@@ -889,12 +948,17 @@ export async function getPlanInputs(today: string, days: number): Promise<PlanIn
  * and installments you paid or logged today don't count: the plan already
  * held that money back. BNPL doesn't either: it has its own caps.
  */
-export async function getCashSpentToday(todays: Transaction[], accounts: Account[]): Promise<number> {
+export async function getCashSpentToday(
+  todays: Transaction[],
+  accounts: Account[],
+): Promise<number> {
   const spending = new Set(accounts.filter((a) => countsAsSpending(a)).map((a) => a.id));
   const expenses = todays.filter((t) => t.type === "expense" && spending.has(t.accountId));
   if (!expenses.length) return 0;
   const scheduled = await getScheduledTransactionIds(expenses.map((t) => t.id));
-  return roundCents(expenses.filter((t) => !scheduled.has(t.id)).reduce((sum, t) => sum + t.amount, 0));
+  return roundCents(
+    expenses.filter((t) => !scheduled.has(t.id)).reduce((sum, t) => sum + t.amount, 0),
+  );
 }
 
 /**
@@ -906,7 +970,13 @@ export async function getCashSpentToday(todays: Transaction[], accounts: Account
 export async function getCapLines(accounts: Account[], today: string): Promise<CapLine[]> {
   const lines = accounts.filter((a) => a.type === "credit_line" && a.dueDay);
   if (!lines.length) return [];
-  const since = new Map(lines.map((a) => [a.id, billCycles({ id: a.id, dueDay: a.dueDay!, cutoffDay: a.cutoffDay ?? null }, today)[0]?.from ?? today]));
+  const since = new Map(
+    lines.map((a) => [
+      a.id,
+      billCycles({ id: a.id, dueDay: a.dueDay!, cutoffDay: a.cutoffDay ?? null }, today)[0]?.from ??
+        today,
+    ]),
+  );
   const from = [...since.values()].sort()[0];
   const ids = new Set(lines.map((a) => a.id));
   const bought = (await getTransactions({ from, to: today })).filter(
@@ -926,7 +996,10 @@ export async function getCapLines(accounts: Account[], today: string): Promise<C
     name: a.name,
     dueDay: a.dueDay!,
     cutoffDay: a.cutoffDay ?? null,
-    creditLeft: a.creditLimit && a.creditLimit > 0 ? roundCents(Math.max(0, a.creditLimit + Math.min(0, a.balance))) : null,
+    creditLeft:
+      a.creditLimit && a.creditLimit > 0
+        ? roundCents(Math.max(0, a.creditLimit + Math.min(0, a.balance)))
+        : null,
     used: roundCents(own.filter((t) => t.accountId === a.id).reduce((sum, t) => sum + t.amount, 0)),
   }));
 }
@@ -936,7 +1009,10 @@ export async function getTransactionDates(ids: string[]): Promise<Map<string, st
   const valid = ids.filter((id) => /^[0-9a-f-]{36}$/i.test(id));
   if (!valid.length) return new Map();
   const supabase = await db();
-  const { data, error } = await supabase.from("transactions").select("id, occurred_on").in("id", valid);
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("id, occurred_on")
+    .in("id", valid);
   if (error) throw dbError(error);
   return new Map(data.map((t) => [t.id as string, t.occurred_on as string]));
 }
@@ -946,7 +1022,11 @@ export async function getTransactionDates(ids: string[]): Promise<Map<string, st
  * in it, bills and planned expenses paid from it, installments it pays, and
  * on a credit line, what you'll buy on it (at the bill it lands on).
  */
-export async function getScheduledFor(accountId: string, today: string, days = 60): Promise<ForecastItem[]> {
+export async function getScheduledFor(
+  accountId: string,
+  today: string,
+  days = 60,
+): Promise<ForecastItem[]> {
   const { items } = await getPlanInputs(today, days);
   return items.filter((i) => i.accountId === accountId);
 }
@@ -957,14 +1037,25 @@ export async function getScheduledFor(accountId: string, today: string, days = 6
  * yet due needs it.
  */
 async function withPaidDates(items: ForecastItem[]): Promise<ForecastItem[]> {
-  const ids = [...new Set(items.filter((i) => i.flow === "out" && i.transactionId).map((i) => i.transactionId!))];
+  const ids = [
+    ...new Set(
+      items.filter((i) => i.flow === "out" && i.transactionId).map((i) => i.transactionId!),
+    ),
+  ];
   if (!ids.length) return items;
   const supabase = await db();
-  const { data, error } = await supabase.from("transactions").select("id, occurred_on").in("id", ids);
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("id, occurred_on")
+    .in("id", ids);
   // The dates are only for a tag: without them, everything still works.
   if (error) return items;
   const paidOn = new Map(data.map((t) => [t.id as string, t.occurred_on as string]));
-  return items.map((i) => (i.transactionId && paidOn.has(i.transactionId) ? { ...i, paidOn: paidOn.get(i.transactionId) } : i));
+  return items.map((i) =>
+    i.transactionId && paidOn.has(i.transactionId)
+      ? { ...i, paidOn: paidOn.get(i.transactionId) }
+      : i,
+  );
 }
 
 /** Plan › Scheduled: every recurring and planned item, and what's coming. */
@@ -982,7 +1073,8 @@ export async function getScheduled(today: string) {
   return { accounts, recurring, planned, items, payroll: paydayAmounts !== undefined };
 }
 
-const TXN_BASE = "id, type, amount, account_id, to_account_id, category, note, occurred_on, created_at";
+const TXN_BASE =
+  "id, type, amount, account_id, to_account_id, category, note, occurred_on, created_at";
 const TXN_COLUMNS = `${TXN_BASE}, split_id`;
 const TXN_WITH_TIME = `${TXN_COLUMNS}, occurred_time`;
 const TXN_WITH_SUB = `${TXN_WITH_TIME}, subcategory`;
@@ -1166,7 +1258,15 @@ export function templatesFrom(recent: Transaction[], walletIds: Set<string>, max
     // Pesos to dollars depends on the day's rate: type it each time.
     if (t.toAmount !== null) return;
     if (t.toAccountId && !walletIds.has(t.toAccountId)) return;
-    const key = [t.type, t.amount, t.category, t.subcategory ?? "", t.accountId, t.toAccountId, t.note ?? ""].join("|");
+    const key = [
+      t.type,
+      t.amount,
+      t.category,
+      t.subcategory ?? "",
+      t.accountId,
+      t.toAccountId,
+      t.note ?? "",
+    ].join("|");
     const hit = seen.get(key);
     if (hit) hit.count += 1;
     else {

@@ -3,7 +3,16 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { borrowWasPaidForMe, deletePerson, deletePersonEntry, forgive, recordPayment, renamePerson, restorePerson, settlePerson } from "@/app/people-actions";
+import {
+  borrowWasPaidForMe,
+  deletePerson,
+  deletePersonEntry,
+  forgive,
+  recordPayment,
+  renamePerson,
+  restorePerson,
+  settlePerson,
+} from "@/app/people-actions";
 import { AmountInput } from "@/components/amount-input";
 import { FIELD_CLASS } from "@/components/choice-chip";
 import { FormDialog } from "@/components/form-dialog";
@@ -30,7 +39,9 @@ export function SettleButton({ personId, label }: { personId: string; label: str
       >
         {pending ? "Saving…" : label}
       </button>
-      <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">{error}</span>
+      <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">
+        {error}
+      </span>
     </span>
   );
 }
@@ -57,7 +68,11 @@ export function PaymentForm({
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className="h-12 rounded-[16px] bg-sun font-extrabold text-ink">
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="h-12 rounded-[16px] bg-sun font-extrabold text-ink"
+      >
         {theyPay ? "Record payment" : "Pay back"}
       </button>
     );
@@ -82,34 +97,75 @@ export function PaymentForm({
     >
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
-          <label htmlFor="pay-amount" className="text-sm font-bold">Amount</label>
+          <label htmlFor="pay-amount" className="text-sm font-bold">
+            Amount
+          </label>
           <div className="relative">
-            <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-            <AmountInput id="pay-amount" value={amount} onChange={setAmount} className={`${FIELD_CLASS} w-full pl-8 text-right`} />
+            <span
+              aria-hidden="true"
+              className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted"
+            >
+              ₱
+            </span>
+            <AmountInput
+              id="pay-amount"
+              value={amount}
+              onChange={setAmount}
+              className={`${FIELD_CLASS} w-full pl-8 text-right`}
+            />
           </div>
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="pay-wallet" className="text-sm font-bold">{theyPay ? "Landed in" : "Paid from"}</label>
-          <select id="pay-wallet" value={walletId} onChange={(e) => setWalletId(e.target.value)} className={FIELD_CLASS}>
+          <label htmlFor="pay-wallet" className="text-sm font-bold">
+            {theyPay ? "Landed in" : "Paid from"}
+          </label>
+          <select
+            id="pay-wallet"
+            value={walletId}
+            onChange={(e) => setWalletId(e.target.value)}
+            className={FIELD_CLASS}
+          >
             {wallets.map((w) => (
-              <option key={w.id} value={w.id}>{w.name}</option>
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
             ))}
           </select>
         </div>
         <div className="col-span-2 flex flex-col gap-1">
-          <label htmlFor="pay-date" className="text-sm font-bold">Date</label>
-          <input id="pay-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className={FIELD_CLASS} />
+          <label htmlFor="pay-date" className="text-sm font-bold">
+            Date
+          </label>
+          <input
+            id="pay-date"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className={FIELD_CLASS}
+          />
         </div>
       </div>
       <p className="text-xs text-muted">
         A transfer, not {theyPay ? "income" : "spending"}: it was your money all along.
       </p>
-      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
       <div className="flex gap-2">
-        <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
-          {pending ? "Saving…" : `${theyPay ? "Record" : "Pay back"}${parseAmount(amount) > 0 ? ` ${formatPeso(parseAmount(amount))}` : ""}${theyPay ? " payment" : ""}`}
+        <button
+          type="submit"
+          disabled={pending}
+          className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60"
+        >
+          {pending
+            ? "Saving…"
+            : `${theyPay ? "Record" : "Pay back"}${parseAmount(amount) > 0 ? ` ${formatPeso(parseAmount(amount))}` : ""}${theyPay ? " payment" : ""}`}
         </button>
-        <button type="button" onClick={() => setOpen(false)} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-mint">
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-mint"
+        >
           Cancel
         </button>
       </div>
@@ -141,12 +197,22 @@ export function ForgiveButton({ personId, balance }: { personId: string; balance
         }}
         className={`h-11 rounded-[14px] px-4 font-extrabold ${confirm ? "bg-coral text-white" : "text-ink underline"}`}
       >
-        {pending ? "Saving…" : confirm ? `Tap again to forgive ${formatPeso(Math.abs(balance))}` : balance > 0 ? "Forgive remaining balance" : "They forgave it"}
+        {pending
+          ? "Saving…"
+          : confirm
+            ? `Tap again to forgive ${formatPeso(Math.abs(balance))}`
+            : balance > 0
+              ? "Forgive remaining balance"
+              : "They forgave it"}
       </button>
       <span className="text-xs text-muted">
-        {balance > 0 ? "Turns what's left into an expense (Gifts)" : "Turns what's left into income (Gift)"}
+        {balance > 0
+          ? "Turns what's left into an expense (Gifts)"
+          : "Turns what's left into income (Gift)"}
       </span>
-      <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">{error}</span>
+      <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">
+        {error}
+      </span>
     </div>
   );
 }
@@ -197,18 +263,42 @@ export function EditPerson({
             }}
             className="flex flex-col gap-2"
           >
-            <label htmlFor="person-name" className="text-sm font-bold">Name</label>
-            <input id="person-name" value={value} onChange={(e) => setValue(e.target.value)} maxLength={60} className={FIELD_CLASS} />
+            <label htmlFor="person-name" className="text-sm font-bold">
+              Name
+            </label>
+            <input
+              id="person-name"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              maxLength={60}
+              className={FIELD_CLASS}
+            />
             <label htmlFor="person-contact" className="text-sm font-bold">
               Number or handle <span className="font-semibold text-muted">(optional)</span>
             </label>
-            <input id="person-contact" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={100} className={FIELD_CLASS} />
-            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+            <input
+              id="person-contact"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              maxLength={100}
+              className={FIELD_CLASS}
+            />
+            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+              {error}
+            </p>
             <div className="flex gap-2 pt-1">
-              <button type="submit" disabled={pending} className="h-12 flex-[2] rounded-[16px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
+              <button
+                type="submit"
+                disabled={pending}
+                className="h-12 flex-[2] rounded-[16px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60"
+              >
                 {pending ? "Updating…" : "Update details"}
               </button>
-              <button type="button" onClick={() => setOpen(false)} className="h-12 flex-1 rounded-[16px] bg-card px-4 font-extrabold text-ink">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="h-12 flex-1 rounded-[16px] bg-card px-4 font-extrabold text-ink"
+              >
                 Cancel
               </button>
             </div>
@@ -216,8 +306,8 @@ export function EditPerson({
           {loans.length > 0 && (
             <div className="mt-4 flex flex-col gap-2 rounded-[18px] bg-card p-3.5">
               <p className="text-sm leading-snug">
-                <strong>Loan amount, payments or interest?</strong> Those are on the loan, and what {name} owes you
-                follows them.
+                <strong>Loan amount, payments or interest?</strong> Those are on the loan, and what{" "}
+                {name} owes you follows them.
               </p>
               {loans.map((l) => (
                 <Link
@@ -282,8 +372,12 @@ export function DeletePerson({
         >
           {pending ? "Deleting…" : `Delete ${name}`}
         </button>
-        <span className="text-xs text-muted">Nothing&apos;s logged with them yet, so nothing else changes.</span>
-        <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">{error}</span>
+        <span className="text-xs text-muted">
+          Nothing&apos;s logged with them yet, so nothing else changes.
+        </span>
+        <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">
+          {error}
+        </span>
       </div>
     );
   }
@@ -310,7 +404,9 @@ export function DeletePerson({
               {balance !== 0 && (
                 <strong>
                   {" "}
-                  {balance > 0 ? `They still owe you ${formatPeso(owed)}.` : `You still owe them ${formatPeso(owed)}.`}
+                  {balance > 0
+                    ? `They still owe you ${formatPeso(owed)}.`
+                    : `You still owe them ${formatPeso(owed)}.`}
                 </strong>
               )}
             </p>
@@ -318,8 +414,8 @@ export function DeletePerson({
             <section className="flex flex-col gap-2 rounded-[20px] bg-card p-4">
               <h3 className="font-extrabold">Archive {name}</h3>
               <p className="text-sm leading-snug text-muted">
-                Hides them from Utang &amp; pautang and from Add. Every record stays in Activity, so your wallet
-                balances don&apos;t change.
+                Hides them from Utang &amp; pautang and from Add. Every record stays in Activity, so
+                your wallet balances don&apos;t change.
                 {balance !== 0 &&
                   ` What's still open stops showing in Utang & pautang, Coming up and the forecast, so record a payment or forgive it first if it's settled.`}{" "}
                 Adding someone with the same name brings them back.
@@ -338,16 +434,16 @@ export function DeletePerson({
               <h3 className="font-extrabold">Delete for good</h3>
               {inYourName.length ? (
                 <p className="text-sm leading-snug">
-                  {name} pays {inYourName.join(", ")} in your name. Remove that from the loan or credit line first,
-                  or archive them instead.
+                  {name} pays {inYourName.join(", ")} in your name. Remove that from the loan or
+                  credit line first, or archive them instead.
                 </p>
               ) : (
                 <>
                   <p className="text-sm leading-snug">
-                    <strong>Added by mistake?</strong> Removes {name} and every record with them: what you lent or
-                    borrowed, their payments, and bills they paid for you. Their shares come off each split bill, which
-                    keeps your own share. Wallet balances go back to what they&apos;d be without them. This can&apos;t be
-                    undone.
+                    <strong>Added by mistake?</strong> Removes {name} and every record with them:
+                    what you lent or borrowed, their payments, and bills they paid for you. Their
+                    shares come off each split bill, which keeps your own share. Wallet balances go
+                    back to what they&apos;d be without them. This can&apos;t be undone.
                   </p>
                   <button
                     type="button"
@@ -364,13 +460,19 @@ export function DeletePerson({
                       confirm ? "bg-coral text-white" : "bg-card text-coral-text"
                     }`}
                   >
-                    {pending && confirm ? "Deleting…" : confirm ? "Tap again to delete for good" : "Delete for good"}
+                    {pending && confirm
+                      ? "Deleting…"
+                      : confirm
+                        ? "Tap again to delete for good"
+                        : "Delete for good"}
                   </button>
                 </>
               )}
             </section>
 
-            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+              {error}
+            </p>
           </div>
         </FormDialog>
       )}
@@ -397,7 +499,9 @@ export function RestorePerson({ personId }: { personId: string }) {
       >
         {pending ? "Restoring…" : "Restore"}
       </button>
-      <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">{error}</span>
+      <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">
+        {error}
+      </span>
     </span>
   );
 }
@@ -406,7 +510,17 @@ export function RestorePerson({ personId }: { personId: string }) {
  * Deletes one record in their history. Tap twice. A split share comes off
  * its bill instead, so the bill's total goes down with it.
  */
-export function DeleteEntry({ personId, txnId, what, split }: { personId: string; txnId: string; what: string; split: boolean }) {
+export function DeleteEntry({
+  personId,
+  txnId,
+  what,
+  split,
+}: {
+  personId: string;
+  txnId: string;
+  what: string;
+  split: boolean;
+}) {
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -434,7 +548,9 @@ export function DeleteEntry({ personId, txnId, what, split }: { personId: string
       >
         {pending ? "Deleting…" : confirm ? (split ? "Take off bill?" : "Delete?") : "Delete"}
       </button>
-      <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">{error}</span>
+      <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">
+        {error}
+      </span>
     </span>
   );
 }
@@ -489,21 +605,36 @@ export function PaidForMeButton({
             className="flex flex-col gap-4"
           >
             <p className="text-[15px] leading-relaxed">
-              {note ? <strong>{note}</strong> : "This"} is saved as {formatPeso(amount)} you borrowed into{" "}
-              <strong>{wallet}</strong>. If {name} paid for something of yours instead and the money never reached
-              you, I&apos;ll take it back out of {wallet} and count it as your spending, paid by {name}. You still owe{" "}
-              {name} the same.
+              {note ? <strong>{note}</strong> : "This"} is saved as {formatPeso(amount)} you
+              borrowed into <strong>{wallet}</strong>. If {name} paid for something of yours instead
+              and the money never reached you, I&apos;ll take it back out of {wallet} and count it
+              as your spending, paid by {name}. You still owe {name} the same.
             </p>
             <div className="flex flex-col gap-1">
-              <label htmlFor={`paid-for-${txnId}`} className="text-sm font-bold">What it was for</label>
-              <select id={`paid-for-${txnId}`} value={category} onChange={(e) => setCategory(e.target.value)} className={FIELD_CLASS}>
+              <label htmlFor={`paid-for-${txnId}`} className="text-sm font-bold">
+                What it was for
+              </label>
+              <select
+                id={`paid-for-${txnId}`}
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className={FIELD_CLASS}
+              >
                 {EXPENSE_CATEGORIES.map((c) => (
-                  <option key={c.key} value={c.key}>{c.label}</option>
+                  <option key={c.key} value={c.key}>
+                    {c.label}
+                  </option>
                 ))}
               </select>
             </div>
-            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
-            <button type="submit" disabled={pending} className="h-12 rounded-[14px] bg-sun font-extrabold text-ink disabled:opacity-60">
+            <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+              {error}
+            </p>
+            <button
+              type="submit"
+              disabled={pending}
+              className="h-12 rounded-[14px] bg-sun font-extrabold text-ink disabled:opacity-60"
+            >
               {pending ? "Saving…" : `Take ${formatPeso(amount)} out of ${wallet}`}
             </button>
           </form>

@@ -20,7 +20,10 @@ import { formatPeso } from "@/lib/money";
 // their number keyboard has no + or −). Reaching it with Tab still lets you
 // type, "120+45" included, worked out on Enter or when you leave the field.
 
-type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "type" | "inputMode"> & {
+type Props = Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  "value" | "onChange" | "type" | "inputMode"
+> & {
   value: string;
   onChange: (value: string) => void;
   /** What the amount is for, shown on the calculator. Defaults to aria-label. */
@@ -29,7 +32,16 @@ type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | 
   wrapperClassName?: string;
 };
 
-export function AmountInput({ value, onChange, label, wrapperClassName = "w-full", className = "", onBlur, onKeyDown, ...rest }: Props) {
+export function AmountInput({
+  value,
+  onChange,
+  label,
+  wrapperClassName = "w-full",
+  className = "",
+  onBlur,
+  onKeyDown,
+  ...rest
+}: Props) {
   // The sheet's title: `label`, else the field's aria-label or <label>.
   const [open, setOpen] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -192,21 +204,37 @@ function CalculatorSheet({
       <div className="flex flex-col gap-3 px-5 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         <div className="flex items-center justify-between gap-3">
           <span className="truncate text-sm font-extrabold">{label}</span>
-          <button type="button" onClick={onClose} aria-label="Close calculator" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-card">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close calculator"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-card"
+          >
             <CloseIcon size={16} />
           </button>
         </div>
-        <div aria-live="polite" className="flex flex-col items-end rounded-[20px] bg-card px-4 py-2.5">
+        <div
+          aria-live="polite"
+          className="flex flex-col items-end rounded-[20px] bg-card px-4 py-2.5"
+        >
           <span className="min-h-6 text-[17px] font-bold text-muted">
             {hasOperator(calc.expr) ? prettyExpression(calc.expr) : " "}
           </span>
-          <span className="font-display text-[40px] leading-[1.05] font-semibold">{formatPeso(Math.max(0, value ?? 0))}</span>
-          <span className={`min-h-5 text-sm font-bold ${calc.error ? "text-coral-text" : "text-muted"}`}>
+          <span className="font-display text-[40px] leading-[1.05] font-semibold">
+            {formatPeso(Math.max(0, value ?? 0))}
+          </span>
+          <span
+            className={`min-h-5 text-sm font-bold ${calc.error ? "text-coral-text" : "text-muted"}`}
+          >
             {calc.error ?? "Add them up, like 120 + 45 + 20."}
           </span>
         </div>
         <Keypad onPress={pressKey} className="grid-rows-[repeat(5,52px)]" />
-        <button type="button" onClick={apply} className="h-14 rounded-[18px] bg-sun text-[17px] font-extrabold text-ink">
+        <button
+          type="button"
+          onClick={apply}
+          className="h-14 rounded-[18px] bg-sun text-[17px] font-extrabold text-ink"
+        >
           {value && value > 0 ? `Use ${formatPeso(value)}` : "Use ₱0"}
         </button>
       </div>

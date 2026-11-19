@@ -40,26 +40,63 @@ export function ForecastChart({
   const indexOf = new Map(days.map((d, i) => [d.date, i]));
 
   const step = (series: DayBalance[]) =>
-    series
-      .map((d, i) => (i === 0 ? `M0 ${y(d.balance)}` : `H${x(i)} V${y(d.balance)}`))
-      .join(" ") + ` H${W}`;
+    series.map((d, i) => (i === 0 ? `M0 ${y(d.balance)}` : `H${x(i)} V${y(d.balance)}`)).join(" ") +
+    ` H${W}`;
   const line = step(days);
   const lowIndex = low ? indexOf.get(low.date) : undefined;
 
   return (
     <div className="relative" role="img" aria-label={label}>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="block w-full" style={{ height: H }} aria-hidden="true">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        className="block w-full"
+        style={{ height: H }}
+        aria-hidden="true"
+      >
         <path d={`${line} V${y(min)} H0 Z`} className="fill-sea-tint" />
         {paydays.map((date) =>
           indexOf.has(date) ? (
-            <line key={date} x1={x(indexOf.get(date)!)} x2={x(indexOf.get(date)!)} y1={0} y2={H} className="stroke-sun" strokeWidth={2} strokeDasharray="3 5" vectorEffect="non-scaling-stroke" />
+            <line
+              key={date}
+              x1={x(indexOf.get(date)!)}
+              x2={x(indexOf.get(date)!)}
+              y1={0}
+              y2={H}
+              className="stroke-sun"
+              strokeWidth={2}
+              strokeDasharray="3 5"
+              vectorEffect="non-scaling-stroke"
+            />
           ) : null,
         )}
-        <line x1={0} x2={W} y1={y(floor)} y2={y(floor)} className="stroke-muted" strokeWidth={1.5} strokeDasharray="6 5" vectorEffect="non-scaling-stroke" />
+        <line
+          x1={0}
+          x2={W}
+          y1={y(floor)}
+          y2={y(floor)}
+          className="stroke-muted"
+          strokeWidth={1.5}
+          strokeDasharray="6 5"
+          vectorEffect="non-scaling-stroke"
+        />
         {compare && (
-          <path d={step(compare)} fill="none" className="stroke-coral" strokeWidth={2.5} strokeDasharray="7 5" vectorEffect="non-scaling-stroke" />
+          <path
+            d={step(compare)}
+            fill="none"
+            className="stroke-coral"
+            strokeWidth={2.5}
+            strokeDasharray="7 5"
+            vectorEffect="non-scaling-stroke"
+          />
         )}
-        <path d={line} fill="none" className="stroke-sea" strokeWidth={2.5} vectorEffect="non-scaling-stroke" />
+        <path
+          d={line}
+          fill="none"
+          className="stroke-sea"
+          strokeWidth={2.5}
+          vectorEffect="non-scaling-stroke"
+        />
       </svg>
       {lowIndex !== undefined && (
         <span

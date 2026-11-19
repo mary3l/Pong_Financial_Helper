@@ -28,7 +28,11 @@ async function Savings() {
   // Read the clock only at request time (Cache Components).
   await connection();
   const today = getToday();
-  const [accounts, lastInterest, usdRate] = await Promise.all([getAccounts(), getLastInterest(), getUsdRate()]);
+  const [accounts, lastInterest, usdRate] = await Promise.all([
+    getAccounts(),
+    getLastInterest(),
+    getUsdRate(),
+  ]);
   const saved = accounts.filter((a) => !a.archived && isSpendable(a.type) && isSavingsWallet(a));
   const { accrued, perMonth } = walletInterest(saved, lastInterest, today);
   // Dollars count at the rate set on each wallet.
@@ -49,15 +53,18 @@ async function Savings() {
           purposes={["savings", "emergency", "investment"]}
         />
       </section>
-      <aside aria-label="About savings" className="flex flex-col gap-2 rounded-[20px] bg-card p-4 text-[15px] leading-relaxed">
+      <aside
+        aria-label="About savings"
+        className="flex flex-col gap-2 rounded-[20px] bg-card p-4 text-[15px] leading-relaxed"
+      >
         <h2 className="font-display text-xl font-semibold">Set aside, not spent</h2>
         <p className="text-muted">
-          Savings, your emergency fund, investments and dollar deposits count in Net worth,
-          but not in You have or Safe to spend, so you won&apos;t plan to spend them.
+          Savings, your emergency fund, investments and dollar deposits count in Net worth, but not
+          in You have or Safe to spend, so you won&apos;t plan to spend them.
         </p>
         <p className="text-muted">
-          Give one a goal, like a GoTyme GoalSave, and Pong works out what to put in each day, week or month.
-          Moving money here from a spending wallet is a transfer, never spending.
+          Give one a goal, like a GoTyme GoalSave, and Pong works out what to put in each day, week
+          or month. Moving money here from a spending wallet is a transfer, never spending.
         </p>
       </aside>
     </div>

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { addToCart, budgetStatus, cartCount, cartTotal, receiptNote, rememberedPrice, scanNote } from "@/lib/grocery";
+import {
+  addToCart,
+  budgetStatus,
+  cartCount,
+  cartTotal,
+  receiptNote,
+  rememberedPrice,
+  scanNote,
+} from "@/lib/grocery";
 
 describe("grocery mode", () => {
   it("stacks the same item and totals the cart", () => {
@@ -13,7 +21,11 @@ describe("grocery mode", () => {
   it("warns at the threshold and says how much you're over", () => {
     expect(budgetStatus(1000, 2000).tone).toBe("ok");
     expect(budgetStatus(1700, 2000)).toMatchObject({ tone: "careful", mood: "worried", pct: 85 });
-    expect(budgetStatus(2150, 2000)).toMatchObject({ tone: "over", mood: "shocked", message: "Over by ₱150. Remove something?" });
+    expect(budgetStatus(2150, 2000)).toMatchObject({
+      tone: "over",
+      mood: "shocked",
+      message: "Over by ₱150. Remove something?",
+    });
   });
 
   it("tells you when THAT item pushes you over", () => {
@@ -24,8 +36,16 @@ describe("grocery mode", () => {
 
   it("remembers prices per store, falling back to the last one seen", () => {
     const memory = { "480": { name: "Rice 5 kg", prices: { Puregold: 310 }, last: 325 } };
-    expect(rememberedPrice(memory, "480", "Puregold")).toEqual({ name: "Rice 5 kg", price: 310, atThisStore: true });
-    expect(rememberedPrice(memory, "480", "SM")).toEqual({ name: "Rice 5 kg", price: 325, atThisStore: false });
+    expect(rememberedPrice(memory, "480", "Puregold")).toEqual({
+      name: "Rice 5 kg",
+      price: 310,
+      atThisStore: true,
+    });
+    expect(rememberedPrice(memory, "480", "SM")).toEqual({
+      name: "Rice 5 kg",
+      price: 325,
+      atThisStore: false,
+    });
     expect(rememberedPrice(memory, "999", "SM")).toBeNull();
   });
 

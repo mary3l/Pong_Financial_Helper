@@ -7,7 +7,13 @@ import { monthlyDates } from "@/lib/forecast";
 import { loanSchedule, misdatedPlans, upcomingSchedule } from "@/lib/installments";
 import { checkLoan, editLoan, exactRate } from "@/lib/loan-edit";
 import { MAX_AMOUNT, isSpendable, roundCents, type AccountType } from "@/lib/money";
-import { creditTerms, isMissingColumn, pickWallet, savePlan, type Client } from "@/lib/server-writes";
+import {
+  creditTerms,
+  isMissingColumn,
+  pickWallet,
+  savePlan,
+  type Client,
+} from "@/lib/server-writes";
 
 // Phase 3: credit lines (SPayLater, Atome), loans (SLoan, MariLoan) and
 // paying their installments. See 0005_installments_loans.sql for how each
@@ -18,7 +24,9 @@ export type CreditResult = { error?: string; id?: string };
 const FAILED = { error: "Couldn't save that. Please try again." };
 
 function cleanName(name: unknown) {
-  return String(name ?? "").replace(/\s+/g, " ").trim();
+  return String(name ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function validAmount(value: number, allowZero = false) {
@@ -36,9 +44,11 @@ export type CreditLineInput = {
   used: number;
 };
 
-const isDay = (day: number | null) => day === null || (Number.isInteger(day) && day >= 1 && day <= 31);
+const isDay = (day: number | null) =>
+  day === null || (Number.isInteger(day) && day >= 1 && day <= 31);
 
-const CUTOFF_MISSING = "To save a cutoff day, run step 19 in supabase/SQL_GUIDE.md first. Or set it to Not sure.";
+const CUTOFF_MISSING =
+  "To save a cutoff day, run step 19 in supabase/SQL_GUIDE.md first. Or set it to Not sure.";
 
 /** Saves `row` with the cutoff day; before migration 0019, without it when there's none to save. */
 async function withCutoff<T extends { error: { code?: string } | null }>(
@@ -55,10 +65,12 @@ function checkCreditLine(input: CreditLineInput): string | null {
   const name = cleanName(input.name);
   if (!name) return "Give it a name, like SPayLater.";
   if (name.length > 60) return "Keep the name to 60 characters.";
-  if (input.limit !== null && !validAmount(input.limit)) return "Check the credit limit, or leave it blank.";
+  if (input.limit !== null && !validAmount(input.limit))
+    return "Check the credit limit, or leave it blank.";
   if (!isDay(input.dueDay)) return "Pick the day the bill is due.";
   if (!isDay(input.cutoffDay)) return "Pick the day the statement cuts off.";
-  if (input.cutoffDay !== null && input.dueDay === null) return "Pick the day the bill is due too, so I know when each statement is paid.";
+  if (input.cutoffDay !== null && input.dueDay === null)
+    return "Pick the day the bill is due too, so I know when each statement is paid.";
   if (!validAmount(input.used, true)) return "Check how much you owe on it now.";
   return null;
 }
@@ -102,12 +114,18 @@ export async function updateCreditLine(id: string, input: CreditLineInput): Prom
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
   const [account, current] = await Promise.all([
-    supabase.from("accounts").select("starting_balance").eq("id", id).eq("type", "credit_line").maybeSingle(),
+    supabase
+      .from("accounts")
+      .select("starting_balance")
+      .eq("id", id)
+      .eq("type", "credit_line")
+      .maybeSingle(),
     supabase.from("account_balances").select("balance").eq("account_id", id).maybeSingle(),
   ]);
   if (!account.data || !current.data) return { error: "Couldn't find that credit line." };
 
-  const starting = Number(account.data.starting_balance) + (-input.used - Number(current.data.balance));
+  const starting =
+    Number(account.data.starting_balance) + (-input.used - Number(current.data.balance));
   const { error } = await withCutoff(input.cutoffDay, (cutoff) =>
     supabase
       .from("accounts")
@@ -146,8 +164,20 @@ async function redatePlans(supabase: Client, lineId: string): Promise<number | n
   if (error) return null;
   if (!plans.length) return 0;
   const [payments, purchases] = await Promise.all([
-    supabase.from("scheduled_payments").select("id, plan_id, seq, due_on, transfer_txn_id, fee_txn_id").in("plan_id", plans.map((p) => p.id)),
-    supabase.from("transactions").select("id, occurred_on").in("id", plans.map((p) => p.source_txn_id as string)),
+    supabase
+      .from("scheduled_payments")
+      .select("id, plan_id, seq, due_on, transfer_txn_id, fee_txn_id")
+      .in(
+        "plan_id",
+        plans.map((p) => p.id),
+      ),
+    supabase
+      .from("transactions")
+      .select("id, occurred_on")
+      .in(
+        "id",
+        plans.map((p) => p.source_txn_id as string),
+      ),
   ]);
   if (payments.error || purchases.error) return null;
   const moves = misdatedPlans(
@@ -157,7 +187,11 @@ async function redatePlans(supabase: Client, lineId: string): Promise<number | n
       sourceTxnId: p.source_txn_id,
       payments: payments.data
         .filter((x) => x.plan_id === p.id)
-        .map((x) => ({ seq: x.seq, dueOn: x.due_on, transactionId: x.transfer_txn_id ?? x.fee_txn_id })),
+        .map((x) => ({
+          seq: x.seq,
+          dueOn: x.due_on,
+          transactionId: x.transfer_txn_id ?? x.fee_txn_id,
+        })),
     })),
     new Map(purchases.data.map((t) => [t.id as string, t.occurred_on as string])),
     line,
@@ -169,7 +203,10 @@ async function redatePlans(supabase: Client, lineId: string): Promise<number | n
     for (const x of payments.data.filter((x) => x.plan_id === plan.id)) {
       const dueOn = dates[x.seq - 1];
       if (!dueOn) continue;
-      const { error: moved } = await supabase.from("scheduled_payments").update({ due_on: dueOn }).eq("id", x.id);
+      const { error: moved } = await supabase
+        .from("scheduled_payments")
+        .update({ due_on: dueOn })
+        .eq("id", x.id);
       if (moved) return null;
     }
     await supabase.from("installment_plans").update({ first_due: move.to }).eq("id", plan.id);
@@ -212,19 +249,28 @@ export type UpcomingInput = {
  * they're in Coming up, the forecast and Safe to spend, and Pay bill moves
  * money to the credit line as usual. The interest or fee part is an expense.
  */
-export async function addUpcomingPayments(accountId: string, input: UpcomingInput): Promise<CreditResult> {
+export async function addUpcomingPayments(
+  accountId: string,
+  input: UpcomingInput,
+): Promise<CreditResult> {
   const name = cleanName(input.name) || "Upcoming bill";
   if (name.length > 60) return { error: "Keep the name to 60 characters." };
   if (!validAmount(input.amount)) return { error: "Enter how much you'll pay." };
   if (!validAmount(input.fee, true) || input.fee >= input.amount) {
     return { error: "The interest or fee has to be less than the payment." };
   }
-  if (!Number.isInteger(input.months) || input.months < 1 || input.months > 36) return { error: "Pick how many months." };
-  if (!Number.isInteger(input.alreadyPaid) || input.alreadyPaid < 0 || input.alreadyPaid >= input.months) {
+  if (!Number.isInteger(input.months) || input.months < 1 || input.months > 36)
+    return { error: "Pick how many months." };
+  if (
+    !Number.isInteger(input.alreadyPaid) ||
+    input.alreadyPaid < 0 ||
+    input.alreadyPaid >= input.months
+  ) {
     return { error: "Check how many payments you've already made." };
   }
   if (!isValidDate(input.firstDue)) return { error: "Pick when it's due." };
-  if (roundCents(input.amount * input.months) > MAX_AMOUNT) return { error: "That amount is too big." };
+  if (roundCents(input.amount * input.months) > MAX_AMOUNT)
+    return { error: "That amount is too big." };
 
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
@@ -292,7 +338,11 @@ export async function addLoan(input: LoanInput): Promise<CreditResult> {
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
   const received = roundCents(input.received);
-  const rows = loanSchedule({ received, monthly: exactRate(input.monthly), months: input.months }, input.nextDue, input.alreadyPaid);
+  const rows = loanSchedule(
+    { received, monthly: exactRate(input.monthly), months: input.months },
+    input.nextDue,
+    input.alreadyPaid,
+  );
   const owed = roundCents(rows.reduce((sum, r) => sum + r.principalPart, 0));
   const name = cleanName(input.name);
 
@@ -375,17 +425,27 @@ export async function updateLoan(accountId: string, input: LoanUpdate): Promise<
   if (name.length > 60) return { error: "Keep the name to 60 characters." };
   if (!validAmount(input.received)) return { error: "Enter the loan amount." };
   if (!validAmount(input.monthly)) return { error: "Enter the monthly payment." };
-  if (!Number.isInteger(input.months) || input.months < 1 || input.months > 60) return { error: "Pick how many months." };
+  if (!Number.isInteger(input.months) || input.months < 1 || input.months > 60)
+    return { error: "Pick how many months." };
   if (!isValidDate(input.nextDue)) return { error: "Pick when the next payment is due." };
 
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
-  const { data: account } = await supabase.from("accounts").select("id, type").eq("id", accountId).maybeSingle();
+  const { data: account } = await supabase
+    .from("accounts")
+    .select("id, type")
+    .eq("id", accountId)
+    .maybeSingle();
   if (!account || account.type !== "loan") return { error: "Couldn't find that loan." };
   if (input.payFromAccountId) {
-    const { data: from } = await supabase.from("accounts").select("type").eq("id", input.payFromAccountId).maybeSingle();
-    if (!from || !isSpendable(from.type as AccountType)) return { error: "Pay from cash, a bank or an e-wallet." };
+    const { data: from } = await supabase
+      .from("accounts")
+      .select("type")
+      .eq("id", input.payFromAccountId)
+      .maybeSingle();
+    if (!from || !isSpendable(from.type as AccountType))
+      return { error: "Pay from cash, a bank or an e-wallet." };
   }
 
   const { data: plan } = await supabase
@@ -452,10 +512,17 @@ export async function updateLoan(accountId: string, input: LoanUpdate): Promise<
       .order("occurred_on")
       .limit(1)
       .maybeSingle();
-    if (!lent && change !== 0) return { error: "Couldn't find what they owe you for this loan, so its amount can't change." };
+    if (!lent && change !== 0)
+      return {
+        error: "Couldn't find what they owe you for this loan, so its amount can't change.",
+      };
     if (lent) {
       const next = roundCents(Number(lent.amount) + change);
-      if (!(next > 0)) return { error: "That would leave them owing nothing for this loan. Check the loan amount and months." };
+      if (!(next > 0))
+        return {
+          error:
+            "That would leave them owing nothing for this loan. Check the loan amount and months.",
+        };
       pautang = { id: lent.id, next };
     }
   }
@@ -463,7 +530,13 @@ export async function updateLoan(accountId: string, input: LoanUpdate): Promise<
   // Swap the unpaid payments for the new ones, putting the old back if that fails.
   const unpaid = payments.filter((p) => !isPaid(p));
   if (unpaid.length) {
-    const { error } = await supabase.from("scheduled_payments").delete().in("id", unpaid.map((p) => p.id));
+    const { error } = await supabase
+      .from("scheduled_payments")
+      .delete()
+      .in(
+        "id",
+        unpaid.map((p) => p.id),
+      );
     if (error) return FAILED;
   }
   const restore = async () => {
@@ -497,7 +570,10 @@ export async function updateLoan(accountId: string, input: LoanUpdate): Promise<
     }
   }
 
-  const dues = [...payments.filter(isPaid).map((p) => p.due_on), ...edited.rows.map((r) => r.dueOn)].sort();
+  const dues = [
+    ...payments.filter(isPaid).map((p) => p.due_on),
+    ...edited.rows.map((r) => r.dueOn),
+  ].sort();
   const [planUpdate, accountUpdate, sourceUpdate] = await Promise.all([
     supabase
       .from("installment_plans")
@@ -516,10 +592,15 @@ export async function updateLoan(accountId: string, input: LoanUpdate): Promise<
     // Already paying when added: no transfer in, so the loan starts at what was owed.
     supabase
       .from("accounts")
-      .update(sourceTxnId || hadIt || theirs ? { name } : { name, starting_balance: -edited.owedAtStart })
+      .update(
+        sourceTxnId || hadIt || theirs ? { name } : { name, starting_balance: -edited.owedAtStart },
+      )
       .eq("id", accountId),
     sourceTxnId
-      ? supabase.from("transactions").update({ amount: roundCents(input.received) }).eq("id", sourceTxnId)
+      ? supabase
+          .from("transactions")
+          .update({ amount: roundCents(input.received) })
+          .eq("id", sourceTxnId)
       : pautang
         ? supabase.from("transactions").update({ amount: pautang.next }).eq("id", pautang.id)
         : Promise.resolve({ error: null }),
@@ -527,17 +608,26 @@ export async function updateLoan(accountId: string, input: LoanUpdate): Promise<
   if (planUpdate.error || accountUpdate.error || sourceUpdate.error) return FAILED;
   if (pautang && dues.length) {
     // They promised to pay it all back by the last payment.
-    await supabase.from("person_entries").update({ due_on: dues.at(-1) }).eq("transaction_id", pautang.id);
+    await supabase
+      .from("person_entries")
+      .update({ due_on: dues.at(-1) })
+      .eq("transaction_id", pautang.id);
   }
 
   if (hadIt && plan.source_txn_id) {
     // Take the money back out of the wallet, then start the loan at what was owed.
     const removed = await supabase.from("transactions").delete().eq("id", plan.source_txn_id);
     if (removed.error) {
-      await supabase.from("installment_plans").update({ source_txn_id: plan.source_txn_id }).eq("id", plan.id);
+      await supabase
+        .from("installment_plans")
+        .update({ source_txn_id: plan.source_txn_id })
+        .eq("id", plan.id);
       return FAILED;
     }
-    const started = await supabase.from("accounts").update({ starting_balance: -edited.owedAtStart }).eq("id", accountId);
+    const started = await supabase
+      .from("accounts")
+      .update({ starting_balance: -edited.owedAtStart })
+      .eq("id", accountId);
     if (started.error) return FAILED;
   }
 
@@ -550,7 +640,10 @@ export async function updateLoan(accountId: string, input: LoanUpdate): Promise<
  * line or loan, the fee part as an expense. `fromAccountId` overrides the
  * plan's usual wallet.
  */
-export async function payInstallments(ids: string[], fromAccountId?: string): Promise<CreditResult> {
+export async function payInstallments(
+  ids: string[],
+  fromAccountId?: string,
+): Promise<CreditResult> {
   if (!ids.length) return {};
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
@@ -566,8 +659,13 @@ export async function payInstallments(ids: string[], fromAccountId?: string): Pr
     .in("id", [...new Set(payments.map((p) => p.plan_id))]);
 
   if (fromAccountId) {
-    const { data: from } = await supabase.from("accounts").select("type").eq("id", fromAccountId).maybeSingle();
-    if (!from || !isSpendable(from.type as AccountType)) return { error: "Pay from cash, a bank or an e-wallet." };
+    const { data: from } = await supabase
+      .from("accounts")
+      .select("type")
+      .eq("id", fromAccountId)
+      .maybeSingle();
+    if (!from || !isSpendable(from.type as AccountType))
+      return { error: "Pay from cash, a bank or an e-wallet." };
   }
 
   for (const p of payments) {
@@ -678,13 +776,19 @@ export async function updatePlan(id: string, input: PlanEdit): Promise<CreditRes
   const name = cleanName(input.name);
   if (!name) return { error: "Give it a name." };
   if (name.length > 60) return { error: "Keep the name to 60 characters." };
-  if (input.amount !== null && !validAmount(input.amount)) return { error: "Enter how much you'll pay." };
-  if (input.nextDue !== null && !isValidDate(input.nextDue)) return { error: "Pick when it's due." };
+  if (input.amount !== null && !validAmount(input.amount))
+    return { error: "Enter how much you'll pay." };
+  if (input.nextDue !== null && !isValidDate(input.nextDue))
+    return { error: "Pick when it's due." };
 
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
   const [{ data: plan }, payments] = await Promise.all([
-    supabase.from("installment_plans").select("id, kind, account_id, source_txn_id").eq("id", id).maybeSingle(),
+    supabase
+      .from("installment_plans")
+      .select("id, kind, account_id, source_txn_id")
+      .eq("id", id)
+      .maybeSingle(),
     supabase
       .from("scheduled_payments")
       .select("id, seq, due_on, amount, principal_part, fee_part, transfer_txn_id, fee_txn_id")
@@ -695,14 +799,24 @@ export async function updatePlan(id: string, input: PlanEdit): Promise<CreditRes
 
   const byHand = !plan.source_txn_id;
   const unpaid = payments.data.filter((p) => !p.transfer_txn_id && !p.fee_txn_id);
-  const dates = byHand && input.nextDue !== null ? monthlyDates(input.nextDue, unpaid.length) : null;
+  const dates =
+    byHand && input.nextDue !== null ? monthlyDates(input.nextDue, unpaid.length) : null;
   const changes = unpaid.map((p, i) => {
     const fee = Number(p.fee_part);
     const amount = byHand && input.amount !== null ? roundCents(input.amount) : Number(p.amount);
-    return { id: p.id, dueOn: dates?.[i] ?? p.due_on, amount, principal: roundCents(amount - fee), fee, old: p };
+    return {
+      id: p.id,
+      dueOn: dates?.[i] ?? p.due_on,
+      amount,
+      principal: roundCents(amount - fee),
+      fee,
+      old: p,
+    };
   });
-  if (changes.some((c) => c.fee >= c.amount)) return { error: "The payment has to be more than its fee." };
-  if (roundCents(changes.reduce((sum, c) => sum + c.amount, 0)) > MAX_AMOUNT) return { error: "That amount is too big." };
+  if (changes.some((c) => c.fee >= c.amount))
+    return { error: "The payment has to be more than its fee." };
+  if (roundCents(changes.reduce((sum, c) => sum + c.amount, 0)) > MAX_AMOUNT)
+    return { error: "That amount is too big." };
 
   for (const c of changes) {
     if (c.amount === Number(c.old.amount) && c.dueOn === c.old.due_on) continue;
@@ -713,8 +827,13 @@ export async function updatePlan(id: string, input: PlanEdit): Promise<CreditRes
     if (error) return FAILED;
   }
 
-  const paidPrincipal = payments.data.filter((p) => !unpaid.includes(p)).reduce((sum, p) => sum + Number(p.principal_part), 0);
-  const firstDue = [...payments.data.filter((p) => !unpaid.includes(p)).map((p) => p.due_on), ...changes.map((c) => c.dueOn)].sort()[0];
+  const paidPrincipal = payments.data
+    .filter((p) => !unpaid.includes(p))
+    .reduce((sum, p) => sum + Number(p.principal_part), 0);
+  const firstDue = [
+    ...payments.data.filter((p) => !unpaid.includes(p)).map((p) => p.due_on),
+    ...changes.map((c) => c.dueOn),
+  ].sort()[0];
   const { error } = await supabase
     .from("installment_plans")
     .update({
@@ -726,7 +845,9 @@ export async function updatePlan(id: string, input: PlanEdit): Promise<CreditRes
   if (error) return FAILED;
 
   // What you owe goes up or down by the change in principal still to pay.
-  const diff = roundCents(changes.reduce((sum, c) => sum + c.principal - Number(c.old.principal_part), 0));
+  const diff = roundCents(
+    changes.reduce((sum, c) => sum + c.principal - Number(c.old.principal_part), 0),
+  );
   if (input.adjustOwed && diff !== 0) {
     const { data: account } = await supabase
       .from("accounts")
@@ -754,7 +875,11 @@ export async function removePlan(id: string): Promise<CreditResult> {
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
-  const { data, error } = await supabase.from("installment_plans").delete().eq("id", id).select("id");
+  const { data, error } = await supabase
+    .from("installment_plans")
+    .delete()
+    .eq("id", id)
+    .select("id");
   if (error || !data.length) return { error: "Couldn't remove that plan. Please try again." };
 
   refresh();
@@ -772,11 +897,18 @@ export async function deleteLoanForGood(accountId: string): Promise<CreditResult
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
-  const { data: account } = await supabase.from("accounts").select("id, type").eq("id", accountId).maybeSingle();
+  const { data: account } = await supabase
+    .from("accounts")
+    .select("id, type")
+    .eq("id", accountId)
+    .maybeSingle();
   if (!account || account.type !== "loan") return { error: "Couldn't find that loan." };
 
   // The interest of each payment is an expense from the wallet, not linked to the loan account: find it via the schedule.
-  const { data: plans, error: plansError } = await supabase.from("installment_plans").select("id").eq("account_id", accountId);
+  const { data: plans, error: plansError } = await supabase
+    .from("installment_plans")
+    .select("id")
+    .eq("account_id", accountId);
   if (plansError) return FAILED;
   const planIds = plans.map((p) => p.id);
   let feeIds: string[] = [];
@@ -812,7 +944,11 @@ export async function deleteLoanForGood(accountId: string): Promise<CreditResult
     const taken = new Set(feeIds);
     for (const p of paymentsIn) {
       const fee = fees.find(
-        (f) => !taken.has(f.id) && f.note === `${p.note} · fee` && f.account_id === p.account_id && f.occurred_on === p.occurred_on,
+        (f) =>
+          !taken.has(f.id) &&
+          f.note === `${p.note} · fee` &&
+          f.account_id === p.account_id &&
+          f.occurred_on === p.occurred_on,
       );
       if (fee) taken.add(fee.id);
     }
@@ -829,7 +965,10 @@ export async function deleteLoanForGood(accountId: string): Promise<CreditResult
     if (error) return FAILED;
   }
   // The money received and every payment: transfers from or to the loan.
-  const transfers = await supabase.from("transactions").delete().or(`account_id.eq.${accountId},to_account_id.eq.${accountId}`);
+  const transfers = await supabase
+    .from("transactions")
+    .delete()
+    .or(`account_id.eq.${accountId},to_account_id.eq.${accountId}`);
   if (transfers.error) return FAILED;
 
   // Anything else saved against it stops pointing at it.
@@ -840,7 +979,10 @@ export async function deleteLoanForGood(accountId: string): Promise<CreditResult
   if (planned.error || recurring.error) return FAILED;
 
   const { error } = await supabase.from("accounts").delete().eq("id", accountId);
-  if (error) return { error: "Its history is gone, but the loan itself couldn't be deleted. Please try again." };
+  if (error)
+    return {
+      error: "Its history is gone, but the loan itself couldn't be deleted. Please try again.",
+    };
 
   refresh();
   return {};

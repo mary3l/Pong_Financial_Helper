@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { ADJUSTMENT, categoryInfo, categoryLabel, cleanSubcategory, isAdjustment, isCategoryFor, subcategoryOptions } from "@/lib/categories";
+import {
+  ADJUSTMENT,
+  categoryInfo,
+  categoryLabel,
+  cleanSubcategory,
+  isAdjustment,
+  isCategoryFor,
+  subcategoryOptions,
+} from "@/lib/categories";
 
 describe("subcategories", () => {
   it("tidies what you type", () => {

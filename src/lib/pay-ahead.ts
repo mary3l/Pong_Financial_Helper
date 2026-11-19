@@ -22,7 +22,11 @@ export const PAY_AHEAD_KEY = "pong.payAhead";
  * their due day; not bills the payroll calculator takes from your pay; not
  * planned spending, which happens on its day.
  */
-export function aheadCandidates(items: ForecastItem[], creditLineIds: Set<string>, today: string): ForecastItem[] {
+export function aheadCandidates(
+  items: ForecastItem[],
+  creditLineIds: Set<string>,
+  today: string,
+): ForecastItem[] {
   return items.filter(
     (i) =>
       (i.kind === "installment" || i.kind === "utang" || (i.kind === "bill" && !i.fromPayroll)) &&
@@ -89,7 +93,13 @@ export type DayCheck = {
  * date): the lowest end-of-day balance from that day until the day before
  * it's due, keeping the plan's daily amounts. Its due day is always safe.
  */
-export function checkDay(item: ForecastItem, date: string, plan: PaymentPlan, locks: Locks, today: string): DayCheck {
+export function checkDay(
+  item: ForecastItem,
+  date: string,
+  plan: PaymentPlan,
+  locks: Locks,
+  today: string,
+): DayCheck {
   const amount = item.amount ?? 0;
   const from = daysBetween(today, date);
   const until = Math.min(daysBetween(today, item.dueOn), plan.days.length);
@@ -109,7 +119,12 @@ export function checkDay(item: ForecastItem, date: string, plan: PaymentPlan, lo
 }
 
 /** The first safe day to pay `item`, from today; its due date when no earlier day is. */
-export function firstSafeDay(item: ForecastItem, plan: PaymentPlan, locks: Locks, today: string): string {
+export function firstSafeDay(
+  item: ForecastItem,
+  plan: PaymentPlan,
+  locks: Locks,
+  today: string,
+): string {
   for (const day of plan.days) {
     if (day.date >= item.dueOn) break;
     if (checkDay(item, day.date, plan, locks, today).safe) return day.date;

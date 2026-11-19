@@ -37,7 +37,14 @@ const IDEAS = {
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 
 function dayLabel(day: number) {
-  const suffix = day % 10 === 1 && day !== 11 ? "st" : day % 10 === 2 && day !== 12 ? "nd" : day % 10 === 3 && day !== 13 ? "rd" : "th";
+  const suffix =
+    day % 10 === 1 && day !== 11
+      ? "st"
+      : day % 10 === 2 && day !== 12
+        ? "nd"
+        : day % 10 === 3 && day !== 13
+          ? "rd"
+          : "th";
   return day >= 29 ? `${day}${suffix} (or last day)` : `${day}${suffix}`;
 }
 
@@ -92,7 +99,8 @@ export function ScheduledManager({
   const [adding, setAdding] = useState<"in" | "out" | null>(null);
 
   const editingRow = (id: string | null) => rows.find((r) => r.ref.id === id) ?? null;
-  const nextOf = (id: string) => items.find((i) => i.id === id && !i.transactionId) ?? items.find((i) => i.id === id) ?? null;
+  const nextOf = (id: string) =>
+    items.find((i) => i.id === id && !i.transactionId) ?? items.find((i) => i.id === id) ?? null;
 
   const rows: Row[] = [
     ...recurring.map((r): Row => {
@@ -138,7 +146,10 @@ export function ScheduledManager({
         amount: p.amount,
         category: p.category,
         accountId: p.accountId,
-        when: p.dueOn < today && !p.transactionId ? `Late, was ${formatShortDay(p.dueOn, today)}` : `Once · ${formatShortDay(p.dueOn, today)}`,
+        when:
+          p.dueOn < today && !p.transactionId
+            ? `Late, was ${formatShortDay(p.dueOn, today)}`
+            : `Once · ${formatShortDay(p.dueOn, today)}`,
         next: nextOf(p.id),
         payday: false,
         fromPayroll: p.payrollKey !== null,
@@ -166,7 +177,9 @@ export function ScheduledManager({
     return (
       <section aria-labelledby={`${flow}-heading`} className="flex flex-col gap-2.5">
         <div className="flex items-baseline justify-between gap-3">
-          <h2 id={`${flow}-heading`} className="font-display text-xl font-semibold">{title}</h2>
+          <h2 id={`${flow}-heading`} className="font-display text-xl font-semibold">
+            {title}
+          </h2>
           {monthly > 0 && (
             <span className="text-sm font-bold text-muted">
               about {formatPeso(Math.round(monthly))}/mo recurring
@@ -176,7 +189,12 @@ export function ScheduledManager({
         <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
           {list.map((row) => (
             <li key={row.ref.id} className="border-b border-line-soft py-2.5 last:border-0">
-              <ItemRow row={row} accounts={accounts} today={today} onEdit={() => setEditing(row.ref.id)} />
+              <ItemRow
+                row={row}
+                accounts={accounts}
+                today={today}
+                onEdit={() => setEditing(row.ref.id)}
+              />
             </li>
           ))}
           {!list.length && (
@@ -218,8 +236,16 @@ export function ScheduledManager({
         </FormDialog>
       )}
       {adding && (
-        <FormDialog title={adding === "in" ? "Add income" : "Add expense"} onClose={() => setAdding(null)}>
-          <ScheduledForm accounts={accounts} initial={blankInput(adding, today)} today={today} onClose={() => setAdding(null)} />
+        <FormDialog
+          title={adding === "in" ? "Add income" : "Add expense"}
+          onClose={() => setAdding(null)}
+        >
+          <ScheduledForm
+            accounts={accounts}
+            initial={blankInput(adding, today)}
+            today={today}
+            onClose={() => setAdding(null)}
+          />
         </FormDialog>
       )}
       <p className="text-[15px] leading-relaxed text-muted">
@@ -283,19 +309,25 @@ function ItemRow({
     .filter(Boolean)
     .join(" · ");
   // A payroll payday is an estimate until its cutoff is saved and over.
-  const estimate = row.payday && row.fromPayroll ? (next?.estimate ?? true) : row.input.amountVaries;
-  const linkClass = "flex h-10 items-center rounded-full px-3 text-sm font-extrabold text-sea-dark hover:bg-mint";
+  const estimate =
+    row.payday && row.fromPayroll ? (next?.estimate ?? true) : row.input.amountVaries;
+  const linkClass =
+    "flex h-10 items-center rounded-full px-3 text-sm font-extrabold text-sea-dark hover:bg-mint";
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <span className={`flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] ${info.tint}`}>
+      <span
+        className={`flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] ${info.tint}`}
+      >
         <PathIcon d={info.icon} size={21} />
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate font-bold">{row.name}</span>
         <span className="text-[13px] text-muted">{detail}</span>
       </span>
-      <span className={`font-display text-[17px] font-semibold ${row.flow === "in" ? "text-sea" : ""}`}>
+      <span
+        className={`font-display text-[17px] font-semibold ${row.flow === "in" ? "text-sea" : ""}`}
+      >
         {row.amount === null ? "₱?" : `${row.flow === "in" ? "+" : "−"}${formatPeso(row.amount)}`}
         {estimate && <span className="text-xs font-bold text-muted"> est.</span>}
       </span>
@@ -312,7 +344,11 @@ function ItemRow({
           </Link>
         ) : row.fromPayroll ? (
           // SSS, PhilHealth, Pag-IBIG and tax are worked out by the payroll calculator.
-          <Link href="/payroll" aria-label={`Edit ${row.name} in the payroll calculator`} className={linkClass}>
+          <Link
+            href="/payroll"
+            aria-label={`Edit ${row.name} in the payroll calculator`}
+            className={linkClass}
+          >
             Edit
           </Link>
         ) : (
@@ -368,7 +404,9 @@ function ScheduledForm({
   const key = existing?.id ?? `new-${initial.flow}`;
   const category = categories[flow];
   const type = flow === "in" ? "income" : "expense";
-  const unusedIdeas = IDEAS[flow].filter((idea) => idea.toLowerCase() !== name.trim().toLowerCase());
+  const unusedIdeas = IDEAS[flow].filter(
+    (idea) => idea.toLowerCase() !== name.trim().toLowerCase(),
+  );
 
   function save(e: React.FormEvent) {
     e.preventDefault();
@@ -424,10 +462,19 @@ function ScheduledForm({
 
   const daySelect = (id: string, value: number, onChange: (v: number) => void, label: string) => (
     <div className="flex flex-1 flex-col gap-1">
-      <label htmlFor={id} className="text-sm font-bold">{label}</label>
-      <select id={id} value={value} onChange={(e) => onChange(Number(e.target.value))} className={FIELD_CLASS}>
+      <label htmlFor={id} className="text-sm font-bold">
+        {label}
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className={FIELD_CLASS}
+      >
         {DAYS.map((d) => (
-          <option key={d} value={d}>{dayLabel(d)}</option>
+          <option key={d} value={d}>
+            {dayLabel(d)}
+          </option>
         ))}
       </select>
     </div>
@@ -435,7 +482,11 @@ function ScheduledForm({
 
   return (
     <form onSubmit={save} className="flex flex-col gap-3">
-      <div role="group" aria-label="Income or expense" className="grid grid-cols-2 gap-1 rounded-2xl bg-card p-1">
+      <div
+        role="group"
+        aria-label="Income or expense"
+        className="grid grid-cols-2 gap-1 rounded-2xl bg-card p-1"
+      >
         {(["in", "out"] as const).map((f) => (
           <button
             key={f}
@@ -451,7 +502,9 @@ function ScheduledForm({
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <div className="flex flex-1 flex-col gap-1">
-          <label htmlFor={`sched-name-${key}`} className="text-sm font-bold">Name</label>
+          <label htmlFor={`sched-name-${key}`} className="text-sm font-bold">
+            Name
+          </label>
           <input
             id={`sched-name-${key}`}
             value={name}
@@ -463,9 +516,16 @@ function ScheduledForm({
           />
         </div>
         <div className="flex flex-col gap-1 sm:w-44">
-          <label htmlFor={`sched-amount-${key}`} className="text-sm font-bold">Amount</label>
+          <label htmlFor={`sched-amount-${key}`} className="text-sm font-bold">
+            Amount
+          </label>
           <div className="relative">
-            <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
+            <span
+              aria-hidden="true"
+              className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted"
+            >
+              ₱
+            </span>
             <AmountInput
               id={`sched-amount-${key}`}
               value={amount}
@@ -493,7 +553,9 @@ function ScheduledForm({
       )}
 
       <div className="flex flex-col gap-1.5">
-        <span id={`sched-repeat-${key}`} className="text-sm font-bold">Repeats</span>
+        <span id={`sched-repeat-${key}`} className="text-sm font-bold">
+          Repeats
+        </span>
         <div role="group" aria-labelledby={`sched-repeat-${key}`} className="flex flex-wrap gap-2">
           {REPEATS.map((r) => (
             <ChoiceChip
@@ -509,7 +571,9 @@ function ScheduledForm({
 
       {repeat === "once" && (
         <div className="flex flex-col gap-1">
-          <label htmlFor={`sched-date-${key}`} className="text-sm font-bold">Date</label>
+          <label htmlFor={`sched-date-${key}`} className="text-sm font-bold">
+            Date
+          </label>
           <input
             id={`sched-date-${key}`}
             type="date"
@@ -529,10 +593,19 @@ function ScheduledForm({
       )}
       {repeat === "weekly" && (
         <div className="flex flex-col gap-1">
-          <label htmlFor={`sched-week-${key}`} className="text-sm font-bold">Every</label>
-          <select id={`sched-week-${key}`} value={weekday} onChange={(e) => setWeekday(Number(e.target.value))} className={FIELD_CLASS}>
+          <label htmlFor={`sched-week-${key}`} className="text-sm font-bold">
+            Every
+          </label>
+          <select
+            id={`sched-week-${key}`}
+            value={weekday}
+            onChange={(e) => setWeekday(Number(e.target.value))}
+            className={FIELD_CLASS}
+          >
             {WEEKDAYS.map((d, i) => (
-              <option key={d} value={i}>{d}</option>
+              <option key={d} value={i}>
+                {d}
+              </option>
             ))}
           </select>
         </div>
@@ -552,14 +625,21 @@ function ScheduledForm({
             />
           </div>
           <label className="flex min-h-12 flex-1 items-center gap-2.5 text-sm font-bold">
-            <input type="checkbox" checked={varies} onChange={(e) => setVaries(e.target.checked)} className="h-5 w-5 accent-sea" />
+            <input
+              type="checkbox"
+              checked={varies}
+              onChange={(e) => setVaries(e.target.checked)}
+              className="h-5 w-5 accent-sea"
+            />
             The amount changes (it&apos;s an estimate)
           </label>
         </div>
       )}
 
       <div className="flex flex-col gap-1.5">
-        <span id={`sched-cat-${key}`} className="text-sm font-bold">Category</span>
+        <span id={`sched-cat-${key}`} className="text-sm font-bold">
+          Category
+        </span>
         <div role="group" aria-labelledby={`sched-cat-${key}`} className="flex flex-wrap gap-2">
           {categoriesFor(type).map((c) => (
             <button
@@ -583,21 +663,44 @@ function ScheduledForm({
           <label htmlFor={`sched-account-${key}`} className="text-sm font-bold">
             {flow === "in" ? "Goes to" : "Paid from"}
           </label>
-          <select id={`sched-account-${key}`} value={accountId} onChange={(e) => setAccountId(e.target.value)} className={FIELD_CLASS}>
+          <select
+            id={`sched-account-${key}`}
+            value={accountId}
+            onChange={(e) => setAccountId(e.target.value)}
+            className={FIELD_CLASS}
+          >
             <option value="">Any wallet</option>
             {accounts.map((a) => (
-              <option key={a.id} value={a.id}>{a.name}</option>
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
             ))}
           </select>
         </div>
       )}
 
-      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
       <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
-          {pending ? "Saving…" : existing ? `Update ${flow === "in" ? "income" : "expense"}` : flow === "in" ? "Add income" : "Add expense"}
+        <button
+          type="submit"
+          disabled={pending}
+          className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60"
+        >
+          {pending
+            ? "Saving…"
+            : existing
+              ? `Update ${flow === "in" ? "income" : "expense"}`
+              : flow === "in"
+                ? "Add income"
+                : "Add expense"}
         </button>
-        <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card">
+        <button
+          type="button"
+          onClick={onClose}
+          className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card"
+        >
           Cancel
         </button>
         {existing && (

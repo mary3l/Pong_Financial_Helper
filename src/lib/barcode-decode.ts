@@ -30,16 +30,30 @@ const HINTS = new Map<DecodeHintType, unknown>([
 const reader = new MultiFormatOneDReader(HINTS);
 
 /** Greyscale from canvas RGBA, weighted towards green like zxing does. */
-export function luminance(rgba: Uint8ClampedArray, width: number, height: number): Uint8ClampedArray {
+export function luminance(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+): Uint8ClampedArray {
   const lum = new Uint8ClampedArray(width * height);
-  for (let i = 0, p = 0; i < lum.length; i++, p += 4) lum[i] = (rgba[p] + 2 * rgba[p + 1] + rgba[p + 2]) >> 2;
+  for (let i = 0, p = 0; i < lum.length; i++, p += 4)
+    lum[i] = (rgba[p] + 2 * rgba[p + 1] + rgba[p + 2]) >> 2;
   return lum;
 }
 
 /** The barcode's digits, or null if nothing readable is in the image. */
-export function decodeLuminance(lum: Uint8ClampedArray, width: number, height: number): string | null {
+export function decodeLuminance(
+  lum: Uint8ClampedArray,
+  width: number,
+  height: number,
+): string | null {
   try {
-    return reader.decode(new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(lum, width, height))), HINTS).getText();
+    return reader
+      .decode(
+        new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(lum, width, height))),
+        HINTS,
+      )
+      .getText();
   } catch {
     return null;
   }

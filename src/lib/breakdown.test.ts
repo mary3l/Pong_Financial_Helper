@@ -1,11 +1,22 @@
 import { describe, expect, it } from "vitest";
 import type { Transaction } from "@/lib/data";
-import { breakdownText, dueThisMonth, inYourName, isLate, openRecords, type Person, type TheirPlan } from "@/lib/people";
+import {
+  breakdownText,
+  dueThisMonth,
+  inYourName,
+  isLate,
+  openRecords,
+  type Person,
+  type TheirPlan,
+} from "@/lib/people";
 import { billBreakdownText, toSplitBill } from "@/lib/splits";
 
 const TODAY = "2026-11-09";
 
-function txn(t: Partial<Transaction> & Pick<Transaction, "id" | "type" | "amount" | "accountId" | "occurredOn">): Transaction {
+function txn(
+  t: Partial<Transaction> &
+    Pick<Transaction, "id" | "type" | "amount" | "accountId" | "occurredOn">,
+): Transaction {
   return {
     toAccountId: null,
     toAmount: null,
@@ -22,9 +33,33 @@ function txn(t: Partial<Transaction> & Pick<Transaction, "id" | "type" | "amount
 describe("a person's breakdown", () => {
   // Newest first, like getTransactions.
   const history = [
-    txn({ id: "pay", type: "transfer", amount: 150, accountId: "jade", toAccountId: "gcash", note: "Paid me back", occurredOn: "2026-11-05" }),
-    txn({ id: "lunch", type: "transfer", amount: 200, accountId: "gcash", toAccountId: "jade", note: "Lunch", occurredOn: "2026-11-02" }),
-    txn({ id: "split", type: "transfer", amount: 756.19, accountId: "gcash", toAccountId: "jade", note: "Split: Chatukchak", occurredOn: "2026-10-23" }),
+    txn({
+      id: "pay",
+      type: "transfer",
+      amount: 150,
+      accountId: "jade",
+      toAccountId: "gcash",
+      note: "Paid me back",
+      occurredOn: "2026-11-05",
+    }),
+    txn({
+      id: "lunch",
+      type: "transfer",
+      amount: 200,
+      accountId: "gcash",
+      toAccountId: "jade",
+      note: "Lunch",
+      occurredOn: "2026-11-02",
+    }),
+    txn({
+      id: "split",
+      type: "transfer",
+      amount: 756.19,
+      accountId: "gcash",
+      toAccountId: "jade",
+      note: "Split: Chatukchak",
+      occurredOn: "2026-10-23",
+    }),
   ];
   const jade: Person = {
     id: "jade",
@@ -32,9 +67,30 @@ describe("a person's breakdown", () => {
     contact: null,
     balance: 806.19,
     entries: [
-      { transactionId: "pay", personId: "jade", kind: "payment", dueOn: null, countInForecast: false, splitTotal: null },
-      { transactionId: "lunch", personId: "jade", kind: "lend", dueOn: "2026-11-15", countInForecast: false, splitTotal: null },
-      { transactionId: "split", personId: "jade", kind: "split", dueOn: null, countInForecast: false, splitTotal: 4200 },
+      {
+        transactionId: "pay",
+        personId: "jade",
+        kind: "payment",
+        dueOn: null,
+        countInForecast: false,
+        splitTotal: null,
+      },
+      {
+        transactionId: "lunch",
+        personId: "jade",
+        kind: "lend",
+        dueOn: "2026-11-15",
+        countInForecast: false,
+        splitTotal: null,
+      },
+      {
+        transactionId: "split",
+        personId: "jade",
+        kind: "split",
+        dueOn: null,
+        countInForecast: false,
+        splitTotal: 4200,
+      },
     ],
   };
 
@@ -47,7 +103,12 @@ describe("a person's breakdown", () => {
   });
 
   it("writes a message to send", () => {
-    const text = breakdownText({ person: jade, open: openRecords(jade, history), today: TODAY, myName: "Mariel" });
+    const text = breakdownText({
+      person: jade,
+      open: openRecords(jade, history),
+      today: TODAY,
+      myName: "Mariel",
+    });
     expect(text).toBe(
       [
         "Hi Maam Jade! Here's the breakdown of what's still open:",
@@ -70,9 +131,28 @@ describe("a person's breakdown", () => {
       name: "Tita Flora",
       contact: null,
       balance: 14583.35,
-      entries: [{ transactionId: "loan", personId: "flora", kind: "lend", dueOn: "2027-10-12", countInForecast: false, splitTotal: null }],
+      entries: [
+        {
+          transactionId: "loan",
+          personId: "flora",
+          kind: "lend",
+          dueOn: "2027-10-12",
+          countInForecast: false,
+          splitTotal: null,
+        },
+      ],
     };
-    const loan = [txn({ id: "loan", type: "transfer", amount: 14583.35, accountId: "mariloan", toAccountId: "flora", note: "MariLoan loan", occurredOn: "2026-10-16" })];
+    const loan = [
+      txn({
+        id: "loan",
+        type: "transfer",
+        amount: 14583.35,
+        accountId: "mariloan",
+        toAccountId: "flora",
+        note: "MariLoan loan",
+        occurredOn: "2026-10-16",
+      }),
+    ];
     const theirs = { interest: 5162.46, next: { dueOn: "2026-11-12", amount: 2820.83 } };
     const mariloan: TheirPlan = {
       label: "My MariLoan loan",
@@ -141,21 +221,48 @@ describe("a person's breakdown", () => {
       expect(late).toContain("To pay this month: ₱2,820.83 (₱2,820.83 of it is late)");
 
       const paid = { ...mariloan, payments: mariloan.payments.slice(1) };
-      const text = breakdownText({ person: flora, open: openRecords(flora, loan), today: NOV_10, myName: null, month: dueThisMonth([paid], NOV_10), theirs });
+      const text = breakdownText({
+        person: flora,
+        open: openRecords(flora, loan),
+        today: NOV_10,
+        myName: null,
+        month: dueThisMonth([paid], NOV_10),
+        theirs,
+      });
       expect(text).toContain(
-        ["Hi Tita Flora! Nothing more to pay this November.", "Next payment: ₱2,820.83 due Dec 12 (3 of 12) · My MariLoan loan"].join("\n"),
+        [
+          "Hi Tita Flora! Nothing more to pay this November.",
+          "Next payment: ₱2,820.83 due Dec 12 (3 of 12) · My MariLoan loan",
+        ].join("\n"),
       );
       expect(text).toContain("Still open in all: ₱19,745.81");
     });
 
     it("without this month's bill, still counts the interest in the total", () => {
-      const text = breakdownText({ person: flora, open: openRecords(flora, loan), today: NOV_10, myName: null, theirs });
-      expect(text).toContain(["Total: ₱19,745.81 (₱14,583.35 + ₱5,162.46 interest & fees)", "Next payment: ₱2,820.83 due Nov 12"].join("\n"));
+      const text = breakdownText({
+        person: flora,
+        open: openRecords(flora, loan),
+        today: NOV_10,
+        myName: null,
+        theirs,
+      });
+      expect(text).toContain(
+        [
+          "Total: ₱19,745.81 (₱14,583.35 + ₱5,162.46 interest & fees)",
+          "Next payment: ₱2,820.83 due Nov 12",
+        ].join("\n"),
+      );
     });
   });
 
   it("tracks the interest and next payment on a loan in your name", () => {
-    const flora: Person = { id: "flora", name: "Tita Flora", contact: null, balance: 2400, entries: [] };
+    const flora: Person = {
+      id: "flora",
+      name: "Tita Flora",
+      contact: null,
+      balance: 2400,
+      entries: [],
+    };
     const plans = [
       {
         personId: "flora",
@@ -166,8 +273,14 @@ describe("a person's breakdown", () => {
         ],
       },
       // Another of hers due the same day: the next payment adds them up.
-      { personId: "flora", payments: [{ dueOn: "2026-11-16", amount: 500, feePart: 0, transactionId: null }] },
-      { personId: null, payments: [{ dueOn: "2026-11-10", amount: 999, feePart: 9, transactionId: null }] },
+      {
+        personId: "flora",
+        payments: [{ dueOn: "2026-11-16", amount: 500, feePart: 0, transactionId: null }],
+      },
+      {
+        personId: null,
+        payments: [{ dueOn: "2026-11-10", amount: 999, feePart: 9, transactionId: null }],
+      },
     ];
     const theirs = inYourName("flora", plans);
     expect(theirs).toEqual({ interest: 100, next: { dueOn: "2026-11-16", amount: 1750 } });
@@ -181,10 +294,34 @@ describe("a person's breakdown", () => {
       name: "Ben",
       contact: null,
       balance: -300,
-      entries: [{ transactionId: "b", personId: "ben", kind: "borrow", dueOn: null, countInForecast: false, splitTotal: null }],
+      entries: [
+        {
+          transactionId: "b",
+          personId: "ben",
+          kind: "borrow",
+          dueOn: null,
+          countInForecast: false,
+          splitTotal: null,
+        },
+      ],
     };
-    const borrowed = [txn({ id: "b", type: "transfer", amount: 300, accountId: "ben", toAccountId: "gcash", note: "Utang", occurredOn: "2026-11-01" })];
-    const text = breakdownText({ person: ben, open: openRecords(ben, borrowed), today: TODAY, myName: null });
+    const borrowed = [
+      txn({
+        id: "b",
+        type: "transfer",
+        amount: 300,
+        accountId: "ben",
+        toAccountId: "gcash",
+        note: "Utang",
+        occurredOn: "2026-11-01",
+      }),
+    ];
+    const text = breakdownText({
+      person: ben,
+      open: openRecords(ben, borrowed),
+      today: TODAY,
+      myName: null,
+    });
     expect(text).toContain("Here's what I still owe you:");
     expect(text).toContain("• Nov 1 · Borrowed: ₱300");
     expect(text).toContain("I'll send it soon. Salamat!");
@@ -194,14 +331,46 @@ describe("a person's breakdown", () => {
 describe("a split bill's breakdown", () => {
   it("lists every share and what's still unpaid", () => {
     const records = [
-      txn({ id: "me", type: "expense", amount: 600, accountId: "gcash", note: "Chatukchak (my share)", occurredOn: "2026-10-23", splitId: "s" }),
-      txn({ id: "a", type: "transfer", amount: 594.19, accountId: "gcash", toAccountId: "jadang", note: "Split: Chatukchak", occurredOn: "2026-10-23", splitId: "s" }),
-      txn({ id: "b", type: "transfer", amount: 434.62, accountId: "gcash", toAccountId: "aya", note: "Split: Chatukchak", occurredOn: "2026-10-23", splitId: "s" }),
+      txn({
+        id: "me",
+        type: "expense",
+        amount: 600,
+        accountId: "gcash",
+        note: "Chatukchak (my share)",
+        occurredOn: "2026-10-23",
+        splitId: "s",
+      }),
+      txn({
+        id: "a",
+        type: "transfer",
+        amount: 594.19,
+        accountId: "gcash",
+        toAccountId: "jadang",
+        note: "Split: Chatukchak",
+        occurredOn: "2026-10-23",
+        splitId: "s",
+      }),
+      txn({
+        id: "b",
+        type: "transfer",
+        amount: 434.62,
+        accountId: "gcash",
+        toAccountId: "aya",
+        note: "Split: Chatukchak",
+        occurredOn: "2026-10-23",
+        splitId: "s",
+      }),
     ];
     const text = billBreakdownText({
       split: toSplitBill("s", records),
-      names: new Map([["jadang", "Ate Jadang"], ["aya", "Maam Aya"]]),
-      unpaid: new Map([["a", 594.19], ["b", 0]]),
+      names: new Map([
+        ["jadang", "Ate Jadang"],
+        ["aya", "Maam Aya"],
+      ]),
+      unpaid: new Map([
+        ["a", 594.19],
+        ["b", 0],
+      ]),
       dateLabel: "Oct 23",
       myName: "Mariel",
     });
