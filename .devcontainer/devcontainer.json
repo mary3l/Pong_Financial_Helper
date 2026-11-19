@@ -1,0 +1,35 @@
+// A ready-made Linux machine for this repo, for GitHub Codespaces (or VS Code's
+// Dev Containers). It has Node 24 and Docker, so the local Supabase and the
+// database tests work without installing anything on your own PC:
+//   npm run db:start   then   npm run test:db
+// See .devcontainer/README.md.
+{
+  "name": "Pong Financial Helper",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:24-bookworm",
+
+  "features": {
+    // Docker inside the container: `supabase start` runs Supabase as containers.
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+
+  // The local Supabase needs a few GB of memory; Codespaces' 2-core machine has 8 GB.
+  "hostRequirements": {
+    "memory": "8gb"
+  },
+
+  "postCreateCommand": "npm ci",
+
+  "forwardPorts": [3000, 54321, 54323],
+  "portsAttributes": {
+    "3000": { "label": "App (npm run dev)" },
+    "54321": { "label": "Local Supabase API" },
+    "54323": { "label": "Local Supabase Studio" },
+    "54322": { "label": "Local Postgres", "onAutoForward": "ignore" }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode"]
+    }
+  }
+}
