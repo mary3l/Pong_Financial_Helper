@@ -41,3 +41,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# end-to-end tests (QA Phase 5)
+/e2e/.auth/
+/playwright-report/
+/test-results/
+/.lighthouseci/
