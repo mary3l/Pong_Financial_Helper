@@ -16,7 +16,13 @@ Screens and the phased dev plan live on the design canvas.
    **Authentication > Sign In / Providers** (needs a Google Cloud OAuth client).
    Email sign-in links work without this.
 6. `npm run dev` and open http://localhost:3000
-7. `npm test` runs the money-rule tests in `src/lib/*.test.ts`.
+7. `npm test` runs two Vitest projects:
+   - **unit** (Node): the money rules in `src/lib/*.test.ts`, and the Server
+     Actions in `src/app/*-actions.test.ts`. Action tests swap Supabase for the
+     in-memory fake in `src/test/fake-supabase.ts`, so they need no database.
+   - **dom** (jsdom + Testing Library): components in `src/**/*.test.tsx`.
+
+   Run one with `npx vitest run --project dom`.
 
 ## Layout
 
