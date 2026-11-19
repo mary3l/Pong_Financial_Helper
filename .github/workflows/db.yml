@@ -37,7 +37,17 @@ jobs:
         run: npm run db:start
 
       - name: Database tests (pgTAP)
-        run: npm run test:db
+        run: |
+          set -o pipefail
+          npm run test:db 2>&1 | tee pgtap.log
+
+      # Put the failing checks on the run (and the pull request) as an annotation.
+      - name: Show failed checks
+        if: failure()
+        run: |
+          grep -vE '^ok ' pgtap.log | head -c 30000 > failed.txt || true
+          msg=$(sed -e 's/%/%25/g' -e 's/\r/%0D/g' failed.txt | sed ':a;N;$!ba;s/\n/%0A/g')
+          echo "::error title=Database tests failed::${msg}"
 
       - name: Stop Supabase
         if: always()
