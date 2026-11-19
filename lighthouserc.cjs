@@ -14,7 +14,7 @@ function sessionCookie() {
   try {
     const { cookies } = JSON.parse(readFileSync(SESSION, "utf8"));
     return cookies
-      .filter((c) => c.domain === "127.0.0.1")
+      .filter((c) => c.domain === "localhost")
       .map((c) => `${c.name}=${c.value}`)
       .join("; ");
   } catch {
@@ -22,7 +22,7 @@ function sessionCookie() {
   }
 }
 
-const base = "http://127.0.0.1:3000";
+const base = "http://localhost:3000";
 
 module.exports = {
   ci: {

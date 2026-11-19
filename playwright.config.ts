@@ -14,8 +14,9 @@ if (!/^http:\/\/(127\.0\.0\.1|localhost)[:/]/.test(supabaseUrl)) {
   );
 }
 
-// 127.0.0.1, not localhost: it's the local Supabase's site_url, so sign-in links come back here.
-const baseURL = "http://127.0.0.1:3000";
+// localhost, not 127.0.0.1: `next start` calls itself localhost, so the sign-in callback
+// redirects there; the session cookie must be set on the same host.
+const baseURL = "http://localhost:3000";
 
 /** A browser project with its own test user, signed in once by auth.setup.ts. */
 function browser(name: string, device: (typeof devices)[string], email: string) {
