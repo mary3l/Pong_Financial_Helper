@@ -1541,9 +1541,9 @@ describe("assignPlanToPerson", () => {
     expect(db.writes("installment_plans", "update")).toEqual([]);
   });
 
-  // Suspected bug: clearToTransfer clears the subcategory, but the rollback
-  // (people-actions.ts ~1240-1252) doesn't put it back.
-  it.fails("keeps the purchase's subcategory when that rollback happens", async () => {
+  // Regression: clearToTransfer clears the subcategory, and the rollback
+  // used to leave it cleared.
+  it("keeps the purchase's subcategory when that rollback happens", async () => {
     useDb({
       accounts,
       installment_plans: [plan],
