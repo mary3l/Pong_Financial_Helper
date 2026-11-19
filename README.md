@@ -24,6 +24,13 @@ Screens and the phased dev plan live on the design canvas.
 
    Run one with `npx vitest run --project dom`.
 
+8. `npm run test:db` runs the database tests in `supabase/tests/database/`
+   (pgTAP): row-level security on every table, what signed-out visitors can
+   reach, and the widget functions. It needs Docker Desktop running and a local
+   Supabase: `npm run db:start` first (applies `supabase/migrations`), and
+   `npm run db:stop` when done. GitHub runs them on any push that changes
+   `supabase/**` (the **Database** check).
+
 ## Layout
 
 - `src/proxy.ts` refreshes the session and sends signed-out visitors to `/login`.
