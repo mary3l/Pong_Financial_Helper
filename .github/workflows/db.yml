@@ -1,0 +1,44 @@
+name: Database
+
+# QA Phase 4: applies every migration to a fresh local Supabase and runs the
+# pgTAP tests in supabase/tests (row-level security, signed-out access, the
+# widget functions). Only when the database could have changed.
+# Push to any branch (a pull request shows the result on its commit).
+on:
+  push:
+    paths:
+      - "supabase/**"
+      - ".github/workflows/db.yml"
+      - "package-lock.json"
+  workflow_dispatch:
+
+concurrency:
+  group: db-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  db:
+    name: Database tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # The Supabase CLI is a pinned dev dependency (npx supabase).
+      - name: Install
+        run: npm ci
+
+      - name: Start Supabase (applies supabase/migrations)
+        run: npm run db:start
+
+      - name: Database tests (pgTAP)
+        run: npm run test:db
+
+      - name: Stop Supabase
+        if: always()
+        run: npm run db:stop -- --no-backup
