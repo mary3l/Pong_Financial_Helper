@@ -52,7 +52,7 @@ select is_empty(
 -- Functions that bypass RLS -------------------------------------------------
 
 select results_eq(
-  $$ select p.proname::text from pg_proc p
+  $$ select p.proname::text collate "default" from pg_proc p
      where p.pronamespace = 'public'::regnamespace and p.prosecdef
      order by 1 $$,
   $$ values ('widget_safe_to_spend'), ('widget_spent_today') $$,
@@ -67,7 +67,7 @@ select is_empty(
 );
 
 select results_eq(
-  $$ select p.proname::text from pg_proc p
+  $$ select p.proname::text collate "default" from pg_proc p
      where p.pronamespace = 'public'::regnamespace and p.prosecdef
        and has_function_privilege('anon', p.oid, 'execute')
      order by 1 $$,
