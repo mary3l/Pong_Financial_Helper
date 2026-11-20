@@ -20,7 +20,7 @@ test("adding an expense takes it off the Home balance", async ({ page }) => {
   await page.keyboard.type("120+30");
   await page.getByRole("button", { name: "Enter ₱150" }).click();
 
-  await expect(page).toHaveURL(/127\.0\.0\.1:3000\/$/);
+  await expect(page).toHaveURL("/");
   const wallets = page.getByRole("region", { name: "Wallets" });
   await expect(wallets.getByText("₱850")).toBeVisible();
 });

@@ -42,8 +42,9 @@ setup("sign in with an email link", async ({ page, request }) => {
 
   await page.goto(await signInLink(request, email));
 
-  // Home, signed in, with the wallet global-setup made.
-  await expect(page).toHaveURL(/127\.0\.0\.1:3000\/$/);
+  // Home, signed in, with the wallet global-setup made. "/" resolves against
+  // baseURL, so the host is set in one place (playwright.config.ts).
+  await expect(page).toHaveURL("/");
   await expect(page.getByRole("heading", { name: "Wallets" })).toBeVisible();
 
   await page.context().storageState({ path: storageState });
