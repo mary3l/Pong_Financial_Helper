@@ -1,9 +1,11 @@
 import { expect, test } from "@playwright/test";
+import { hydrated } from "./hydration";
 
 // Smoke tests: the things someone does every week, end to end, in a real
-// browser against the real app and a local Supabase. They run in order and
-// share one user (signed in by auth.setup.ts, with ₱1,000 in Cash).
-test.describe.configure({ mode: "serial" });
+// browser against the real app and a local Supabase. They share one user
+// (signed in by auth.setup.ts, with ₱1,000 in Cash) and run in file order
+// (one worker, not fully parallel). Not serial mode: a failure doesn't skip
+// the tests after it, so one run reports every problem.
 
 test("Home shows the wallet and its balance", async ({ page }) => {
   await page.goto("/");
@@ -17,9 +19,16 @@ test("adding an expense takes it off the Home balance", async ({ page }) => {
   await page.goto("/add");
   await expect(page.getByRole("group", { name: "Category" })).toBeVisible();
 
-  // Typed the way a computer user does: the form listens to the keyboard.
-  await page.keyboard.type("120+30");
-  await page.getByRole("button", { name: "Enter ₱150" }).click();
+  // Typed the way a computer user does: the form listens to the keyboard. It
+  // starts listening a moment after the page draws, so keys typed too early are
+  // lost: clear and retype until the amount shows.
+  const save = page.getByRole("button", { name: "Enter ₱150" });
+  await expect(async () => {
+    for (let i = 0; i < 8; i++) await page.keyboard.press("Backspace");
+    await page.keyboard.type("120+30");
+    await expect(save).toBeVisible({ timeout: 1_000 });
+  }).toPass();
+  await save.click();
 
   await expect(page).toHaveURL("/");
   const wallets = page.getByRole("region", { name: "Wallets" });
@@ -28,7 +37,7 @@ test("adding an expense takes it off the Home balance", async ({ page }) => {
 
 test("a bill added in Plan shows up on Plan › Payments", async ({ page }) => {
   await page.goto("/plan/scheduled");
-  await page.getByRole("button", { name: "+ Add expense" }).click();
+  await (await hydrated(page.getByRole("button", { name: "+ Add expense" }))).click();
 
   const dialog = page.getByRole("dialog", { name: "Add expense" });
   await dialog.getByLabel("Name").fill("Internet");
@@ -44,8 +53,8 @@ test("a bill added in Plan shows up on Plan › Payments", async ({ page }) => {
 
 test("saving payroll settings shows the cutoff", async ({ page }) => {
   await page.goto("/payroll");
-  await page.getByLabel("Daily rate").fill("1000");
-  await page.getByRole("button", { name: "Calculate my pay" }).click();
+  await (await hydrated(page.getByLabel("Daily rate"))).fill("1000");
+  await (await hydrated(page.getByRole("button", { name: "Calculate my pay" }))).click();
 
   await expect(page.getByRole("navigation", { name: "Cutoffs" })).toBeVisible();
 });
