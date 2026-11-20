@@ -36,9 +36,12 @@ export default defineConfig({
       // (QA Phase 4/5). It only showed up here once components imported it.
       exclude: ["src/lib/**/*.test.ts", "src/lib/supabase/**", "src/lib/data.ts"],
       reporter: ["text", "html", "lcov"],
-      // Floors just under the measured baseline (2026-11-19: 93% lines,
-      // 92.8% functions, 89% branches) so coverage can't drop. Raise as tests are added.
-      thresholds: { lines: 92, statements: 92, functions: 92, branches: 88 },
+      // Floors just under the measured baseline so coverage can't drop. Raise as
+      // tests are added. Re-measured 2026-11-20 on Vitest 5 (91.4% lines, 89.5%
+      // statements, 91.1% functions, 83.8% branches): since Vitest 4 the v8
+      // provider maps coverage to the source more strictly, so the same tests
+      // score lower than Vitest 3's 93/93/92.8/89.
+      thresholds: { lines: 91, statements: 89, functions: 91, branches: 83 },
     },
   },
 });
