@@ -8,7 +8,8 @@ test.describe.configure({ mode: "serial" });
 test("Home shows the wallet and its balance", async ({ page }) => {
   await page.goto("/");
   const wallets = page.getByRole("region", { name: "Wallets" });
-  await expect(wallets.getByText("Cash")).toBeVisible();
+  // The wallet is named "Cash" and its type label is also "Cash"; the name comes first.
+  await expect(wallets.getByText("Cash", { exact: true }).first()).toBeVisible();
   await expect(wallets.getByText("₱1,000")).toBeVisible();
 });
 
