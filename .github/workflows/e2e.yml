@@ -1,0 +1,75 @@
+name: End-to-end
+
+# QA Phase 5: the real app (production build) in Chromium and mobile Safari
+# against a fresh local Supabase: sign-in by email link, smoke flows, axe
+# accessibility checks, then Lighthouse scores. Results and reports are
+# uploaded as the "e2e-reports" artifact.
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: End-to-end tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Install browsers
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Start Supabase (with its test inbox)
+        run: npm run db:start
+
+      - name: Point the tests at the local Supabase
+        run: npm run e2e:env
+
+      - name: End-to-end tests (Playwright + axe)
+        run: npm run e2e
+
+      - name: Lighthouse
+        if: success() || failure()
+        run: npm run lighthouse
+
+      # Lighthouse scores below the bar, as an annotation on the run.
+      - name: Show Lighthouse results
+        if: always()
+        run: |
+          f=.lighthouseci/assertion-results.json
+          [ -f "$f" ] || exit 0
+          node -e '
+            const r = require("./.lighthouseci/assertion-results.json");
+            for (const a of r) console.log(`::${a.level === "error" ? "error" : "warning"} title=Lighthouse ${a.auditProperty || a.auditId}::${a.url} median ${a.actual} (needs ${a.expected})`);
+          '
+          node -e '
+            const fs = require("fs"); const m = JSON.parse(fs.readFileSync(".lighthouseci/manifest.json","utf8"));
+            for (const x of m.filter(x => x.isRepresentativeRun)) console.log(`::notice title=Lighthouse ${new URL(x.url).pathname}::performance ${Math.round(x.summary.performance*100)}, accessibility ${Math.round(x.summary.accessibility*100)}, best practices ${Math.round(x.summary["best-practices"]*100)}`);
+          ' || true
+
+      - name: Stop Supabase
+        if: always()
+        run: npm run db:stop -- --no-backup
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: e2e-reports
+          path: |
+            playwright-report/
+            test-results/
+            .lighthouseci/
+          retention-days: 14

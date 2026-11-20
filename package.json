@@ -17,9 +17,13 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "qa": "npm run typecheck && npm run lint && npm run format:check && npm run test",
-    "db:start": "supabase start -x studio,imgproxy,realtime,storage-api,edge-runtime,logflare,vector,mailpit,supavisor,postgres-meta",
+    "db:start": "supabase start -x studio,imgproxy,realtime,storage-api,edge-runtime,logflare,vector,supavisor,postgres-meta",
     "db:stop": "supabase stop",
     "test:db": "supabase test db",
+    "e2e:env": "node scripts/e2e-env.mjs",
+    "e2e": "playwright test",
+    "lighthouse": "lhci autorun",
+    "qa:full": "npm run qa && npm run e2e",
     "prepare": "husky"
   },
   "dependencies": {
@@ -31,6 +35,9 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@lhci/cli": "^0.16.1",
+    "@playwright/test": "^1.65.1",
     "@tailwindcss/turbopack": "^4",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^6.9.1",

@@ -8,6 +8,8 @@ const eslintConfig = defineConfig([
   ...nextTs,
   // Turn off style rules that would fight Prettier (keep last among rule sets).
   prettier,
+  // CommonJS config files (lighthouserc.cjs) can only use require().
+  { files: ["**/*.cjs"], rules: { "@typescript-eslint/no-require-imports": "off" } },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
@@ -18,6 +20,9 @@ const eslintConfig = defineConfig([
     // Generated QA reports:
     "coverage/**",
     "reports/**",
+    "playwright-report/**",
+    "test-results/**",
+    ".lighthouseci/**",
   ]),
 ]);
 
