@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { LogButton } from "@/components/log-button";
 import {
   getCapLines,
-  getCashSpentToday,
+  getCashSpent,
   getPlanInputs,
   getTransactions,
   type Account,
@@ -64,7 +64,7 @@ async function Payments({ searchParams }: Pick<PageProps<"/plan/payments">, "sea
     );
   }
   const [cash, lines] = await Promise.all([
-    getCashSpentToday(todays, accounts),
+    getCashSpent(todays, accounts),
     getCapLines(accounts, today),
   ]);
   const { plan, held, capPerDay, start } = planToday({ inWallets, cash, items, today, lines });

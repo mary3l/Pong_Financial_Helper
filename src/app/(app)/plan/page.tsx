@@ -4,13 +4,7 @@ import { Suspense } from "react";
 import { ForecastChart } from "@/components/forecast-chart";
 import { Pong, type PongMood } from "@/components/pong";
 import { categoryInfo } from "@/lib/categories";
-import {
-  getCapLines,
-  getCashSpentToday,
-  getPayroll,
-  getPlanInputs,
-  getTransactions,
-} from "@/lib/data";
+import { getCapLines, getCashSpent, getPayroll, getPlanInputs, getTransactions } from "@/lib/data";
 import { addDays, formatShortDay, today as getToday } from "@/lib/dates";
 import {
   itemEffect,
@@ -74,7 +68,7 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
 
   // Same plan as Home and Payments: spending its daily amount, usual BNPL buys held on their bill days.
   const [cash, lines] = await Promise.all([
-    getCashSpentToday(todays, accounts),
+    getCashSpent(todays, accounts),
     getCapLines(accounts, today),
   ]);
   const { plan, start, held } = planToday({ inWallets, cash, items, today, lines });

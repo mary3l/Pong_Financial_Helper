@@ -1,4 +1,4 @@
-import { addDays, daysBetween } from "@/lib/dates";
+import { addDays, daysBetween, weekdayOf } from "@/lib/dates";
 import {
   itemEffect,
   monthlyDates,
@@ -377,6 +377,8 @@ export type PlanToday = {
   capPerDay: number;
   /** The open caps, held on their bill days. */
   held: ForecastItem[];
+  /** This week's pool: what Home shows. */
+  week: WeekPlan;
 };
 
 /**
@@ -390,6 +392,7 @@ export function planToday({
   items,
   today,
   lines = [],
+  spentThisWeek = 0,
 }: {
   /** Spending money in your wallets right now. */
   inWallets: number;
@@ -397,6 +400,8 @@ export function planToday({
   items: ForecastItem[];
   today: string;
   lines?: CapLine[];
+  /** Day-to-day cash spent this week before today (getCashSpent from Monday to yesterday). */
+  spentThisWeek?: number;
 }): PlanToday {
   const start = roundCents(inWallets + cash);
   const { plan, caps, held, perDay } = cappedPlan({ start, items, today, lines });
@@ -405,7 +410,130 @@ export function planToday({
     -left > plan.cushion
       ? tomorrowsAmount({ start, items: [...items, ...held], today, cashSpentToday: cash })
       : null;
-  return { plan, start, cash, left, tomorrow, caps, capPerDay: perDay, held };
+  const week = weekPlan({
+    plan,
+    start,
+    items,
+    today,
+    lines,
+    held,
+    cash,
+    spentBefore: spentThisWeek,
+  });
+  return { plan, start, cash, left, tomorrow, caps, capPerDay: perDay, held, week };
+}
+
+// ── This week ───────────────────────────────────────────────────────────
+
+/** Monday of the week `date` is in. Weeks run Monday to Sunday. */
+export function weekStartOf(date: string): string {
+  return addDays(date, -((weekdayOf(date) + 6) % 7));
+}
+
+/** What the plan lets you spend over [from, until): its daily amounts added up. */
+export function planSpend(plan: PaymentPlan, from: string, until: string): number {
+  let sum = 0;
+  for (const s of plan.segments) {
+    const a = s.from > from ? s.from : from;
+    const b = s.until < until ? s.until : until;
+    if (b > a) sum += s.perDay * daysBetween(a, b);
+  }
+  return sum;
+}
+
+/** The least you'd have above PLAN_FLOOR at the end of any day of the plan, spending nothing. */
+function headroom(start: number, items: ForecastItem[], today: string): number {
+  const change = dailyChanges(items, today, PLAN_DAYS);
+  let balance = start;
+  let low = Infinity;
+  for (const c of change) {
+    balance += c;
+    low = Math.min(low, balance);
+  }
+  return roundCents(low - PLAN_FLOOR);
+}
+
+export type WeekPlan = {
+  /** Monday, and the Monday after (the first day not in it). */
+  from: string;
+  until: string;
+  /** What the week gets: the plan's daily amounts for every day of it, as if nothing was spent yet. */
+  pool: number;
+  /** Day-to-day cash spent this week, today included. */
+  spent: number;
+  /** Not in the pool after all: bills ahead need it. 0 most weeks. */
+  heldForBills: number;
+  /** pool − spent − heldForBills. Below 0 when you went over. */
+  left: number;
+  /** Days left in the week, today included. */
+  daysLeft: number;
+  /** What's left, spread over the days left. */
+  pace: number;
+  /** This morning's pace, before today's spending (for the widget, which takes today's off itself). */
+  morningPace: number;
+};
+
+/**
+ * This week's pool. Spending moves between the days of a week: go over one
+ * day and the rest of the week has less; spend less and it's still there
+ * later in the week. The plan is worked out as if this week's day-to-day
+ * spending hadn't happened (so going over comes out of this week, not spread
+ * over the months ahead), each day of the week gets its daily amount, and
+ * what you spent comes off. It never goes past what you could spend this week
+ * and still pay every bill and BNPL hold on time, spending nothing after it:
+ * the rest of the plan just gets a little less a day.
+ */
+export function weekPlan({
+  plan,
+  start,
+  items,
+  today,
+  lines,
+  held,
+  cash,
+  spentBefore,
+}: {
+  /** The plan from this morning's real balance. */
+  plan: PaymentPlan;
+  start: number;
+  items: ForecastItem[];
+  today: string;
+  lines: CapLine[];
+  /** The BNPL caps held on their bill days. */
+  held: ForecastItem[];
+  /** Day-to-day cash spent today. */
+  cash: number;
+  /** …and this week before today. */
+  spentBefore: number;
+}): WeekPlan {
+  const from = weekStartOf(today);
+  const until = addDays(from, 7);
+  const daysLeft = daysBetween(today, until);
+  const before = Math.max(0, spentBefore);
+  const unspent =
+    before > 0 ? cappedPlan({ start: roundCents(start + before), items, today, lines }).plan : plan;
+  const pool = roundCents(
+    planSpend(unspent, today, until) + daysBetween(from, today) * unspent.perDay,
+  );
+  const spent = roundCents(before + cash);
+  // The most the rest of the week can take from this morning on with every bill still
+  // paid: the least you'd have over the floor on any day ahead, spending nothing.
+  const most = roundCents(Math.max(0, headroom(start, [...items, ...held], today)));
+  const heldForBills = roundCents(Math.max(0, pool - before - most));
+  const left = roundCents(pool - spent - heldForBills);
+  const spread = (amount: number) =>
+    Math.max(0, Math.floor(amount / daysLeft / ROUND_TO) * ROUND_TO);
+  return {
+    from,
+    until,
+    pool,
+    spent,
+    heldForBills,
+    left,
+    daysLeft,
+    pace: spread(left),
+    morningPace: spread(left + cash),
+  };
 }
 
 /** A line's BNPL bill: Pay only on its due day, never early. */
