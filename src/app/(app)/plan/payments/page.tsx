@@ -212,7 +212,7 @@ function PaymentRow({
   today: string;
 }) {
   if (item.key.startsWith("cap|")) {
-    // What's still open of a BNPL bill's cap, held on its due day.
+    // What you usually put on a BNPL line, held on the bill's due day.
     return (
       <li className="flex items-center gap-3 border-t border-line-soft py-2.5">
         <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
@@ -222,7 +222,7 @@ function PaymentRow({
           </span>
         </span>
         <span className="font-display text-[17px] font-semibold text-muted">
-          up to {formatPeso(item.amount!)}
+          about {formatPeso(item.amount!)}
         </span>
       </li>
     );
