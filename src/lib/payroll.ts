@@ -3,6 +3,7 @@ import { roundCents } from "@/lib/money";
 import {
   MAX_GAP_DAYS,
   WEEKDAYS,
+  nextOccurrence,
   occurrences,
   previousOccurrence,
   type Frequency,
@@ -605,7 +606,27 @@ export type PayrollRecords = {
   overtime: OvertimeEntry[];
   /** Oldest first. Missing or empty: one rate for every cutoff. */
   changes?: PayChange[];
+  /** Contributions your office takes from your pay (migration 0024). Missing: none. */
+  deductions?: Deduction[];
 };
+
+/**
+ * A contribution your office takes from your pay, like GSIS: a monthly
+ * amount, taken from the month's last payday. Not a bill.
+ */
+export type Deduction = { id: string; name: string; amount: number };
+
+/** What comes off one payday: every deduction on the month's last payday, none on the others. */
+export function deductionsOn(
+  payday: string,
+  schedule: Schedule,
+  deductions: readonly Deduction[] = [],
+): Deduction[] {
+  if (!deductions.length) return [];
+  const next = nextOccurrence(schedule, payday);
+  const lastOfMonth = !next || next.slice(0, 7) !== payday.slice(0, 7);
+  return lastOfMonth ? [...deductions] : [];
+}
 
 export function rateOf(s: CutoffRate): CutoffRate {
   return {
@@ -744,10 +765,14 @@ export function paydayFor(cutoff: Period, schedule: Schedule, cutoffs?: Cutoffs)
 }
 
 export type PaydayAmount = {
+  /** What lands in your wallet: gross pay minus what your office takes. */
   amount: number;
   estimate: boolean;
   /** The day it's actually paid, when a cutoff's payday moved. */
   paidOn?: string;
+  /** When your office takes contributions from this payday: pay before them, and each one. */
+  gross?: number;
+  deductions?: Deduction[];
 };
 
 /**
@@ -768,10 +793,14 @@ export function paydayAmounts(
     const cutoffs = cutoffsPaidOn(date, schedule, rule);
     const pays = cutoffs.map((c) => payForCutoff(records, c, today, index));
     const moved = cutoffs.map((c) => changeOf(c, rule)?.paidOn).find(Boolean);
+    const gross = roundCents(pays.reduce((sum, p) => sum + p.total, 0));
+    const taken = deductionsOn(date, schedule, records.deductions);
+    const off = roundCents(taken.reduce((sum, d) => sum + d.amount, 0));
     out[date] = {
-      amount: roundCents(pays.reduce((sum, p) => sum + p.total, 0)),
+      amount: Math.max(0, roundCents(gross - off)),
       estimate: pays.some((p) => p.estimate),
       ...(moved && moved !== date ? { paidOn: moved } : {}),
+      ...(taken.length ? { gross, deductions: taken } : {}),
     };
   }
   return out;

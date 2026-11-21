@@ -6,6 +6,8 @@ import { addDays } from "@/lib/dates";
 import { defaultDay, type PayrollDay, type PayrollSettings } from "@/lib/payroll";
 import { fail, fakeSupabase, type FakeSupabase } from "@/test/fake-supabase";
 import {
+  addDeduction,
+  deleteDeduction,
   removeCutoffChange,
   removePayChange,
   saveContributionAmounts,
@@ -13,6 +15,7 @@ import {
   saveCutoffChange,
   savePayrollSettings,
   setContributionDay,
+  updateDeduction,
   type CutoffInput,
 } from "./payroll-actions";
 
@@ -740,5 +743,51 @@ describe("setContributionDay", () => {
       error: "Save your pay first, so the bill is in Money going out.",
     });
     expect(refresh).not.toHaveBeenCalled();
+  });
+});
+
+describe("contributions taken from your pay", () => {
+  it.each<[string, string, number, string]>([
+    ["no name", "  ", 1800, "Give it a name, like GSIS."],
+    ["a long name", "x".repeat(41), 1800, "Keep the name under 40 characters."],
+    ["₱0", "GSIS", 0, "Enter how much your office takes each month."],
+    ["not a number", "GSIS", Number.NaN, "Enter how much your office takes each month."],
+  ])("rejects %s before signing in", async (_, name, amount, error) => {
+    expect(await addDeduction(name, amount)).toEqual({ error });
+    expect(createClient).not.toHaveBeenCalled();
+  });
+
+  it("adds one, trimmed and to the centavo, without touching Money going out", async () => {
+    expect(await addDeduction(" GSIS ", 1800.555)).toEqual({});
+    expect(db.writes("payroll_deductions", "insert")).toEqual([{ name: "GSIS", amount: 1800.56 }]);
+    expect(db.writes("recurring_items", "insert")).toEqual([]);
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it("changes and removes one", async () => {
+    useDb({ payroll_deductions: [{ id: "g", name: "GSIS", amount: 1800 }] });
+    expect(await updateDeduction("g", "GSIS", 1900)).toEqual({});
+    expect(db.table("payroll_deductions")).toEqual([{ id: "g", name: "GSIS", amount: 1900 }]);
+    expect(await updateDeduction("nope", "GSIS", 1900)).toEqual({
+      error: "Couldn't find that contribution.",
+    });
+    expect(await deleteDeduction("g")).toEqual({});
+    expect(db.table("payroll_deductions")).toEqual([]);
+  });
+
+  it("asks for step 24 when the table isn't there", async () => {
+    db.respond((q) =>
+      q.table === "payroll_deductions" ? fail("PGRST205", "no table") : undefined,
+    );
+    expect(await addDeduction("GSIS", 1800)).toEqual({
+      error:
+        "To add contributions taken from your pay, run step 24 in supabase/SQL_GUIDE.md first.",
+    });
+  });
+
+  it("needs a session", async () => {
+    useDb({}, { user: null });
+    expect(await addDeduction("GSIS", 1800)).toEqual({ error: SIGNED_OUT_ERROR });
+    expect(await deleteDeduction("g")).toEqual({ error: SIGNED_OUT_ERROR });
   });
 });

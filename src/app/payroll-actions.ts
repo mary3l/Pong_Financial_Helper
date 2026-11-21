@@ -517,6 +517,68 @@ export async function saveCutoff(input: CutoffInput): Promise<PayrollResult> {
   return sync(supabase);
 }
 
+const DEDUCTIONS_MISSING = {
+  error: "To add contributions taken from your pay, run step 24 in supabase/SQL_GUIDE.md first.",
+};
+
+/** A contribution's name and amount, or what's wrong with them. */
+function checkDeduction(name: string, amount: number): { name: string; amount: number } | string {
+  const trimmed = typeof name === "string" ? name.trim() : "";
+  if (!trimmed) return "Give it a name, like GSIS.";
+  if (trimmed.length > 40) return "Keep the name under 40 characters.";
+  if (!(typeof amount === "number" && amount > 0 && amount <= MAX_AMOUNT))
+    return "Enter how much your office takes each month.";
+  return { name: trimmed, amount: roundCents(amount) };
+}
+
+/**
+ * A contribution your office takes from your pay, like GSIS: a monthly
+ * amount, taken from the month's last payday. The forecast shows that
+ * payday as gross pay minus it. Not a bill, so not in Money going out.
+ */
+export async function addDeduction(name: string, amount: number): Promise<PayrollResult> {
+  const checked = checkDeduction(name, amount);
+  if (typeof checked === "string") return { error: checked };
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const { error } = await supabase.from("payroll_deductions").insert(checked);
+  if (error?.code === "PGRST205") return DEDUCTIONS_MISSING;
+  if (error) return FAILED;
+  refresh();
+  return {};
+}
+
+export async function updateDeduction(
+  id: string,
+  name: string,
+  amount: number,
+): Promise<PayrollResult> {
+  const checked = checkDeduction(name, amount);
+  if (typeof checked === "string") return { error: checked };
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const { data, error } = await supabase
+    .from("payroll_deductions")
+    .update(checked)
+    .eq("id", id)
+    .select("id");
+  if (error?.code === "PGRST205") return DEDUCTIONS_MISSING;
+  if (error) return FAILED;
+  if (!data.length) return { error: "Couldn't find that contribution." };
+  refresh();
+  return {};
+}
+
+export async function deleteDeduction(id: string): Promise<PayrollResult> {
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const { error } = await supabase.from("payroll_deductions").delete().eq("id", id);
+  if (error?.code === "PGRST205") return DEDUCTIONS_MISSING;
+  if (error) return FAILED;
+  refresh();
+  return {};
+}
+
 /**
  * Which pay a contribution comes out of: the day it's due each month, one of
  * your paydays (the 15th or the 30th). Your forecast, Safe to spend and Bills

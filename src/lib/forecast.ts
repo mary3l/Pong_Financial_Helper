@@ -46,7 +46,12 @@ export type ForecastItem = {
   fee?: number;
   /** Contributions the payroll calculator manages (SSS, PhilHealth, Pag-IBIG). You pay them yourself. */
   fromPayroll?: boolean;
+  /** Payday: pay before what your office takes, and each contribution it takes. `amount` is what's left. */
+  pay?: PayBreakdown;
 };
+
+/** A payday's gross pay and the contributions your office takes from it. */
+export type PayBreakdown = { gross: number; deductions: { name: string; amount: number }[] };
 
 export type ScheduleInputs = {
   recurring: (Schedule & {
@@ -78,7 +83,16 @@ export type ScheduleInputs = {
    * Payroll calculator: each payday's own amount by date, replacing the
    * payday's saved amount.
    */
-  paydayAmounts?: Record<string, { amount: number; estimate: boolean; paidOn?: string }>;
+  paydayAmounts?: Record<
+    string,
+    {
+      amount: number;
+      estimate: boolean;
+      paidOn?: string;
+      gross?: number;
+      deductions?: { name: string; amount: number }[];
+    }
+  >;
   /** BNPL and loan payments (Phase 3). */
   installments?: {
     id: string;
@@ -169,6 +183,14 @@ export function scheduledItems(
         estimate: payroll ? payroll.estimate : r.amountVaries,
         transactionId: logged.get(`${r.id}|${date}`) ?? null,
         ...(r.payrollKey ? { fromPayroll: true } : {}),
+        ...(payroll?.deductions?.length
+          ? {
+              pay: {
+                gross: payroll.gross!,
+                deductions: payroll.deductions.map((d) => ({ name: d.name, amount: d.amount })),
+              },
+            }
+          : {}),
       });
     }
   }

@@ -41,7 +41,7 @@ import {
   type TransactionType,
   type WalletPurpose,
 } from "@/lib/money";
-import { billCycles, type CapLine } from "@/lib/payment-plan";
+import { USUAL_DAYS, billCycles, type CapLine } from "@/lib/payment-plan";
 import { paydayAmounts, type PayrollRecords } from "@/lib/payroll";
 import { offBill } from "@/lib/off-bill";
 import { personItems, type EntryKind, type Person } from "@/lib/people";
@@ -483,7 +483,7 @@ export async function readPayroll(
   today: string,
 ): Promise<PayrollRecords | null | "missing"> {
   const from = `${Number(today.slice(0, 4)) - 1}-01-01`;
-  const [s, d, o, c, p, cc] = await Promise.all([
+  const [s, d, o, c, p, cc, dd] = await Promise.all([
     supabase.from("payroll_settings").select("*").maybeSingle(),
     supabase
       .from("payroll_days")
@@ -504,6 +504,8 @@ export async function readPayroll(
       .from("payroll_cutoff_changes")
       .select("usual_start, starts_on, ends_on, paid_on")
       .order("usual_start"),
+    // PGRST205 until migration 0024 is run: your office takes nothing.
+    supabase.from("payroll_deductions").select("id, name, amount").order("created_at"),
   ]);
   if (s.error?.code === "PGRST205") return "missing";
   if (s.error) throw dbError(s.error);
@@ -511,6 +513,7 @@ export async function readPayroll(
   if (o.error) throw dbError(o.error);
   // PGRST205 until migration 0021 is run: one rate for every cutoff.
   if (c.error && c.error.code !== "PGRST205") throw dbError(c.error);
+  if (dd.error && dd.error.code !== "PGRST205") throw dbError(dd.error);
   if (!s.data) return null;
   const row = s.data;
   return {
@@ -571,6 +574,11 @@ export async function readPayroll(
       startTime: String(ch.start_time).slice(0, 5),
       overtimeRate: Number(ch.overtime_rate),
       monthlyPay: ch.monthly_pay == null ? null : Number(ch.monthly_pay),
+    })),
+    deductions: (dd.data ?? []).map((x) => ({
+      id: x.id as string,
+      name: x.name as string,
+      amount: Number(x.amount),
     })),
   };
 }
@@ -981,7 +989,8 @@ export async function getCashSpentToday(
 
 /**
  * Each BNPL line with a due day, for its caps: what you've put on it since
- * the start of the bill today's buys land on. Only your own day-to-day buys
+ * the start of the bill today's buys land on, and what you usually put on
+ * it a day (the USUAL_DAYS before today). Only your own day-to-day buys
  * count, not scheduled items (already in the plan) or someone else's
  * purchase on your line.
  */
@@ -995,10 +1004,11 @@ export async function getCapLines(accounts: Account[], today: string): Promise<C
         today,
     ]),
   );
-  const from = [...since.values()].sort()[0];
+  const usualFrom = addDays(today, -USUAL_DAYS);
+  const from = [...since.values(), usualFrom].sort()[0];
   const ids = new Set(lines.map((a) => a.id));
   const bought = (await getTransactions({ from, to: today })).filter(
-    (t) => t.type === "expense" && ids.has(t.accountId) && t.occurredOn >= since.get(t.accountId)!,
+    (t) => t.type === "expense" && ids.has(t.accountId),
   );
   const scheduled = await getScheduledTransactionIds(bought.map((t) => t.id));
   const theirs = bought.length
@@ -1009,6 +1019,7 @@ export async function getCapLines(accounts: Account[], today: string): Promise<C
       )
     : new Set<string>();
   const own = bought.filter((t) => !scheduled.has(t.id) && !theirs.has(t.id));
+  const sum = (list: Transaction[]) => roundCents(list.reduce((total, t) => total + t.amount, 0));
   return lines.map((a) => ({
     id: a.id,
     name: a.name,
@@ -1018,7 +1029,13 @@ export async function getCapLines(accounts: Account[], today: string): Promise<C
       a.creditLimit && a.creditLimit > 0
         ? roundCents(Math.max(0, a.creditLimit + Math.min(0, a.balance)))
         : null,
-    used: roundCents(own.filter((t) => t.accountId === a.id).reduce((sum, t) => sum + t.amount, 0)),
+    used: sum(own.filter((t) => t.accountId === a.id && t.occurredOn >= since.get(a.id)!)),
+    usualPerDay:
+      sum(
+        own.filter(
+          (t) => t.accountId === a.id && t.occurredOn >= usualFrom && t.occurredOn < today,
+        ),
+      ) / USUAL_DAYS,
   }));
 }
 

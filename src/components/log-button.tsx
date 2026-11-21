@@ -10,7 +10,7 @@ import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import { CloseIcon } from "@/components/icons";
 import type { Account } from "@/lib/data";
-import type { ForecastItem } from "@/lib/forecast";
+import type { ForecastItem, PayBreakdown } from "@/lib/forecast";
 import {
   accountTypeLabel,
   formatPeso,
@@ -184,7 +184,11 @@ function WalletPicker({
     item.estimate && (item.kind === "payday" || item.kind === "income" || item.kind === "bill");
   const [changing, setChanging] = useState(false);
   const [typed, setTyped] = useState(() => String(estimate));
-  const parsed = editable && changing ? parseAmount(typed) : estimate;
+  // A payday your office takes contributions from: gross − each = what lands.
+  const breakdown = item.kind === "payday" ? (item.pay ?? null) : null;
+  const [pay, setPay] = useState(() => payTexts(breakdown));
+  const net = breakdown ? netOf(pay) : NaN;
+  const parsed = editable && changing ? (breakdown ? net : parseAmount(typed)) : estimate;
   const valid = Number.isFinite(parsed) && parsed > 0;
   const amount = valid ? parsed : estimate;
   const [problem, setProblem] = useState<string | null>(null);
@@ -277,13 +281,26 @@ function WalletPicker({
                 onClick={() => {
                   setProblem(null);
                   setTyped(String(estimate));
+                  setPay(payTexts(breakdown));
                   setChanging(true);
                 }}
               >
                 No, change it
               </ChoiceChip>
             </div>
-            {changing && (
+            {breakdown && (
+              <PayLines
+                id={item.key}
+                breakdown={breakdown}
+                texts={pay}
+                editing={changing}
+                onChange={(next) => {
+                  setProblem(null);
+                  setPay(next);
+                }}
+              />
+            )}
+            {changing && !breakdown && (
               <div className="flex flex-col gap-1.5">
                 <label htmlFor={`log-amount-${item.key}`} className="text-sm font-bold">
                   {incoming ? "How much came in" : "How much you paid"}
@@ -308,6 +325,18 @@ function WalletPicker({
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {!editable && breakdown && (
+          <div className="rounded-[20px] border-2 border-line px-4 py-3">
+            <PayLines
+              id={item.key}
+              breakdown={breakdown}
+              texts={pay}
+              editing={false}
+              onChange={setPay}
+            />
           </div>
         )}
 
@@ -372,5 +401,98 @@ function WalletPicker({
         </button>
       </form>
     </dialog>
+  );
+}
+
+type PayTexts = { gross: string; deductions: string[] };
+
+function payTexts(breakdown: PayBreakdown | null): PayTexts {
+  return {
+    gross: breakdown ? String(breakdown.gross) : "",
+    deductions: breakdown ? breakdown.deductions.map((d) => String(d.amount)) : [],
+  };
+}
+
+/** Gross minus each contribution, or NaN while one doesn't parse. */
+export function netOf(texts: PayTexts): number {
+  const gross = parseAmount(texts.gross);
+  const taken = texts.deductions.map((t) => (t.trim() ? parseAmount(t) : 0));
+  if (!(gross > 0) || taken.some((t) => !(t >= 0))) return NaN;
+  return roundCents(gross - taken.reduce((sum, t) => sum + t, 0));
+}
+
+/** A payday's gross, what your office takes, and what lands: read-only, or each one editable. */
+function PayLines({
+  id,
+  breakdown,
+  texts,
+  editing,
+  onChange,
+}: {
+  id: string;
+  breakdown: PayBreakdown;
+  texts: PayTexts;
+  editing: boolean;
+  onChange: (texts: PayTexts) => void;
+}) {
+  const net = netOf(texts);
+  const field = (
+    key: string,
+    label: string,
+    value: string,
+    set: (v: string) => void,
+    sign = "",
+  ) => (
+    <div className="flex items-center justify-between gap-3">
+      <label htmlFor={`pay-${id}-${key}`} className="min-w-0 flex-1 truncate">
+        {sign}
+        {label}
+      </label>
+      {editing ? (
+        <div className="relative w-32">
+          <span
+            aria-hidden="true"
+            className="absolute top-1/2 left-3 -translate-y-1/2 font-bold text-muted"
+          >
+            ₱
+          </span>
+          <AmountInput
+            id={`pay-${id}-${key}`}
+            value={value}
+            onChange={set}
+            placeholder="0.00"
+            className={`${FIELD_CLASS} h-10 w-full pl-7 text-right`}
+          />
+        </div>
+      ) : (
+        <span id={`pay-${id}-${key}`} className="font-bold">
+          {formatPeso(parseAmount(value) || 0)}
+        </span>
+      )}
+    </div>
+  );
+  return (
+    <div className="flex flex-col gap-1.5 text-[15px]">
+      {field("gross", "Gross pay", texts.gross, (v) => onChange({ ...texts, gross: v }))}
+      {breakdown.deductions.map((d, i) =>
+        field(
+          `d${i}`,
+          d.name,
+          texts.deductions[i],
+          (v) =>
+            onChange({
+              ...texts,
+              deductions: texts.deductions.map((t, j) => (j === i ? v : t)),
+            }),
+          "− ",
+        ),
+      )}
+      <div className="flex items-baseline justify-between gap-3 border-t-2 border-line-soft pt-1.5">
+        <span className="font-extrabold">= Take-home</span>
+        <span className={`font-extrabold ${net > 0 ? "" : "text-coral-text"}`}>
+          {Number.isFinite(net) ? formatPeso(net) : "Check the amounts"}
+        </span>
+      </div>
+    </div>
   );
 }

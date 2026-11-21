@@ -72,7 +72,7 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
     );
   }
 
-  // Same plan as Home and Payments: spending its daily amount, BNPL caps held on their bill days.
+  // Same plan as Home and Payments: spending its daily amount, usual BNPL buys held on their bill days.
   const [cash, lines] = await Promise.all([
     getCashSpentToday(todays, accounts),
     getCapLines(accounts, today),
@@ -200,7 +200,7 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
               {rows.map(({ item, date, balanceAfter }) => {
                 const change = itemEffect(item);
                 const late = item.dueOn < today;
-                // What's still open of a BNPL bill's cap: held, not something to edit or pay.
+                // What you usually put on a BNPL line, held: not something to edit or pay.
                 const cap = item.key.startsWith("cap|");
                 // A week out, only money going out gets a button: pay it early, from what you have now.
                 const soon = date < weekOut;
