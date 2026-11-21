@@ -13,7 +13,7 @@ import {
   getBillTags,
   getBudgets,
   getCapLines,
-  getCashSpentToday,
+  getCashSpent,
   getPlanInputs,
   getTransactions,
   withoutArchived,
@@ -43,7 +43,7 @@ import {
   purposeLabel,
   roundCents,
 } from "@/lib/money";
-import { PLAN_DAYS, PLAN_FLOOR, planToday } from "@/lib/payment-plan";
+import { PLAN_DAYS, PLAN_FLOOR, planToday, weekStartOf } from "@/lib/payment-plan";
 import { dueDate, isOverdue } from "@/lib/people";
 import { saveWidgetSnapshot } from "@/lib/widget-snapshot";
 import { SafeToSpendCard, pongSays } from "./safe-to-spend-card";
@@ -105,25 +105,29 @@ async function Dashboard() {
   await connection();
   const today = getToday();
   const period = periodContaining(today);
-  const [plan, todays, budgets, spentThisKinsenas] = await Promise.all([
+  const monday = weekStartOf(today);
+  const [plan, todays, budgets, spentThisKinsenas, earlierThisWeek] = await Promise.all([
     getPlanInputs(today, PLAN_DAYS),
     getTransactions({ from: today, to: today }),
     getBudgets(),
     getTransactions({ from: period.start, to: period.end }),
+    monday < today ? getTransactions({ from: monday, to: addDays(today, -1) }) : [],
   ]);
   const { accounts, inWallets, setAside, payday, items, people } = plan;
-  const [activity, cash, lines] = await Promise.all([
+  const [activity, cash, spentThisWeek, lines] = await Promise.all([
     withoutArchived(todays),
-    getCashSpentToday(todays, accounts),
+    getCashSpent(todays, accounts),
+    getCashSpent(earlierThisWeek, accounts),
     getCapLines(accounts, today),
   ]);
   const billTags = await getBillTags(activity, accounts, today);
-  const day = planToday({ inWallets, cash, items, today, lines });
+  const day = planToday({ inWallets, cash, items, today, lines, spentThisWeek });
   const limitLeft = roundCents(
     creditRoom(accounts).reduce((sum, l) => sum + (l.creditLeft ?? 0), 0),
   );
   // The home screen widget shows this too (0020_widget_safe_to_spend.sql).
-  await saveWidgetSnapshot({ perDay: day.plan.perDay, until: day.plan.segments[0].until }, today);
+  // This morning's pace: the widget takes today's spending off it itself.
+  await saveWidgetSnapshot({ perDay: day.week.morningPace, until: day.week.until }, today);
   // The plan's balance: spending its daily amount, with BNPL caps held.
   const forecastDays = day.plan.days.slice(0, 30);
   const forecastLow = lowestBetween(forecastDays, today, addDays(today, 30))!;

@@ -10,8 +10,10 @@ import {
   isBnplBill,
   PLAN_FLOOR,
   planRows,
+  planSpend,
   planToday,
   tomorrowsAmount,
+  weekStartOf,
 } from "@/lib/payment-plan";
 
 const today = "2026-11-15";
@@ -158,6 +160,92 @@ describe("planToday", () => {
   it("only works out tomorrow once you're past the cushion", () => {
     expect(planToday({ ...base, inWallets: 7800, cash: 200 }).tomorrow).toBeNull();
     expect(planToday({ ...base, inWallets: 7000, cash: 1000 }).tomorrow).not.toBeNull();
+  });
+});
+
+describe("this week", () => {
+  // Weeks run Monday to Sunday: Nov 16–22, 2026.
+  const mon = "2026-11-16";
+  const on = (date: string, amount: number, name: string) =>
+    item(0, amount, { dueOn: date, key: `${date}|${name}`, name });
+  // ₱1,000 kept plus ₱250 a day for 90 days, nothing scheduled.
+  const steady = 1000 + 90 * 250;
+
+  it("starts the week on Monday", () => {
+    expect(weekStartOf(mon)).toBe(mon);
+    expect(weekStartOf("2026-11-22")).toBe(mon);
+    expect(weekStartOf("2026-11-15")).toBe("2026-11-09");
+  });
+
+  it("gives the week seven days of the daily amount", () => {
+    const { week, plan } = planToday({ inWallets: steady, cash: 0, items: [], today: mon });
+    expect(plan.perDay).toBe(250);
+    expect(week).toMatchObject({
+      from: mon,
+      until: "2026-11-23",
+      pool: 1750,
+      spent: 0,
+      left: 1750,
+      daysLeft: 7,
+      pace: 250,
+      heldForBills: 0,
+    });
+  });
+
+  it("takes a day's overspending off the rest of the same week", () => {
+    // ₱950 on Monday, ₱700 over.
+    const { week } = planToday({
+      inWallets: steady - 950,
+      cash: 0,
+      items: [],
+      today: "2026-11-17",
+      spentThisWeek: 950,
+    });
+    expect(week).toMatchObject({ pool: 1750, spent: 950, left: 800, daysLeft: 6, pace: 130 });
+  });
+
+  it("keeps what you didn't spend earlier in the week", () => {
+    const { week } = planToday({
+      inWallets: steady,
+      cash: 0,
+      items: [],
+      today: "2026-11-19",
+    });
+    expect(week).toMatchObject({ left: 1750, daysLeft: 4, pace: 430 });
+  });
+
+  it("counts today's spending and goes below 0 when the week is over", () => {
+    const { week } = planToday({
+      inWallets: steady - 2000,
+      cash: 400,
+      items: [],
+      today: "2026-11-20",
+      spentThisWeek: 1600,
+    });
+    expect(week.spent).toBe(2000);
+    expect(week.left).toBe(-250);
+    expect(week.pace).toBe(0);
+    // This morning's pace, before today's ₱400: the widget takes today's off itself.
+    expect(week.morningPace).toBe(50);
+  });
+
+  it("raises the pool from payday on", () => {
+    // ₱1,000 spare until Thursday's pay.
+    const items = [on("2026-11-19", 40000, "Payday")];
+    const { week, plan } = planToday({ inWallets: 2000, cash: 0, items, today: mon });
+    expect(plan.segments[1].from).toBe("2026-11-19");
+    expect(week.pool).toBe(planSpend(plan, mon, "2026-11-23"));
+    expect(week.pool).toBeGreaterThan(7 * plan.perDay);
+  });
+
+  it("holds back what a bill this week needs, even from days already past", () => {
+    // Thursday, nothing spent yet; ₱1,600 due Sunday and a big payday Monday.
+    const items = [on("2026-11-22", -1600, "Rent"), on("2026-11-23", 20000, "Payday")];
+    const { week, plan } = planToday({ inWallets: 3000, cash: 0, items, today: "2026-11-19" });
+    expect(plan.perDay).toBe(100);
+    expect(plan.cushion).toBe(0);
+    // Seven days at ₱100 would be ₱700, but only ₱400 is there before Sunday's bill.
+    expect(week).toMatchObject({ pool: 700, heldForBills: 300, left: 400, pace: 100 });
   });
 });
 

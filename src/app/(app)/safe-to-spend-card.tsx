@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { Pong, type PongMood } from "@/components/pong";
-import { formatShortDay } from "@/lib/dates";
-import { formatPeso, roundCents } from "@/lib/money";
+import { addDays, formatShortDay } from "@/lib/dates";
+import { formatPeso } from "@/lib/money";
 import { PLAN_DAYS, PLAN_FLOOR, type PlanToday } from "@/lib/payment-plan";
 
 // Home's Safe to spend card (design canvas 2.1), with Pong in the corner
-// saying how it's going. Today's amount comes from the payment plan and is
-// cash only; BNPL has its own cap on each bill.
+// saying how it's going. The amount is this week's pool from the payment
+// plan (weekPlan): spend it over the week however you like. Cash only; BNPL
+// has its own cap on each bill.
 
 export type PongLine = { mood: PongMood; message: string; link?: { href: string; label: string } };
 
@@ -25,7 +26,8 @@ export function SafeToSpendCard({
   setAside: number;
   today: string;
 }) {
-  const { plan, left, cash: spent } = day;
+  const { week } = day;
+  const { left, spent } = week;
   // Each line's cap on the bill today's buys land on.
   const current = day.caps.filter((c) => c.from <= today && today < c.until);
   const amount = formatPeso(left);
@@ -36,7 +38,7 @@ export function SafeToSpendCard({
       : amount.length <= 8
         ? "text-[2.25rem] sm:text-[2.6rem]"
         : "text-[1.6rem] sm:text-[2rem]";
-  const scale = Math.max(plan.perDay, spent) || 1;
+  const scale = Math.max(week.pool, spent) || 1;
   return (
     <section className="relative flex flex-col gap-1.5 overflow-hidden rounded-[28px] bg-sea p-6 text-white lg:p-7">
       <div
@@ -45,18 +47,22 @@ export function SafeToSpendCard({
       />
       <div className="relative flex items-start gap-2">
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <h2 className="text-sm font-bold text-sea-text">SAFE TO SPEND TODAY</h2>
+          <h2 className="text-sm font-bold text-sea-text">LEFT THIS WEEK</h2>
           <p
             className={`font-display leading-none font-semibold whitespace-nowrap ${amountSize} ${left < 0 ? "text-sun" : ""}`}
           >
             {amount}
           </p>
+          <p className="text-[15px] leading-snug font-extrabold">
+            {formatPeso(week.pace)}/day ·{" "}
+            {week.daysLeft === 1 ? "last day" : `${week.daysLeft} days`}
+          </p>
           {spent > 0 && (
             <>
-              <p className="text-[15px] leading-snug font-extrabold">
+              <p className="text-[15px] leading-snug text-sea-text">
                 {left < 0
                   ? `Over by ${formatPeso(-left)}`
-                  : `Spent ${formatPeso(spent)} of ${formatPeso(plan.perDay)}`}
+                  : `Spent ${formatPeso(spent)} of ${formatPeso(week.pool - week.heldForBills)}`}
               </p>
               <span
                 aria-hidden="true"
@@ -119,15 +125,20 @@ export function SafeToSpendCard({
           <span className="hidden group-open:inline">Hide breakdown</span>
         </summary>
         <dl className="flex flex-col gap-1.5 rounded-[18px] bg-sea-deep px-4 py-3.5 text-[15px]">
-          <BreakdownLine label="Spending money this morning" value={formatPeso(day.start)} />
           <BreakdownLine
-            label={`Lowest at ${formatPeso(plan.perDay)} a day · ${formatShortDay(plan.lowest.date, today)}`}
-            value={formatPeso(plan.lowest.balance)}
+            label={`This week · ${formatShortDay(week.from, today)}–${formatShortDay(addDays(week.until, -1), today)}`}
+            value={formatPeso(week.pool)}
           />
-          <BreakdownLine label="− Always keep" value={formatPeso(PLAN_FLOOR)} />
-          <BreakdownLine label="= Cushion" value={formatPeso(plan.cushion)} strong divider />
-          <BreakdownLine label="Spent today" value={formatPeso(spent)} />
-          <BreakdownLine label="= Left for today" value={formatPeso(left)} strong divider />
+          {week.heldForBills > 0 && (
+            <BreakdownLine label="− Held for bills" value={formatPeso(week.heldForBills)} />
+          )}
+          <BreakdownLine label="− Spent this week" value={formatPeso(spent)} />
+          <BreakdownLine label="= Left" value={formatPeso(left)} strong divider />
+          <BreakdownLine
+            label={`÷ ${week.daysLeft} ${week.daysLeft === 1 ? "day" : "days"}`}
+            value={`${formatPeso(week.pace)}/day`}
+          />
+          <BreakdownLine label="Always keep" value={formatPeso(PLAN_FLOOR)} divider />
         </dl>
         <p className="pt-2 text-[13px] leading-snug text-sea-text">
           Every bill, loan, BNPL bill and payday in the next {PLAN_DAYS} days counts, and what you
@@ -178,8 +189,8 @@ export function pongSays(
       link: { href: "/setup", label: "Set up wallets" },
     };
   }
-  const { plan, left, cash: spent, tomorrow } = day;
-  if (!hasPayday && spent === 0) {
+  const { plan, week } = day;
+  if (!hasPayday && week.spent === 0) {
     return {
       mood: "listen",
       message: "When's payday? Tell me and I'll plan around it.",
@@ -193,17 +204,12 @@ export function pongSays(
       link: { href: "/plan/payments", label: "See payments" },
     };
   }
-  // Nothing spent yet: the amount says it all, so no bubble.
-  if (spent === 0) return { mood: "peek", message: "" };
-  if (left > plan.perDay * 0.2) return { mood: "happy", message: `${formatPeso(left)} left today` };
-  if (left > 0) return { mood: "listen", message: `${formatPeso(left)} left · almost there` };
-  if (left === 0)
-    return { mood: "listen", message: `Today's ${formatPeso(plan.perDay)} is used up` };
-  if (tomorrow === null) {
-    return {
-      mood: "worried",
-      message: `Cushion ${formatPeso(roundCents(plan.cushion + left))} left · tomorrow still ${formatPeso(plan.perDay)}`,
-    };
-  }
-  return { mood: "worried", message: `Tomorrow ${formatPeso(tomorrow)} a day` };
+  // Nothing spent this week yet: the amount says it all, so no bubble.
+  if (week.spent === 0) return { mood: "peek", message: "" };
+  if (week.left < 0)
+    return { mood: "worried", message: `Over by ${formatPeso(-week.left)} · new week Monday` };
+  if (week.left === 0) return { mood: "listen", message: "This week's used up · new week Monday" };
+  if (week.pace < plan.perDay / 2)
+    return { mood: "listen", message: `Go easy · ${formatPeso(week.pace)} a day till Sunday` };
+  return { mood: "happy", message: "On track this week" };
 }
