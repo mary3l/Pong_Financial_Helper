@@ -1,7 +1,7 @@
 import { Pong, type PongMood } from "@/components/pong";
 
-/** First-run setup: spending wallets, savings, what you owe, payday and bills. */
-export const SETUP_STEPS = 4;
+/** First-run setup: spending, savings, your pay, what's taken, what you owe, bills. */
+export const SETUP_STEPS = 6;
 
 export function SetupHeader({
   step,

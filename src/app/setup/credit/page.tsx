@@ -9,13 +9,13 @@ import { DebtsStep } from "./debts-step";
 
 export const metadata = { title: "What you owe · Pong Money" };
 
-// Step 3 of setup: BNPL and credit lines (SPayLater, Atome, MariBank) and
+// Step 5 of setup: BNPL and credit lines (SPayLater, Atome, MariBank) and
 // loans you're paying. Their bills are planned for before what's left this week.
 export default function SetupCreditPage() {
   return (
     <div className="flex flex-1 flex-col gap-6">
       <SetupHeader
-        step={3}
+        step={5}
         title="What you owe"
         message="Bills from these come out before what's left this week."
         mood="listen"

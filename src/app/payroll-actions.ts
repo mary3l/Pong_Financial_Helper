@@ -611,7 +611,12 @@ export async function setEmployment(employment: Employment): Promise<PayrollResu
         pay_tax: false,
       }
     : { employment };
-  const { data, error } = await supabase.from("payroll_settings").update(update).select("user_id");
+  // Supabase refuses an update with no filter: "every row" is just your own one (RLS).
+  const { data, error } = await supabase
+    .from("payroll_settings")
+    .update(update)
+    .not("user_id", "is", null)
+    .select("user_id");
   if (missingColumn(error) || error?.code === "23514") return STEP_25;
   if (error?.code === "PGRST205") return MISSING;
   if (error) return FAILED;

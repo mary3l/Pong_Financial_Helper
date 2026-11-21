@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { addCreditLine, updateCreditLine } from "@/app/credit-actions";
 import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
+import { DayPicker } from "@/components/day-picker";
 import type { Account } from "@/lib/data";
 import { formatShortDay, today as getToday } from "@/lib/dates";
 import { bnplFirstDue } from "@/lib/installments";
@@ -19,8 +20,6 @@ const PROVIDERS = [
   "GGives",
   "Home Credit",
 ];
-
-const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 
 /** Adds a BNPL credit line, or edits `account`. */
 export function CreditLineForm({ account, onDone }: { account?: Account; onDone?: () => void }) {
@@ -89,63 +88,45 @@ export function CreditLineForm({ account, onDone }: { account?: Account; onDone?
           className={FIELD_CLASS}
         />
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1">
-          <label htmlFor={`credit-limit-${id}`} className="text-sm font-bold">
-            Credit limit <span className="font-semibold text-muted">(optional)</span>
-          </label>
-          <div className="relative">
-            <span
-              aria-hidden="true"
-              className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted"
-            >
-              ₱
-            </span>
-            <AmountInput
-              id={`credit-limit-${id}`}
-              value={limit}
-              onChange={setLimit}
-              placeholder="0.00"
-              className={`${FIELD_CLASS} w-full pl-8 text-right`}
-            />
-          </div>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor={`credit-due-${id}`} className="text-sm font-bold">
-            Bill due every
-          </label>
-          <select
-            id={`credit-due-${id}`}
-            value={dueDay}
-            onChange={(e) => setDueDay(e.target.value)}
-            className={FIELD_CLASS}
+      <div className="flex flex-col gap-1">
+        <label htmlFor={`credit-limit-${id}`} className="text-sm font-bold">
+          Credit limit <span className="font-semibold text-muted">(optional)</span>
+        </label>
+        <div className="relative">
+          <span
+            aria-hidden="true"
+            className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted"
           >
-            <option value="">Not sure</option>
-            {DAYS.map((d) => (
-              <option key={d} value={d}>
-                Day {d}
-              </option>
-            ))}
-          </select>
+            ₱
+          </span>
+          <AmountInput
+            id={`credit-limit-${id}`}
+            value={limit}
+            onChange={setLimit}
+            placeholder="0.00"
+            className={`${FIELD_CLASS} w-full pl-8 text-right`}
+          />
         </div>
       </div>
+      <DayPicker
+        id={`credit-due-${id}`}
+        label="Bill due"
+        value={dueDay}
+        onChange={setDueDay}
+        unsure="Not sure"
+      />
       <div className="flex flex-col gap-1">
-        <label htmlFor={`credit-cutoff-${id}`} className="text-sm font-bold">
-          Statement cuts off <span className="font-semibold text-muted">(optional)</span>
-        </label>
-        <select
+        <DayPicker
           id={`credit-cutoff-${id}`}
+          label={
+            <>
+              Statement cuts off <span className="font-semibold text-muted">(optional)</span>
+            </>
+          }
           value={cutoffDay}
-          onChange={(e) => setCutoffDay(e.target.value)}
-          className={FIELD_CLASS}
-        >
-          <option value="">Not sure</option>
-          {DAYS.map((d) => (
-            <option key={d} value={d}>
-              Day {d}
-            </option>
-          ))}
-        </select>
+          onChange={setCutoffDay}
+          unsure="Not sure"
+        />
         <span className="text-xs text-muted">
           <CutoffHint
             dueDay={dueDay ? Number(dueDay) : null}

@@ -7,10 +7,13 @@ import { addWallets, type WalletInput } from "@/app/wallet-actions";
 import { AmountInput } from "@/components/amount-input";
 import { FIELD_CLASS } from "@/components/choice-chip";
 import type { Account } from "@/lib/data";
+import { interestPresetFor, type InterestPreset } from "@/lib/interest-presets";
 import {
+  INTEREST_PAYOUTS,
   WALLET_PURPOSES,
   WALLET_TYPES,
   accountTypeLabel,
+  canEarnInterest,
   formatBalance,
   isSpendable,
   parseAmount,
@@ -27,9 +30,38 @@ type Row = {
   amount: string;
   /** Preset rows have a fixed name; added rows let you type one. */
   custom: boolean;
+  /** It earns interest (MariBank, Maya Savings, GoTyme): at `rate`% a year. */
+  earns: boolean;
+  rate: string;
 };
 
 type Preset = { name: string; type: WalletType; purpose: WalletPurpose };
+
+/**
+ * Banks and savings people here open in apps, one tap to add, with their
+ * interest filled in (src/lib/interest-presets.ts). Only pesos: dollar time
+ * deposits are added in Money.
+ */
+const QUICK_ADD: Record<"spending" | "saved", Preset[]> = {
+  spending: [
+    { name: "MariBank", type: "bank", purpose: "spending" },
+    { name: "GoTyme", type: "bank", purpose: "spending" },
+  ],
+  saved: [
+    { name: "MariBank Savings", type: "bank", purpose: "savings" },
+    { name: "Maya Savings", type: "ewallet", purpose: "savings" },
+    { name: "GoTyme GoalSave", type: "bank", purpose: "savings" },
+    { name: "GSave", type: "ewallet", purpose: "savings" },
+  ],
+};
+
+/** The interest a wallet's name points to, if Pong knows its rate (pesos only). */
+function interestOf(row: Pick<Row, "name" | "type">): InterestPreset | null {
+  const preset = interestPresetFor(row.name);
+  return preset && preset.rate !== null && !preset.currency && canEarnInterest(row.type)
+    ? preset
+    : null;
+}
 
 /** Step 1: money you spend from. Step 2: money you keep aside, which isn't in what's left this week. */
 const PRESETS: Record<"spending" | "saved", Preset[]> = {
@@ -39,10 +71,7 @@ const PRESETS: Record<"spending" | "saved", Preset[]> = {
     { name: "Maya", type: "ewallet", purpose: "spending" },
     { name: "Bank (payroll)", type: "bank", purpose: "spending" },
   ],
-  saved: [
-    { name: "Savings", type: "bank", purpose: "savings" },
-    { name: "Emergency fund", type: "bank", purpose: "emergency" },
-  ],
+  saved: [{ name: "Emergency Savings", type: "bank", purpose: "emergency" }],
 };
 
 const SAVED_PURPOSES = WALLET_PURPOSES.filter((p) => p.value !== "spending");
@@ -79,24 +108,45 @@ export function WalletsForm({
         ...p,
         amount: "",
         custom: false,
+        // Maya's preset row is the Maya Wallet, which doesn't earn: you turn it on for Maya Savings.
+        earns: false,
+        rate: String(interestOf(p)?.rate ?? ""),
       }));
   });
+  const taken = new Set([...existing, ...rows].map((r) => r.name.toLowerCase()));
 
   const update = (key: number, patch: Partial<Row>) =>
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
-  function addRow() {
+  function addRow(preset?: Preset) {
+    const interest = preset ? interestOf(preset) : null;
     setRows((rs) => [
       ...rs,
       {
         key: nextKey++,
-        name: "",
-        type: "bank",
-        purpose: saved ? "savings" : "spending",
+        name: preset?.name ?? "",
+        type: preset?.type ?? "bank",
+        purpose: preset?.purpose ?? (saved ? "savings" : "spending"),
         amount: "",
         custom: true,
+        earns: Boolean(interest),
+        rate: String(interest?.rate ?? ""),
       },
     ]);
+  }
+
+  // Typing a known name (MariBank, Maya, GoTyme) fills in its interest, once.
+  function rename(row: Row, name: string) {
+    const before = interestOf(row);
+    const after = interestOf({ ...row, name });
+    update(
+      row.key,
+      after && after !== before
+        ? { name, earns: true, rate: String(after.rate) }
+        : !after
+          ? { name, earns: false }
+          : { name },
+    );
   }
 
   function next() {
@@ -112,7 +162,19 @@ export function WalletsForm({
         setError(`Check the amount for ${name || "your new wallet"}.`);
         return;
       }
-      wallets.push({ name, type: row.type, balance, ...(saved && { purpose: row.purpose }) });
+      const interest = row.earns ? interestOf(row) : null;
+      const rate = Number(row.rate.replace(/[%\s]/g, ""));
+      if (interest && !(rate > 0 && rate <= 100)) {
+        setError(`Check the interest rate for ${name}.`);
+        return;
+      }
+      wallets.push({
+        name,
+        type: row.type,
+        balance,
+        ...(saved && { purpose: row.purpose }),
+        ...(interest && { interestRate: rate, interestPayout: interest.payout }),
+      });
     }
 
     startTransition(async () => {
@@ -158,7 +220,7 @@ export function WalletsForm({
                   <input
                     id={`name-${row.key}`}
                     value={row.name}
-                    onChange={(e) => update(row.key, { name: e.target.value })}
+                    onChange={(e) => rename(row, e.target.value)}
                     placeholder="e.g. MariBank"
                     maxLength={60}
                     className={`${FIELD_CLASS} flex-1`}
@@ -186,6 +248,7 @@ export function WalletsForm({
                 />
               </div>
             </div>
+            <InterestLine row={row} onChange={(patch) => update(row.key, patch)} />
             {row.custom && (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-bold text-muted" id={`type-${row.key}`}>
@@ -243,16 +306,27 @@ export function WalletsForm({
           </div>
         ))}
 
+        <div role="group" aria-label="Add one of these" className="flex flex-wrap gap-2">
+          {QUICK_ADD[purpose]
+            .filter((p) => !taken.has(p.name.toLowerCase()))
+            .map((p) => (
+              <button
+                key={p.name}
+                type="button"
+                onClick={() => addRow(p)}
+                className="h-10 rounded-full bg-mint px-4 text-sm font-extrabold text-ink hover:bg-sea-tint"
+              >
+                + {p.name}
+              </button>
+            ))}
+        </div>
         <button
           type="button"
-          onClick={addRow}
+          onClick={() => addRow()}
           className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
         >
           {saved ? "+ Add another" : "+ Add another bank or e-wallet"}
         </button>
-        {!saved && (
-          <p className="text-sm leading-relaxed text-muted">MariBank and GoTyme are banks.</p>
-        )}
       </div>
 
       <div className="mt-auto flex flex-col gap-2 pt-4">
@@ -274,6 +348,38 @@ export function WalletsForm({
           Skip for now
         </Link>
       </div>
+    </div>
+  );
+}
+
+/** "Earns interest" with its rate and when it's added, for a wallet Pong knows. */
+function InterestLine({ row, onChange }: { row: Row; onChange: (patch: Partial<Row>) => void }) {
+  const preset = interestOf(row);
+  if (!preset) return null;
+  const payout = INTEREST_PAYOUTS.find((p) => p.value === preset.payout)?.label.toLowerCase();
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+      <label className="flex min-h-9 items-center gap-2 font-bold">
+        <input
+          type="checkbox"
+          checked={row.earns}
+          onChange={(e) => onChange({ earns: e.target.checked })}
+          className="h-5 w-5 accent-sea"
+        />
+        Earns interest
+      </label>
+      {row.earns && (
+        <span className="flex items-center gap-1.5 text-muted">
+          <input
+            aria-label={`${row.name || "Wallet"} interest rate`}
+            value={row.rate}
+            onChange={(e) => onChange({ rate: e.target.value })}
+            inputMode="decimal"
+            className={`${FIELD_CLASS} h-9 w-20 text-right`}
+          />
+          % a year · {payout}
+        </span>
+      )}
     </div>
   );
 }

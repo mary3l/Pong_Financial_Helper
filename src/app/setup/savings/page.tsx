@@ -25,5 +25,5 @@ export default function SetupSavingsPage() {
 
 async function Savings() {
   const accounts = await getAccounts();
-  return <WalletsForm existing={accounts} purpose="saved" next="/setup/credit" />;
+  return <WalletsForm existing={accounts} purpose="saved" next="/setup/pay" />;
 }
