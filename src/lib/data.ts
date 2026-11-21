@@ -962,14 +962,12 @@ export async function getPlanInputs(today: string, days: number): Promise<PlanIn
 }
 
 /**
- * Today's day-to-day spending from spending wallets. Bills, planned items
- * and installments you paid or logged today don't count: the plan already
- * held that money back. BNPL doesn't either: it has its own caps.
+ * Day-to-day spending from spending wallets in `transactions` (today's, or
+ * this week's). Bills, planned items and installments you paid or logged
+ * don't count: the plan already held that money back. BNPL doesn't either:
+ * it has its own caps.
  */
-export async function getCashSpentToday(
-  todays: Transaction[],
-  accounts: Account[],
-): Promise<number> {
+export async function getCashSpent(todays: Transaction[], accounts: Account[]): Promise<number> {
   const spending = new Set(accounts.filter((a) => countsAsSpending(a)).map((a) => a.id));
   const expenses = todays.filter((t) => t.type === "expense" && spending.has(t.accountId));
   if (!expenses.length) return 0;
