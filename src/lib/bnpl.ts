@@ -1,15 +1,8 @@
 import { addDays, daysBetween, formatShortDay } from "@/lib/dates";
-import {
-  affordVerdict,
-  isOwed,
-  project,
-  splitAmount,
-  type ForecastItem,
-  type Purchase,
-  type Verdict,
-} from "@/lib/forecast";
+import { isOwed, project, splitAmount, type ForecastItem, type Purchase } from "@/lib/forecast";
 import { bnplFirstDue } from "@/lib/installments";
 import { formatPeso, roundCents, type AccountType } from "@/lib/money";
+import { affordVerdict, type Verdict } from "@/lib/payment-plan";
 import { MAX_GAP_DAYS, occurrences, nextOccurrence, type Schedule } from "@/lib/schedule";
 
 // BNPL credit you can still use: shown next to Safe to spend, never in it.

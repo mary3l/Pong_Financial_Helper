@@ -9,8 +9,14 @@ import {
   type MoneyHistory,
 } from "@/lib/bnpl";
 import { subcategoryOptions } from "@/lib/categories";
-import { addDays, dateInMonth, daysBetween, monthContaining } from "@/lib/dates";
-import { scheduledItems, sortItems, type ForecastItem, type ScheduleInputs } from "@/lib/forecast";
+import { addDays, dateInMonth, daysBetween, monthContaining, today as getToday } from "@/lib/dates";
+import {
+  LATE_BILL_DAYS,
+  scheduledItems,
+  sortItems,
+  type ForecastItem,
+  type ScheduleInputs,
+} from "@/lib/forecast";
 import { getUsdRate, type UsdRate } from "@/lib/fx";
 import { onCardBills } from "@/lib/installments";
 import type { PriceMemory } from "@/lib/grocery";
@@ -112,6 +118,8 @@ export type RecurringItem = {
   day1: number;
   day2: number | null;
   endsOn: string | null;
+  /** The day it was added (Philippine time): no bill is late from before then. */
+  startsOn: string | null;
   /** Set on SSS, PhilHealth and Pag-IBIG bills the payroll calculator manages. */
   payrollKey: string | null;
   /** Weekly payday: the weeks of the month that pay (migration 0022). Null: every week. */
@@ -329,6 +337,7 @@ type RecurringRow = {
   day1: number;
   day2: number | null;
   ends_on: string | null;
+  created_at?: string | null;
   /** Missing until migration 0013. */
   payroll_key?: string | null;
   /** Missing until migration 0022. */
@@ -355,6 +364,7 @@ export async function getRecurringItems(): Promise<RecurringItem[]> {
     day1: r.day1,
     day2: r.day2,
     endsOn: r.ends_on,
+    startsOn: r.created_at ? getToday(new Date(r.created_at)) : null,
     payrollKey: r.payroll_key ?? null,
     weeks: r.pay_weeks?.length ? r.pay_weeks.map(Number) : null,
     amounts: r.pay_amounts?.length
@@ -908,7 +918,7 @@ export async function getPlanInputs(today: string, days: number): Promise<PlanIn
   const [accounts, recurring, billPayments, planned, plans, people] = await Promise.all([
     getAccounts(),
     getRecurringItems(),
-    getBillPayments(today),
+    getBillPayments(addDays(today, -LATE_BILL_DAYS)),
     getPlannedExpenses(today),
     getInstallmentPlans(),
     getPeople(),
@@ -1063,7 +1073,7 @@ export async function getScheduled(today: string) {
   const [accounts, recurring, billPayments, planned] = await Promise.all([
     getAccounts(),
     getRecurringItems(),
-    getBillPayments(today),
+    getBillPayments(addDays(today, -LATE_BILL_DAYS)),
     getPlannedExpenses(today),
   ]);
   // 45 days covers the next occurrence of every schedule.

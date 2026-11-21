@@ -11,15 +11,9 @@ import { Pong, type PongMood } from "@/components/pong";
 import { affordWithCredit, type BnplCap, type CreditOption, type CreditRoom } from "@/lib/bnpl";
 import { EXPENSE_CATEGORIES } from "@/lib/categories";
 import { formatShortDay, isValidDate } from "@/lib/dates";
-import {
-  affordVerdict,
-  splitAmount,
-  walletCheck,
-  type ForecastItem,
-  type Verdict,
-  type WalletCheck,
-} from "@/lib/forecast";
+import { splitAmount, walletCheck, type ForecastItem, type WalletCheck } from "@/lib/forecast";
 import { MAX_AMOUNT, formatPeso, parseAmount } from "@/lib/money";
+import { PLAN_FLOOR, affordVerdict, type Verdict } from "@/lib/payment-plan";
 import type { Schedule } from "@/lib/schedule";
 
 const MONTH_OPTIONS = [3, 6, 12];
@@ -336,7 +330,7 @@ function Result({
         compare={after.days}
         low={after.lowest}
         height={90}
-        label={`Forecast before and after this purchase. Lowest point goes from ${formatPeso(before.lowest.balance)} to ${formatPeso(after.lowest.balance)}.`}
+        label={`Your wallets spending ${formatPeso(verdict.perDayBefore)} a day, before and after this purchase. Lowest point goes from ${formatPeso(before.lowest.balance)} to ${formatPeso(after.lowest.balance)}.`}
       />
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
         <span className="flex items-center gap-1.5">
@@ -350,14 +344,28 @@ function Result({
       </div>
       <dl className="flex flex-col gap-1 text-[15px]">
         <div className="flex justify-between gap-3">
+          <dt>Daily amount</dt>
+          <dd className="font-bold">
+            {verdict.biggestCut
+              ? `${formatPeso(verdict.biggestCut.before)} → ${formatPeso(verdict.biggestCut.after)}${
+                  verdict.biggestCut.from === today
+                    ? ""
+                    : ` from ${formatShortDay(verdict.biggestCut.from, today)}`
+                }`
+              : `${formatPeso(verdict.perDayBefore)}, no change`}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-3">
           <dt>Lowest point before</dt>
           <dd className="font-bold">
             {formatPeso(before.lowest.balance)} on {formatShortDay(before.lowest.date, today)}
           </dd>
         </div>
         <div className="flex justify-between gap-3">
-          <dt>Lowest point after</dt>
-          <dd className={`font-extrabold ${after.lowest.balance < 0 ? "text-coral-text" : ""}`}>
+          <dt>Lowest point after, same daily amount</dt>
+          <dd
+            className={`font-extrabold ${after.lowest.balance < PLAN_FLOOR ? "text-coral-text" : ""}`}
+          >
             {formatPeso(after.lowest.balance)} on {formatShortDay(after.lowest.date, today)}
           </dd>
         </div>
@@ -371,8 +379,10 @@ function Result({
           Plan it for {formatShortDay(verdict.waitUntil, today)}
         </button>
       )}
-      {verdict.tone === "no" && before.lowest.balance < 0 && (
-        <p className="text-[13px] text-muted">Your forecast already dips below ₱0 without this.</p>
+      {verdict.tone === "no" && verdict.alreadyShort && (
+        <p className="text-[13px] text-muted">
+          Even without this, your plan can&apos;t keep {formatPeso(PLAN_FLOOR)} in your wallets.
+        </p>
       )}
     </>
   );

@@ -1,5 +1,12 @@
 import { addDays, daysBetween } from "@/lib/dates";
-import { itemEffect, type DayBalance, type ForecastItem } from "@/lib/forecast";
+import {
+  itemEffect,
+  monthlyDates,
+  purchaseItems,
+  type DayBalance,
+  type ForecastItem,
+  type Purchase,
+} from "@/lib/forecast";
 import { bnplFirstDue } from "@/lib/installments";
 import { roundCents } from "@/lib/money";
 
@@ -76,7 +83,7 @@ export function buildPaymentPlan({
     const last = segments.at(-1);
     if (last && last.perDay === perDay) last.until = addDays(today, end + 1);
     else segments.push({ from: addDays(today, s), until: addDays(today, end + 1), perDay });
-    for (let t = s; t <= end; t++) balance += change[t] - perDay;
+    for (let t = s; t <= end; t++) balance = roundCents(balance + change[t] - perDay);
     s = end + 1;
   }
 
@@ -410,4 +417,119 @@ export function breathers(
     prev = date;
   }
   return out;
+}
+
+// ── Can I afford this? ──────────────────────────────────────────────────
+
+/** "Comfortable" while a purchase cuts no day's amount by more than this share. */
+const COMFORTABLE_DROP = 0.1;
+
+/** End-of-day balances, and the lowest of them. */
+export type BalanceLine = { days: DayBalance[]; lowest: DayBalance };
+
+export type Verdict = {
+  tone: "comfortable" | "tight" | "wait" | "no";
+  title: string;
+  /** Spending today's plan every day, without the purchase. */
+  before: BalanceLine;
+  /** The same spending with the purchase too: where it would leave you if nothing changed. */
+  after: BalanceLine;
+  /** Today's amount on the plan now, and once the purchase is in it. */
+  perDayBefore: number;
+  perDayAfter: number;
+  /** The day the purchase cuts the daily amount the most (by share), from that day's stretch on. Null: no cut. */
+  biggestCut: { from: string; before: number; after: number } | null;
+  /** Even without the purchase, the plan can't keep PLAN_FLOOR. */
+  alreadyShort: boolean;
+  /** For "wait": the payday that makes it work. */
+  waitUntil?: string;
+};
+
+/** Each day's amount on the plan, day 0 being today. */
+function dailyAmounts(plan: PaymentPlan, today: string, days: number): number[] {
+  return Array.from({ length: days }, (_, d) => {
+    const date = addDays(today, d);
+    return plan.segments.find((s) => date >= s.from && date < s.until)?.perDay ?? 0;
+  });
+}
+
+/**
+ * Tests a purchase against the payment plan, the same one Home uses: your
+ * daily spending counts, and PLAN_FLOOR stays in your wallets. It doesn't fit
+ * when it would leave a day with nothing to spend that had something, or take
+ * the plan under the floor; it's comfortable when no day's amount drops by
+ * more than COMFORTABLE_DROP.
+ */
+export function affordVerdict({
+  start,
+  items,
+  purchase,
+  today,
+  nextPayday,
+}: {
+  start: number;
+  items: ForecastItem[];
+  purchase: Purchase;
+  today: string;
+  nextPayday: string | null;
+}): Verdict {
+  const last = monthlyDates(purchase.first, purchase.months).at(-1)!;
+  const days = Math.min(400, Math.max(60, daysBetween(today, last) + 31));
+  const plan = (extra: ForecastItem[]) =>
+    buildPaymentPlan({ start, items: [...items, ...extra], today, days });
+  const now = plan([]);
+  const amounts = dailyAmounts(now, today, days);
+  const bought = purchaseItems(purchase);
+  const withIt = plan(bought);
+
+  // The day it cuts the most, by share of that day's amount.
+  const cutOf = (p: PaymentPlan) => {
+    const after = dailyAmounts(p, today, days);
+    let worst: { d: number; share: number } | null = null;
+    for (let d = 0; d < days; d++) {
+      if (after[d] >= amounts[d]) continue;
+      const share = (amounts[d] - after[d]) / amounts[d];
+      if (!worst || share > worst.share) worst = { d, share };
+    }
+    return { after, worst };
+  };
+  const fits = (p: PaymentPlan) => (now.short || !p.short) && cutOf(p).worst?.share !== 1;
+
+  // Both lines spend today's plan, so the gap between them is the purchase.
+  const line = (extra: ForecastItem[]): BalanceLine => {
+    const change = dailyChanges([...items, ...extra], today, days);
+    const balances = endOfDay(start, change, now.segments, today, days);
+    return {
+      days: balances,
+      lowest: balances.reduce((low, d) => (d.balance < low.balance ? d : low)),
+    };
+  };
+  const { after, worst } = cutOf(withIt);
+  const base = {
+    before: line([]),
+    after: line(bought),
+    perDayBefore: now.perDay,
+    perDayAfter: withIt.perDay,
+    biggestCut: worst
+      ? { from: addDays(today, worst.d), before: amounts[worst.d], after: after[worst.d] }
+      : null,
+    alreadyShort: now.short,
+  };
+
+  if (fits(withIt)) {
+    const comfortable = !worst || worst.share <= COMFORTABLE_DROP;
+    return {
+      ...base,
+      tone: comfortable ? "comfortable" : "tight",
+      title: comfortable ? "Yes, comfortably" : "Yes, but tight",
+    };
+  }
+  if (
+    nextPayday &&
+    purchase.first < nextPayday &&
+    fits(plan(purchaseItems({ ...purchase, first: nextPayday })))
+  ) {
+    return { ...base, tone: "wait", title: "Wait until payday", waitUntil: nextPayday };
+  }
+  return { ...base, tone: "no", title: "No, it doesn't fit your plan" };
 }

@@ -1,9 +1,9 @@
-import { addDays, dateInMonth, daysBetween } from "@/lib/dates";
+import { addDays, dateInMonth } from "@/lib/dates";
 import { roundCents } from "@/lib/money";
 import { amountOn, nextOccurrence, occurrences, type Schedule } from "@/lib/schedule";
 
-// The forecast (design canvas 3.1), Safe to spend and "Can I afford this?".
-// Pure, so the server and the browser share it.
+// The forecast (design canvas 3.1): what's scheduled, and what it does to
+// your wallets. The payment plan (payment-plan.ts) builds on it. Pure, so the server and the browser share it.
 //
 // Only cash, bank and e-wallet money is counted. Scheduled items count until
 // they're logged ("Mark paid" or "Add income"): then the wallet balance
@@ -44,7 +44,7 @@ export type ForecastItem = {
   lastPayment?: boolean;
   /** Installments: the fee or interest in this payment, which paying early can cut. */
   fee?: number;
-  /** Bills the payroll calculator takes from your pay (SSS, PhilHealth, Pag-IBIG): nothing to pay yourself. */
+  /** Contributions the payroll calculator manages (SSS, PhilHealth, Pag-IBIG). You pay them yourself. */
   fromPayroll?: boolean;
 };
 
@@ -58,6 +58,8 @@ export type ScheduleInputs = {
     accountId: string | null;
     category: string | null;
     endsOn: string | null;
+    /** Bills: the day it was added. Unpaid dates from then on stay owed; missing, none do. */
+    startsOn?: string | null;
     /** Set when the payroll calculator manages it. */
     payrollKey?: string | null;
   })[];
@@ -105,10 +107,15 @@ export function recurringCategory(r: {
   return r.kind === "bill" ? "bills" : r.kind === "payday" ? "salary" : "other_income";
 }
 
+/** How far back an unpaid recurring bill stays owed. Load bill payments from this far back too. */
+export const LATE_BILL_DAYS = 31;
+
 /**
  * Every payday, recurring item and planned item from `from` up to but not
  * including `until`, by date. Unlogged planned items from before `from` are
- * included too, since they're still expected.
+ * included too, since they're still expected, and so are unpaid bills from
+ * the last LATE_BILL_DAYS (not before the bill was added). Pay and income
+ * from before `from` never are: money you haven't received doesn't count.
  */
 export function scheduledItems(
   { recurring, billPayments, planned, installments = [], paydayAmounts = {} }: ScheduleInputs,
@@ -122,6 +129,28 @@ export function scheduledItems(
 
   for (const r of recurring) {
     const end = r.endsOn && r.endsOn < until ? addDays(r.endsOn, 1) : until;
+    if (r.kind === "bill" && r.startsOn) {
+      const lookBack = addDays(from, -LATE_BILL_DAYS);
+      const since = r.startsOn > lookBack ? r.startsOn : lookBack;
+      const lateUntil = end < from ? end : from;
+      for (const date of occurrences(r, since, lateUntil)) {
+        if (logged.has(`${r.id}|${date}`)) continue;
+        items.push({
+          key: `bill|${r.id}|${date}`,
+          kind: "bill",
+          flow: "out",
+          id: r.id,
+          name: r.name,
+          amount: r.amount,
+          dueOn: date,
+          accountId: r.accountId,
+          category: recurringCategory(r),
+          estimate: r.amountVaries,
+          transactionId: null,
+          ...(r.payrollKey ? { fromPayroll: true } : {}),
+        });
+      }
+    }
     for (const date of occurrences(r, from, end)) {
       const payroll = r.kind === "payday" ? paydayAmounts[date] : undefined;
       items.push({
@@ -298,30 +327,6 @@ export function lowestBetween(days: DayBalance[], from: string, until: string): 
   return window.length ? lowestOf(window) : null;
 }
 
-export type SafeToSpend = {
-  /** Spendable money across cash, bank and e-wallets. */
-  inWallets: number;
-  /** Unpaid bills and planned expenses from today until the day before payday. */
-  dueBeforePayday: number;
-  dueCount: number;
-  nextPayday: string | null;
-  /** Days from today until payday, counting today. */
-  daysLeft: number | null;
-  /**
-   * Weekly pay: money held back now for bills after payday that the pays
-   * before them can't cover. 0 for pay twice a month or monthly.
-   */
-  setAsideLater: number;
-  /** Wallet money minus what's due and what's held back, never below 0. */
-  free: number;
-  /** What's free per day until payday, from the start of today; null without a payday. */
-  perDay: number | null;
-  /** Spent from spending wallets today, not counting bills and planned items. */
-  spentToday: number;
-  /** Today's share minus what you've spent today. Below 0 when you went over; null without a payday. */
-  leftToday: number | null;
-};
-
 /**
  * The next payday after today whose pay you haven't received yet. Pay marked
  * received early is already in your wallets, so that payday is done and Safe
@@ -344,120 +349,6 @@ export function nextUnreceivedPayday(
   return next;
 }
 
-/**
- * Safe to spend: wallet money at the start of today, minus unpaid bills and
- * planned expenses due before the next payday, spread over the days until
- * then. What you spend today comes out of today's share, so the daily amount
- * holds still all day. Pautang, credit limits and loans never count.
- */
-export function safeToSpend({
-  inWallets,
-  payday,
-  items,
-  today,
-  spentToday = 0,
-}: {
-  /** Spending money in your wallets right now. */
-  inWallets: number;
-  payday: Schedule | null;
-  items: ForecastItem[];
-  today: string;
-  spentToday?: number;
-}): SafeToSpend {
-  spentToday = roundCents(spentToday);
-  if (!payday) {
-    return {
-      inWallets,
-      dueBeforePayday: 0,
-      dueCount: 0,
-      nextPayday: null,
-      daysLeft: null,
-      setAsideLater: 0,
-      free: inWallets,
-      perDay: null,
-      spentToday,
-      leftToday: null,
-    };
-  }
-  const nextPayday = nextUnreceivedPayday(payday, items, today);
-  const daysLeft = daysBetween(today, nextPayday);
-  const due = items.filter((i) => isOwed(i) && i.amount !== null && i.dueOn < nextPayday);
-  const dueBeforePayday = roundCents(due.reduce((sum, i) => sum + i.amount!, 0));
-  const freeUntilPayday = Math.max(0, roundCents(inWallets + spentToday - dueBeforePayday));
-  const setAsideLater =
-    payday.frequency === "weekly" || payday.frequency === "daily"
-      ? heldBackForLater({
-          freeUntilPayday,
-          startOfDay: roundCents(inWallets + spentToday),
-          daysLeft,
-          items,
-          today,
-          nextPayday,
-        })
-      : 0;
-  const free = roundCents(freeUntilPayday - setAsideLater);
-  const perDay = Math.floor(free / daysLeft);
-  return {
-    inWallets,
-    dueBeforePayday,
-    dueCount: due.length,
-    nextPayday,
-    daysLeft,
-    setAsideLater,
-    free,
-    perDay,
-    spentToday,
-    leftToday: roundCents(perDay - spentToday),
-  };
-}
-
-/** How far ahead weekly pay looks: about a month of bills, within the 30 days Home reads. */
-export const WEEKLY_LOOK_AHEAD_DAYS = 30;
-
-/**
- * Weekly pay: a week's pay often can't cover the rent or a loan due later in
- * the month, so dividing everything by the days until Friday would let you
- * spend money those bills need. Spending the same amount every day, each
- * day's balance must stay at or above ₱0 counting only the pay that has come
- * in by then: perDay ≤ balance(t) ÷ days from today through t, for every day
- * t in the next month. What that holds back beyond the bills before payday
- * is returned. Pay only ever lowers what's held back, never raises Safe to
- * spend above what's in your wallets now, so income you haven't received
- * still never counts. A payday with no amount saved counts as ₱0.
- */
-function heldBackForLater({
-  freeUntilPayday,
-  startOfDay,
-  daysLeft,
-  items,
-  today,
-  nextPayday,
-}: {
-  freeUntilPayday: number;
-  startOfDay: number;
-  daysLeft: number;
-  items: ForecastItem[];
-  today: string;
-  nextPayday: string;
-}): number {
-  const untilPayday = freeUntilPayday / daysLeft;
-  let limit = untilPayday;
-  // From payday on, both money in and money out count, by date (late items today).
-  const after = items
-    .map((i) => ({ date: i.dueOn < today ? today : i.dueOn, change: itemEffect(i) }))
-    .filter((e) => e.change !== 0);
-  const last = addDays(today, WEEKLY_LOOK_AHEAD_DAYS - 1);
-  for (let t = nextPayday; t <= last; t = addDays(t, 1)) {
-    const balance = after
-      .filter((e) => e.date <= t && (e.change < 0 || e.date >= nextPayday))
-      .reduce((sum, e) => sum + e.change, startOfDay);
-    limit = Math.min(limit, Math.max(0, balance) / (daysBetween(today, t) + 1));
-  }
-  // Only later bills hold anything back; the cents left over from ÷ days stay free.
-  if (Math.floor(limit) >= Math.floor(untilPayday)) return 0;
-  return roundCents(freeUntilPayday - Math.floor(limit) * daysLeft);
-}
-
 /** `count` monthly dates on the same day as `first`, short months clamped. */
 export function monthlyDates(first: string, count: number): string[] {
   const [y, m, d] = first.split("-").map(Number);
@@ -469,9 +360,12 @@ export function monthlyDates(first: string, count: number): string[] {
 
 /** Splits an amount into `count` payments; the last absorbs the rounding. */
 export function splitAmount(amount: number, count: number): number[] {
-  const each = Math.floor((amount / count) * 100) / 100;
-  return Array.from({ length: count }, (_, i) =>
-    i === count - 1 ? roundCents(amount - each * (count - 1)) : each,
+  // In whole centavos, so 2.30 ÷ 2 is 1.15 + 1.15, not 1.14 + 1.16.
+  const cents = Math.round(amount * 100);
+  const each = Math.floor(cents / count);
+  return Array.from(
+    { length: count },
+    (_, i) => (i === count - 1 ? cents - each * (count - 1) : each) / 100,
   );
 }
 
@@ -536,59 +430,4 @@ export function walletCheck({
     if (!worst || after < worst.after) worst = { date: p.dueOn, before, after };
   }
   return worst!;
-}
-
-export type Verdict = {
-  tone: "comfortable" | "tight" | "wait" | "no";
-  title: string;
-  before: Projection;
-  after: Projection;
-  /** For "wait": the payday that makes it work. */
-  waitUntil?: string;
-};
-
-/**
- * Tests a purchase against the forecast. Tight means the low point after
- * buying is under half of what it was.
- */
-export function affordVerdict({
-  start,
-  items,
-  purchase,
-  today,
-  nextPayday,
-}: {
-  start: number;
-  items: ForecastItem[];
-  purchase: Purchase;
-  today: string;
-  nextPayday: string | null;
-}): Verdict {
-  const last = monthlyDates(purchase.first, purchase.months).at(-1)!;
-  const length = Math.min(400, Math.max(60, daysBetween(today, last) + 31));
-  const before = project(start, items, today, length);
-  const after = project(start, [...items, ...purchaseItems(purchase)], today, length);
-  const low = after.lowest.balance;
-
-  if (low >= 0) {
-    const tight = low === 0 || low < before.lowest.balance * 0.5;
-    return {
-      tone: tight ? "tight" : "comfortable",
-      title: tight ? "Yes, but tight" : "Yes, comfortably",
-      before,
-      after,
-    };
-  }
-  if (nextPayday && purchase.first < nextPayday && before.lowest.balance >= 0) {
-    const later = project(
-      start,
-      [...items, ...purchaseItems({ ...purchase, first: nextPayday })],
-      today,
-      length,
-    );
-    if (later.lowest.balance >= 0) {
-      return { tone: "wait", title: "Wait until payday", before, after, waitUntil: nextPayday };
-    }
-  }
-  return { tone: "no", title: "No, you'd go below ₱0", before, after };
 }
