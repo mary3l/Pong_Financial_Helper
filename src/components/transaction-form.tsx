@@ -9,6 +9,7 @@ import { AmountInput } from "@/components/amount-input";
 import { CloseIcon, PathIcon } from "@/components/icons";
 import { Keypad } from "@/components/keypad";
 import { Pong, type PongMood } from "@/components/pong";
+import { showToast } from "@/components/toast";
 import {
   amountToExpression,
   evaluate,
@@ -286,6 +287,16 @@ export function TransactionForm({
         })
       : [];
 
+  // "Saved · ₱59 · Dec 16 bill": what happened, once the form has closed.
+  function done(verb: "Saved" | "Updated" | "Deleted", value: string, billDue?: string | null) {
+    showToast(
+      [verb, value, billDue ? `${formatShortDay(billDue, today)} bill` : null]
+        .filter(Boolean)
+        .join(" · "),
+    );
+    close();
+  }
+
   function close() {
     if (mode === "modal") router.back();
     else router.push(closeHref);
@@ -458,7 +469,7 @@ export function TransactionForm({
             : null,
         });
         if (result.error) setSaveError(result.error);
-        else close();
+        else done("Saved", formatPeso(amount), withPlan ? firstDue : null);
       });
       return;
     }
@@ -490,7 +501,7 @@ export function TransactionForm({
           },
         );
         if (result.error) setSaveError(result.error);
-        else close();
+        else done("Saved", money(amount), firstDue);
         return;
       }
       const result = await saveTransaction(
@@ -500,7 +511,7 @@ export function TransactionForm({
         prefill?.link && type === prefill.type ? prefill.link : undefined,
       );
       if (result.error) setSaveError(result.error);
-      else close();
+      else done(editing ? "Updated" : "Saved", money(amount), result.billDue);
     });
   }
 
@@ -513,7 +524,14 @@ export function TransactionForm({
     startTransition(async () => {
       const result = await deleteTransaction(transaction.id);
       if (result.error) setSaveError(result.error);
-      else close();
+      else
+        done(
+          "Deleted",
+          formatMoney(
+            transaction.amount,
+            accounts.find((a) => a.id === transaction.accountId)?.currency ?? "PHP",
+          ),
+        );
     });
   }
 

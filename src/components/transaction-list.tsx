@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ChevronIcon, PathIcon } from "@/components/icons";
 import { categoryInfo, categoryLabel, isAdjustment } from "@/lib/categories";
-import type { Account, Transaction } from "@/lib/data";
+import type { Account, BillTag, Transaction } from "@/lib/data";
 import { formatRelativeDay, formatShortDay, transactionTime } from "@/lib/dates";
 import { balanceEffect, formatMoney, formatPeso, type Currency } from "@/lib/money";
 import { groupSplits, itemDate, type ListItem, type SplitBill } from "@/lib/splits";
@@ -17,6 +17,7 @@ export function TransactionList({
   today,
   grouped = true,
   walletId,
+  billTags,
 }: {
   transactions: Transaction[];
   /** Already grouped (one page of a long list): shown instead of `transactions`. */
@@ -27,6 +28,8 @@ export function TransactionList({
   grouped?: boolean;
   /** Viewed from one wallet: transfers show as money in or out of it. */
   walletId?: string;
+  /** Purchases on a credit line: which bill each is on (getBillTags). */
+  billTags?: Map<string, BillTag>;
 }) {
   const names = new Map(accounts.map((a) => [a.id, a.name]));
   // Amounts are in their wallet's currency: dollars on a USD time deposit.
@@ -61,6 +64,7 @@ export function TransactionList({
                     currencies={currencies}
                     today={grouped ? null : today}
                     walletId={walletId}
+                    bill={billTags?.get(item.txn.id)}
                   />
                 ) : (
                   <SplitRow split={item.split} names={names} today={grouped ? null : today} />
@@ -184,6 +188,7 @@ function TransactionRow({
   currencies,
   today,
   walletId,
+  bill,
 }: {
   txn: Transaction;
   names: Map<string, string>;
@@ -191,6 +196,7 @@ function TransactionRow({
   /** Set to show the day in the row. */
   today: string | null;
   walletId?: string;
+  bill?: BillTag;
 }) {
   const info = categoryInfo(txn.type, txn.category);
   const from = names.get(txn.accountId) ?? "Removed wallet";
@@ -249,6 +255,14 @@ function TransactionRow({
         <span className="truncate text-[15px] font-bold">{title}</span>
         <span className="truncate text-[13px] text-muted">
           {detail.filter(Boolean).join(" · ")}
+          {bill && (
+            <>
+              {" · "}
+              <span className={bill.missing ? "font-bold text-coral-text" : undefined}>
+                {bill.label}
+              </span>
+            </>
+          )}
         </span>
       </span>
       <span

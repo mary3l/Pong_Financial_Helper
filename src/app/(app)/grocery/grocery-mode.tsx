@@ -6,8 +6,10 @@ import { saveGroceryTrip } from "@/app/grocery-actions";
 import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import { Pong } from "@/components/pong";
+import { showToast } from "@/components/toast";
 import { clearTrip, loadTrip, saveTrip, type ActiveTrip } from "@/lib/active-trip";
 import type { Account } from "@/lib/data";
+import { formatShortDay } from "@/lib/dates";
 import {
   addToCart,
   budgetStatus,
@@ -806,7 +808,18 @@ function Checkout({
               })),
             });
             if (result.error) setError(result.error);
-            else onSaved();
+            else {
+              showToast(
+                [
+                  "Saved",
+                  formatPeso(value),
+                  result.billDue ? `${formatShortDay(result.billDue, today)} bill` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
+              );
+              onSaved();
+            }
           })
         }
         className="h-14 rounded-[20px] bg-sun text-lg font-extrabold text-ink disabled:opacity-60"

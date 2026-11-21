@@ -2,12 +2,14 @@
 
 import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
+import { categoryInfo } from "@/lib/categories";
 import { isValidDate, today } from "@/lib/dates";
 import { monthlyDates } from "@/lib/forecast";
 import { loanSchedule, misdatedPlans, upcomingSchedule } from "@/lib/installments";
 import { checkLoan, editLoan, exactRate } from "@/lib/loan-edit";
 import { MAX_AMOUNT, isSpendable, roundCents, type AccountType } from "@/lib/money";
 import {
+  billPurchase,
   creditTerms,
   isMissingColumn,
   pickWallet,
@@ -221,6 +223,57 @@ export async function fixBillDates(lineId: string): Promise<CreditResult> {
   if (!supabase) return { error: SIGNED_OUT_ERROR };
   const moved = await redatePlans(supabase, lineId);
   if (moved === null) return FAILED;
+  refresh();
+  return {};
+}
+
+/**
+ * Puts purchases on a credit line that are on no bill (see getUnbilledPurchases)
+ * on the bill each one lands on, in one payment, as Add does with no installment.
+ * One already on a bill, or a split, is left as it is.
+ */
+export async function addPurchasesToBill(lineId: string, txnIds: string[]): Promise<CreditResult> {
+  const valid = (id: string) => /^[0-9a-f-]{36}$/i.test(id);
+  if (!valid(lineId) || !txnIds.length || txnIds.length > 100 || !txnIds.every(valid))
+    return { error: "Couldn't find those purchases." };
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+
+  const [[line], purchases, plans] = await Promise.all([
+    creditTerms(supabase, [lineId]),
+    supabase
+      .from("transactions")
+      .select("id, amount, category, note, occurred_on, split_id")
+      .in("id", txnIds)
+      .eq("account_id", lineId)
+      .eq("type", "expense"),
+    supabase.from("installment_plans").select("source_txn_id").in("source_txn_id", txnIds),
+  ]);
+  if (line?.type !== "credit_line") return { error: "Couldn't find that credit line." };
+  if (purchases.error || plans.error) return FAILED;
+  // The subcategory names it best, like "Maxim" under Transpo (migration 0015).
+  const subs = await supabase.from("transactions").select("id, subcategory").in("id", txnIds);
+  const subOf = new Map(
+    (subs.error ? [] : subs.data).map((t) => [t.id as string, t.subcategory as string | null]),
+  );
+
+  const billed = new Set(plans.data.map((p) => p.source_txn_id));
+  const now = today();
+  for (const t of purchases.data) {
+    if (t.split_id || billed.has(t.id)) continue;
+    const name = t.note || subOf.get(t.id) || categoryInfo("expense", t.category).label;
+    const saved = await billPurchase(
+      supabase,
+      line,
+      { id: t.id, name, amount: Number(t.amount), occurredOn: t.occurred_on },
+      now,
+    );
+    if (!saved) {
+      refresh();
+      return { error: "Couldn't add it to the bill. Please try again." };
+    }
+  }
+
   refresh();
   return {};
 }
@@ -869,21 +922,40 @@ export async function updatePlan(id: string, input: PlanEdit): Promise<CreditRes
 
 /**
  * Removes a plan and its unpaid schedule, e.g. one entered by mistake or
- * paid off early. Payments already made stay in Activity.
+ * paid off early. Payments already made stay in Activity. A bill made from a
+ * purchase, with nothing on it paid, deletes the purchase too: the purchase
+ * was the mistake, and kept, it would sit in what you owe on no bill.
  */
 export async function removePlan(id: string): Promise<CreditResult> {
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
-  const { data, error } = await supabase
-    .from("installment_plans")
-    .delete()
-    .eq("id", id)
-    .select("id");
+  const purchase = await purchaseOf(supabase, id);
+  const { data, error } = purchase
+    ? await supabase.from("transactions").delete().eq("id", purchase).select("id")
+    : await supabase.from("installment_plans").delete().eq("id", id).select("id");
   if (error || !data.length) return { error: "Couldn't remove that plan. Please try again." };
 
   refresh();
   return {};
+}
+
+/** The purchase a bill was made from, if Remove deletes it too: nothing paid, and not a split bill. */
+async function purchaseOf(supabase: Client, planId: string): Promise<string | null> {
+  const plan = await supabase
+    .from("installment_plans")
+    .select("source_txn_id")
+    .eq("id", planId)
+    .maybeSingle();
+  const source = plan.data?.source_txn_id as string | null | undefined;
+  if (!source) return null;
+  const [payments, txn] = await Promise.all([
+    supabase.from("scheduled_payments").select("transfer_txn_id, fee_txn_id").eq("plan_id", planId),
+    supabase.from("transactions").select("type, split_id").eq("id", source).maybeSingle(),
+  ]);
+  if (payments.error || txn.error || !txn.data || txn.data.type !== "expense" || txn.data.split_id)
+    return null;
+  return payments.data.every((p) => !p.transfer_txn_id && !p.fee_txn_id) ? source : null;
 }
 
 /**
