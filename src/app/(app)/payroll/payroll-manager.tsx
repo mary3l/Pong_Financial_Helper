@@ -2030,7 +2030,7 @@ function SelfPaidCard({
             {taken.map((d) => (
               <div key={d.id} className="flex items-center justify-between gap-3">
                 <dt className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate">{d.name}</span>
+                  <span className="break-words">{d.name}</span>
                   <span className="text-xs text-muted">
                     {d.estimated ? "Estimate · " : ""}
                     {d.taken === "each" ? "each payday" : "last payday of the month"}
@@ -2062,7 +2062,7 @@ function SelfPaidCard({
             {loansNow.map((l) => (
               <div key={l.paymentId} className="flex items-center justify-between gap-3">
                 <dt className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate">{l.name}</span>
+                  <span className="break-words">{l.name}</span>
                   <span className="text-xs text-muted">Salary loan · last payday of the month</span>
                 </dt>
                 <dd className="pr-[60px] text-right font-bold">{formatPeso(l.amount)}</dd>

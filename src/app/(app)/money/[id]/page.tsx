@@ -579,9 +579,11 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
                     {formatShortDay(bill.dueOn, today)}
                   </span>
                   <span
-                    className={`text-[13px] ${bill.dueOn < today ? "font-bold text-coral-text" : "text-muted"}`}
+                    className={`text-[13px] ${bill.dueOn < today && !fromPay ? "font-bold text-coral-text" : "text-muted"}`}
                   >
-                    {dueText(bill.dueOn, today)}
+                    {fromPay
+                      ? `from the last payday of ${formatMonthYear(bill.dueOn)}`
+                      : dueText(bill.dueOn, today)}
                   </span>
                 </span>
                 {bill.items.length > 1 && (
@@ -650,6 +652,11 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
                           </Link>
                         ) : payer ? (
                           <TheyPaidButton ids={[item.id]} label="They paid" />
+                        ) : fromPay ? (
+                          // Paid when you log that payday: Mark paid here would pay it twice.
+                          <span className="shrink-0 text-[13px] font-bold text-muted">
+                            From pay
+                          </span>
                         ) : (
                           <LogButton item={item} accounts={accounts} />
                         )}
@@ -664,7 +671,9 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
           <p className="text-xs text-muted">
             {credit
               ? `A purchase you log with + lands on the bill it's due with, and that bill's total goes up. So does one you plan in Plan › Scheduled with Paid from ${account.name}, by its statement cutoff. All of these are in your forecast and Safe to spend${plans.some((p) => p.personId) ? ", except what someone else pays: their money goes straight to the bill" : ""}.`
-              : "All of these are in your forecast and Safe to spend."}
+              : fromPay
+                ? "Your office takes each one from your pay. Logging that payday pays it."
+                : "All of these are in your forecast and Safe to spend."}
           </p>
         </section>
       )}
