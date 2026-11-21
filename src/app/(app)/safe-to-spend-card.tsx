@@ -130,8 +130,8 @@ export function SafeToSpendCard({
           <BreakdownLine label="= Left for today" value={formatPeso(left)} strong divider />
         </dl>
         <p className="pt-2 text-[13px] leading-snug text-sea-text">
-          Every bill, loan, BNPL bill and payday in the next {PLAN_DAYS} days counts, and each BNPL
-          cap is held on its bill day.
+          Every bill, loan, BNPL bill and payday in the next {PLAN_DAYS} days counts, and what you
+          usually put on BNPL is held on its bill day.
           {setAside > 0 && <> Your {formatPeso(setAside)} in savings doesn&apos;t.</>}{" "}
           <Link
             href="/plan/payments"

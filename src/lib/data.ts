@@ -34,7 +34,7 @@ import {
   type TransactionType,
   type WalletPurpose,
 } from "@/lib/money";
-import { billCycles, type CapLine } from "@/lib/payment-plan";
+import { USUAL_DAYS, billCycles, type CapLine } from "@/lib/payment-plan";
 import { paydayAmounts, type PayrollRecords } from "@/lib/payroll";
 import { personItems, type EntryKind, type Person } from "@/lib/people";
 import type { Frequency } from "@/lib/schedule";
@@ -981,7 +981,8 @@ export async function getCashSpentToday(
 
 /**
  * Each BNPL line with a due day, for its caps: what you've put on it since
- * the start of the bill today's buys land on. Only your own day-to-day buys
+ * the start of the bill today's buys land on, and what you usually put on
+ * it a day (the USUAL_DAYS before today). Only your own day-to-day buys
  * count, not scheduled items (already in the plan) or someone else's
  * purchase on your line.
  */
@@ -995,10 +996,11 @@ export async function getCapLines(accounts: Account[], today: string): Promise<C
         today,
     ]),
   );
-  const from = [...since.values()].sort()[0];
+  const usualFrom = addDays(today, -USUAL_DAYS);
+  const from = [...since.values(), usualFrom].sort()[0];
   const ids = new Set(lines.map((a) => a.id));
   const bought = (await getTransactions({ from, to: today })).filter(
-    (t) => t.type === "expense" && ids.has(t.accountId) && t.occurredOn >= since.get(t.accountId)!,
+    (t) => t.type === "expense" && ids.has(t.accountId),
   );
   const scheduled = await getScheduledTransactionIds(bought.map((t) => t.id));
   const theirs = bought.length
@@ -1009,6 +1011,7 @@ export async function getCapLines(accounts: Account[], today: string): Promise<C
       )
     : new Set<string>();
   const own = bought.filter((t) => !scheduled.has(t.id) && !theirs.has(t.id));
+  const sum = (list: Transaction[]) => roundCents(list.reduce((total, t) => total + t.amount, 0));
   return lines.map((a) => ({
     id: a.id,
     name: a.name,
@@ -1018,7 +1021,13 @@ export async function getCapLines(accounts: Account[], today: string): Promise<C
       a.creditLimit && a.creditLimit > 0
         ? roundCents(Math.max(0, a.creditLimit + Math.min(0, a.balance)))
         : null,
-    used: roundCents(own.filter((t) => t.accountId === a.id).reduce((sum, t) => sum + t.amount, 0)),
+    used: sum(own.filter((t) => t.accountId === a.id && t.occurredOn >= since.get(a.id)!)),
+    usualPerDay:
+      sum(
+        own.filter(
+          (t) => t.accountId === a.id && t.occurredOn >= usualFrom && t.occurredOn < today,
+        ),
+      ) / USUAL_DAYS,
   }));
 }
 

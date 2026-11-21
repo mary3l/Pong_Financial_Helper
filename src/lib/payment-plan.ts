@@ -244,7 +244,12 @@ export type CapLine = {
   creditLeft: number | null;
   /** Your own purchases on it since the start of the bill today's buys land on. */
   used: number;
+  /** What you usually put on it a day: your own purchases over the USUAL_DAYS before today, ÷ USUAL_DAYS. */
+  usualPerDay: number;
 };
+
+/** How far back "what you usually put on BNPL" looks. */
+export const USUAL_DAYS = 90;
 
 /** The days whose purchases land on one bill. `until` is the first day after them. */
 export type BillCycle = { lineId: string; due: string; from: string; until: string; days: number };
@@ -279,6 +284,8 @@ export type BillCap = BillCycle & {
   used: number;
   /** What's left, within the line's credit left. */
   left: number;
+  /** Held back for it on the bill day: what you usually buy in the days still to come, within `left`. */
+  hold: number;
 };
 
 export type CappedPlan = {
@@ -293,9 +300,11 @@ export type CappedPlan = {
 
 /**
  * The plan with room for BNPL: each line may add up to `perDay` for every
- * day of a bill cycle, and what's still open of that is held on the bill's
- * due day like a bill. Pong picks `perDay` so all the lines together get at
- * most BNPL_SHARE of what you can spend each day, cash the rest.
+ * day of a bill cycle (its cap). Pong picks `perDay` so all the lines
+ * together get at most BNPL_SHARE of what you can spend each day, cash the
+ * rest. Only what you usually put on a line is held on the bill's due day,
+ * for the days of the cycle still to come: a line you don't use holds
+ * nothing, and buying more than usual puts its own bill in the plan anyway.
  */
 export function cappedPlan({
   start,
@@ -314,17 +323,19 @@ export function cappedPlan({
       const cap = rate * c.days;
       const used = c.from <= today ? line.used : 0;
       const left = roundCents(Math.max(0, Math.min(cap - used, line.creditLeft ?? Infinity)));
-      return { ...c, name: line.name, cap, used, left };
+      const daysToCome = c.from <= today ? daysBetween(today, c.until) : c.days;
+      const hold = roundCents(Math.min(left, line.usualPerDay * daysToCome));
+      return { ...c, name: line.name, cap, used, left, hold };
     });
     const held: ForecastItem[] = caps
-      .filter((c) => c.left > 0)
+      .filter((c) => c.hold > 0)
       .map((c) => ({
         key: `cap|${c.lineId}|${c.due}`,
         kind: "planned",
         flow: "out",
         id: `cap-${c.lineId}-${c.due}`,
         name: `${c.name} · new buys`,
-        amount: c.left,
+        amount: c.hold,
         dueOn: c.due,
         accountId: null,
         category: null,

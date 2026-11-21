@@ -170,6 +170,8 @@ describe("BNPL caps", () => {
     cutoffDay: 6,
     creditLeft: 10000,
     used: 0,
+    // A heavy user: holds the whole cap.
+    usualPerDay: 1000,
   };
   const pay = (dueOn: string, amount: number) =>
     item(0, amount, { dueOn, key: `pay|${dueOn}`, name: "Payday" });
@@ -199,11 +201,42 @@ describe("BNPL caps", () => {
     expect(capped.perDay).toBeLessThanOrEqual(capped.plan.perDay / 4);
     const dec16 = capped.caps.find((c) => c.due === "2026-12-16")!;
     expect(dec16.cap).toBe(capped.perDay * 30);
-    expect(capped.held.find((h) => h.dueOn === "2026-12-16")?.amount).toBe(dec16.left);
+    expect(capped.held.find((h) => h.dueOn === "2026-12-16")?.amount).toBe(dec16.hold);
+    // Nov 15 – Dec 6 is still to come on today's bill: 22 of its 30 days.
+    expect(dec16.hold).toBe(Math.min(dec16.left, 1000 * 22));
     // Holding the caps lowers the daily cash amount.
     expect(capped.plan.perDay).toBeLessThan(
       buildPaymentPlan({ start: 10000, items: paydays, today }).perDay,
     );
+  });
+
+  it("holds nothing for a line you don't use, and keeps its cap", () => {
+    const unused = cappedPlan({
+      start: 10000,
+      items: paydays,
+      today,
+      lines: [{ ...atome, usualPerDay: 0 }],
+    });
+    expect(unused.held).toEqual([]);
+    expect(unused.perDay).toBeGreaterThan(0);
+    expect(unused.caps[0].left).toBeGreaterThan(0);
+    // The cash amount is what it'd be without the line.
+    expect(unused.plan.perDay).toBe(
+      buildPaymentPlan({ start: 10000, items: paydays, today }).perDay,
+    );
+  });
+
+  it("holds what you usually buy for the days still to come, within the cap", () => {
+    const capped = cappedPlan({
+      start: 10000,
+      items: paydays,
+      today,
+      lines: [{ ...atome, usualPerDay: 5 }],
+    });
+    const [now, next] = capped.caps;
+    expect(now.hold).toBe(110); // ₱5 × the 22 days left of today's bill
+    expect(next.hold).toBe(5 * next.days);
+    expect(capped.held.map((h) => h.amount)).toEqual(capped.caps.map((c) => c.hold));
   });
 
   it("takes what you already bought off today's bill, never below ₱0", () => {
