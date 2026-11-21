@@ -19,7 +19,8 @@ export const PAY_AHEAD_KEY = "pong.payAhead";
  * Payments you can pay ahead, unpaid and due after today: loan payments,
  * bills you pay yourself (like a phone plan), and utang you owe someone by a
  * date (paying it settles the whole balance). Not BNPL bills, which wait for
- * their due day; not bills the payroll calculator takes from your pay; not
+ * their due day; not the contributions the payroll calculator manages (SSS,
+ * PhilHealth, Pag-IBIG: paid on their day, never ahead); not
  * planned spending, which happens on its day.
  */
 export function aheadCandidates(

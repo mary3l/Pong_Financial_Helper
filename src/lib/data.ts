@@ -475,7 +475,7 @@ export async function readPayroll(
   today: string,
 ): Promise<PayrollRecords | null | "missing"> {
   const from = `${Number(today.slice(0, 4)) - 1}-01-01`;
-  const [s, d, o, c, p, cc] = await Promise.all([
+  const [s, d, o, c, p, cc, dd] = await Promise.all([
     supabase.from("payroll_settings").select("*").maybeSingle(),
     supabase
       .from("payroll_days")
@@ -496,6 +496,8 @@ export async function readPayroll(
       .from("payroll_cutoff_changes")
       .select("usual_start, starts_on, ends_on, paid_on")
       .order("usual_start"),
+    // PGRST205 until migration 0024 is run: your office takes nothing.
+    supabase.from("payroll_deductions").select("id, name, amount").order("created_at"),
   ]);
   if (s.error?.code === "PGRST205") return "missing";
   if (s.error) throw dbError(s.error);
@@ -503,6 +505,7 @@ export async function readPayroll(
   if (o.error) throw dbError(o.error);
   // PGRST205 until migration 0021 is run: one rate for every cutoff.
   if (c.error && c.error.code !== "PGRST205") throw dbError(c.error);
+  if (dd.error && dd.error.code !== "PGRST205") throw dbError(dd.error);
   if (!s.data) return null;
   const row = s.data;
   return {
@@ -563,6 +566,11 @@ export async function readPayroll(
       startTime: String(ch.start_time).slice(0, 5),
       overtimeRate: Number(ch.overtime_rate),
       monthlyPay: ch.monthly_pay == null ? null : Number(ch.monthly_pay),
+    })),
+    deductions: (dd.data ?? []).map((x) => ({
+      id: x.id as string,
+      name: x.name as string,
+      amount: Number(x.amount),
     })),
   };
 }

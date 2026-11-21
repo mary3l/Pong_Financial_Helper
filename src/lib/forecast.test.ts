@@ -85,6 +85,27 @@ describe("scheduled items", () => {
     ]);
   });
 
+  it("carries a payday's gross and your office's contributions", () => {
+    const [pay] = scheduledItems(
+      inputs({
+        paydayAmounts: {
+          "2026-11-30": {
+            amount: 6200,
+            estimate: true,
+            gross: 8000,
+            deductions: [{ name: "GSIS", amount: 1800 }],
+          },
+        },
+      }),
+      TODAY,
+      "2026-12-02",
+    ).filter((i) => i.kind === "payday" && i.dueOn === "2026-11-30");
+    expect(pay.amount).toBe(6200);
+    expect(pay.pay).toEqual({ gross: 8000, deductions: [{ name: "GSIS", amount: 1800 }] });
+    // Not a bill: nothing else is added.
+    expect(itemEffect(pay)).toBe(6200);
+  });
+
   it("stops recurring items after their end date", () => {
     expect(items.filter((i) => i.id === "allowance").at(-1)!.dueOn).toBe("2026-11-16");
   });
