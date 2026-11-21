@@ -21,13 +21,19 @@ export function LoanForm({
   wallets,
   people,
   today,
+  initialMode = "new",
+  onDone,
 }: {
   wallets: Account[];
   people: { id: string; name: string }[];
   today: string;
+  /** First-run setup starts on "Existing loan": a loan you're already paying. */
+  initialMode?: Mode;
+  /** Called after saving instead of opening the loan (first-run setup stays on its step). */
+  onDone?: () => void;
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("new");
+  const [mode, setMode] = useState<Mode>(initialMode);
   // In your name but someone else's (Tita Flora's MariLoan): they got the money and pay it, interest included.
   const [forOther, setForOther] = useState(false);
   const [personId, setPersonId] = useState<string | null>(null);
@@ -111,6 +117,7 @@ export function LoanForm({
           alreadyPaid: paid,
         });
         if (result.error) setError(result.error);
+        else if (onDone) onDone();
         else router.push(`/money/${result.loanId}`);
       });
       return;
@@ -127,6 +134,7 @@ export function LoanForm({
         alreadyPaid: paid,
       });
       if (result.error) setError(result.error);
+      else if (onDone) onDone();
       else router.push(`/money/${result.id}`);
     });
   }

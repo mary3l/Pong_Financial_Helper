@@ -29,7 +29,7 @@ async function Payday({ searchParams }: Pick<PageProps<"/setup/payday">, "search
   return (
     <>
       <SetupHeader
-        step={2}
+        step={4}
         title="Payday and regular bills"
         message="These tell me how long your money has to last. You can change them anytime."
         mood="listen"
