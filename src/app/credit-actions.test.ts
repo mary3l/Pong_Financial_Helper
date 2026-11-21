@@ -2,11 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { refresh } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { SIGNED_OUT_ERROR } from "@/lib/auth";
+import { categoryInfo } from "@/lib/categories";
 import { loanSchedule } from "@/lib/installments";
 import { fail, fakeSupabase, type FakeSupabase } from "@/test/fake-supabase";
 import {
   addCreditLine,
   addLoan,
+  addPurchasesToBill,
   addUpcomingPayments,
   deleteLoanForGood,
   fixBillDates,
@@ -978,6 +980,114 @@ describe("removePlan", () => {
       error: "Couldn't remove that plan. Please try again.",
     });
     expect(refresh).not.toHaveBeenCalled();
+  });
+
+  const fromPurchase = (payment: Record<string, unknown>, txn: Record<string, unknown>) => ({
+    installment_plans: [{ id: "plan-1", source_txn_id: "txn-1" }],
+    scheduled_payments: [
+      { id: "sp-1", plan_id: "plan-1", transfer_txn_id: null, fee_txn_id: null, ...payment },
+    ],
+    transactions: [{ id: "txn-1", type: "expense", split_id: null, ...txn }],
+  });
+
+  it("deletes the purchase of an unpaid bill made from one", async () => {
+    useDb(fromPurchase({}, {}));
+    expect(await removePlan("plan-1")).toEqual({});
+    // The purchase goes; the database removes its plan with it (on delete cascade).
+    expect(db.table("transactions")).toEqual([]);
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the purchase once a payment is made", async () => {
+    useDb(fromPurchase({ transfer_txn_id: "pay-1" }, {}));
+    expect(await removePlan("plan-1")).toEqual({});
+    expect(db.table("installment_plans")).toEqual([]);
+    expect(db.table("transactions")).toHaveLength(1);
+  });
+
+  it("keeps a split bill's purchase", async () => {
+    useDb(fromPurchase({}, { split_id: "s1" }));
+    expect(await removePlan("plan-1")).toEqual({});
+    expect(db.table("installment_plans")).toEqual([]);
+    expect(db.table("transactions")).toHaveLength(1);
+  });
+});
+
+describe("addPurchasesToBill", () => {
+  // Atome: due on the 16th, statement cut on the 6th.
+  const line = { id: LINE, type: "credit_line", due_day: 16, cutoff_day: 6 };
+  const id = (n: number) => `aaaaaaaa-aaaa-4aaa-8aaa-${String(n).padStart(12, "0")}`;
+  const purchase = (n: number, over: Record<string, unknown>) => ({
+    id: id(n),
+    type: "expense",
+    account_id: LINE,
+    amount: 100,
+    category: "food",
+    note: null,
+    subcategory: null,
+    occurred_on: "2026-11-07",
+    split_id: null,
+    ...over,
+  });
+  const seed = () => ({
+    accounts: [line],
+    transactions: [
+      purchase(1, { amount: 808.5, note: "Groceries · Gmall", category: "groceries" }),
+      purchase(2, { amount: 59, subcategory: "Maxim", category: "transpo" }),
+      purchase(3, {}),
+      purchase(4, { split_id: "s1" }),
+      purchase(5, {}),
+    ],
+    installment_plans: [{ id: "plan-5", source_txn_id: id(5) }],
+  });
+  const all = [1, 2, 3, 4, 5].map(id);
+
+  it("only takes plain ids", async () => {
+    expect(await addPurchasesToBill(LINE, [])).toEqual({ error: "Couldn't find those purchases." });
+    expect(await addPurchasesToBill(LINE, ["x),id.neq.0"])).toEqual({
+      error: "Couldn't find those purchases.",
+    });
+    expect(createClient).not.toHaveBeenCalled();
+  });
+
+  it("needs a session", async () => {
+    useDb({}, { user: null });
+    expect(await addPurchasesToBill(LINE, all)).toEqual({ error: SIGNED_OUT_ERROR });
+  });
+
+  it("puts each purchase on the bill it lands on, skipping splits and ones on a bill", async () => {
+    useDb(seed());
+    expect(await addPurchasesToBill(LINE, all)).toEqual({});
+    const bill = (name: string, principal: number, n: number) => ({
+      name,
+      principal,
+      months: 1,
+      first_due: "2026-12-16",
+      source_txn_id: id(n),
+    });
+    expect(db.writes("installment_plans", "insert")).toMatchObject([
+      bill("Groceries · Gmall", 808.5, 1),
+      bill("Maxim", 59, 2),
+      bill(categoryInfo("expense", "food").label, 100, 3),
+    ]);
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it("needs a credit line", async () => {
+    useDb({ ...seed(), accounts: [{ ...line, type: "loan" }] });
+    expect(await addPurchasesToBill(LINE, all)).toEqual({
+      error: "Couldn't find that credit line.",
+    });
+    expect(db.writes("installment_plans", "insert")).toEqual([]);
+  });
+
+  it("says so when a bill can't be saved", async () => {
+    useDb(seed());
+    db.respond((q) => (q.table === "installment_plans" && q.op === "insert" ? fail() : undefined));
+    expect(await addPurchasesToBill(LINE, all)).toEqual({
+      error: "Couldn't add it to the bill. Please try again.",
+    });
+    expect(refresh).toHaveBeenCalledOnce();
   });
 });
 

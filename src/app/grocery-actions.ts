@@ -2,8 +2,9 @@
 
 import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
-import { isValidDate } from "@/lib/dates";
-import { MAX_AMOUNT, isSpendable, roundCents, type AccountType } from "@/lib/money";
+import { isValidDate, today } from "@/lib/dates";
+import { MAX_AMOUNT, isSpendable, roundCents } from "@/lib/money";
+import { billPurchase, creditTerms } from "@/lib/server-writes";
 
 // Phase 5: Grocery mode checkout. See 0007_grocery.sql.
 
@@ -16,7 +17,11 @@ export type TripInput = {
   items: { barcode: string | null; name: string; price: number; qty: number }[];
 };
 
-export type GroceryResult = { error?: string };
+export type GroceryResult = {
+  error?: string;
+  /** Paid with a credit line: the due date of the bill the trip is on. */
+  billDue?: string;
+};
 
 const FAILED = { error: "Couldn't save your groceries. Your cart is still here; try again." };
 
@@ -29,7 +34,8 @@ function clean(text: unknown, max: number) {
 
 /**
  * Saves the trip as ONE Groceries expense for the receipt total, with the
- * items attached, and remembers each barcode's price at this store.
+ * items attached, and remembers each barcode's price at this store. Paid
+ * with a credit line, it goes on the bill it lands on, like a purchase in Add.
  */
 export async function saveGroceryTrip(input: TripInput): Promise<GroceryResult> {
   const store = clean(input.store, 60) || "Grocery";
@@ -51,12 +57,8 @@ export async function saveGroceryTrip(input: TripInput): Promise<GroceryResult> 
 
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
-  const { data: account } = await supabase
-    .from("accounts")
-    .select("type")
-    .eq("id", input.accountId)
-    .maybeSingle();
-  const type = account?.type as AccountType | undefined;
+  const [line] = await creditTerms(supabase, [input.accountId]);
+  const type = line?.type;
   if (!type || !(isSpendable(type) || type === "credit_line"))
     return { error: "Pick what you paid with." };
 
@@ -73,8 +75,27 @@ export async function saveGroceryTrip(input: TripInput): Promise<GroceryResult> 
     .select("id")
     .single();
   if (txn.error) return FAILED;
-  // Deleting the expense cascades to the trip and its items.
+  // Deleting the expense cascades to the trip and its items, and its bill.
   const undo = () => supabase.from("transactions").delete().eq("id", txn.data.id);
+
+  let billDue: string | null = null;
+  if (type === "credit_line") {
+    const plan = (billDue = await billPurchase(
+      supabase,
+      line,
+      {
+        id: txn.data.id,
+        name: `Groceries · ${store}`,
+        amount: receipt,
+        occurredOn: input.occurredOn,
+      },
+      today(),
+    ));
+    if (!plan) {
+      await undo();
+      return FAILED;
+    }
+  }
 
   const scanned = roundCents(items.reduce((sum, i) => sum + i.price * i.qty, 0));
   const trip = await supabase
@@ -135,5 +156,5 @@ export async function saveGroceryTrip(input: TripInput): Promise<GroceryResult> 
   }
 
   refresh();
-  return {};
+  return billDue ? { billDue } : {};
 }

@@ -10,12 +10,14 @@ import {
   getScheduledFor,
   getSplitsPaidWith,
   getTransactionDates,
+  getUnbilledPurchases,
   installmentInputs,
 } from "@/lib/data";
 import { addDays, formatShortDay, isValidDate, today as getToday } from "@/lib/dates";
 import { scheduledItems, sortItems } from "@/lib/forecast";
-import { bnplFirstDue, catchUpDue, dueText, misdatedPlans, statementFor } from "@/lib/installments";
+import { bnplFirstDue, dueText, misdatedPlans, statementFor } from "@/lib/installments";
 import { formatPeso, isDebt, isSpendable, paysInPesos, roundCents } from "@/lib/money";
+import { offBill } from "@/lib/off-bill";
 import { nextOccurrence } from "@/lib/schedule";
 import { readPage, toSplitBill, type SplitBill } from "@/lib/splits";
 import {
@@ -29,7 +31,7 @@ import {
   TheyPaidButton,
   UpcomingPayments,
 } from "./account-actions";
-import { AddSplitsButton } from "./add-splits";
+import { AddPurchasesButton, AddSplitsButton } from "./add-splits";
 import { WalletActivity } from "./wallet-activity";
 
 export const metadata = { title: "Account · Pong Money" };
@@ -73,18 +75,22 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
   const owed = Math.max(0, roundCents(-account.balance));
   // Plans a split bill made: the whole bill is on the credit line, but only your share is yours.
   const splitOfPlan = new Map<string, SplitBill>();
-  // Splits saved before they made a plan: in what you owe, but on no bill yet. Newest first.
-  const notOnBill: (SplitBill & { dueOn: string })[] = [];
   for (const [splitId, records] of splits) {
     const plan = plans.find((p) => p.sourceTxnId && records.some((r) => r.id === p.sourceTxnId));
     if (plan) splitOfPlan.set(plan.id, toSplitBill(splitId, records));
-    else
-      notOnBill.push({
-        ...toSplitBill(splitId, records),
-        dueOn: catchUpDue(records[0].occurredOn, account.dueDay, today, account.cutoffDay),
-      });
   }
-  notOnBill.sort((a, b) => b.occurredOn.localeCompare(a.occurredOn));
+  // In what you owe, but on no bill yet: splits saved before they made a plan, and purchases no plan was made from.
+  const billedTxns = new Set(plans.flatMap((p) => (p.sourceTxnId ? [p.sourceTxnId] : [])));
+  const off = offBill({
+    owed,
+    plans,
+    splits,
+    purchases:
+      account.type === "credit_line" ? await getUnbilledPurchases(account.id, billedTxns) : [],
+    line: account,
+    today,
+  });
+  const notOnBill = off.splits;
   const notOnBillTotal = roundCents(notOnBill.reduce((s, b) => s + b.total, 0));
   const notOnBillDue = [...new Set(notOnBill.map((b) => b.dueOn))];
   const planOfPayment = new Map(plans.flatMap((p) => p.payments.map((x) => [x.id, p.id] as const)));
@@ -170,6 +176,12 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
       />
     );
   };
+  // Remove takes the purchase with it when nothing on its bill is paid (see removePlan).
+  const deletesPurchase = (plan: (typeof plans)[number]) =>
+    plan.kind === "bnpl" &&
+    Boolean(plan.sourceTxnId) &&
+    !splitOfPlan.has(plan.id) &&
+    plan.payments.every((x) => !x.transactionId);
   // What you owe that no upcoming payment covers yet.
   const unscheduled = Math.max(
     0,
@@ -181,6 +193,9 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
           .reduce((sum, p) => sum + p.principalPart, 0),
     ),
   );
+  const unbilled = off.purchases;
+  const unbilledTotal = roundCents(unbilled.reduce((s, t) => s + t.amount, 0));
+  const unbilledDue = [...new Set(unbilled.map((t) => t.dueOn))];
   // A loan's interest isn't in its balance until you pay it, so the card adds what's ahead to show the whole amount.
   const unpaidPayments = plans.flatMap((p) => p.payments).filter((p) => !p.transactionId);
   const interestLeft = roundCents(unpaidPayments.reduce((sum, p) => sum + p.feePart, 0));
@@ -415,7 +430,11 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
                       </span>
                       <span className="flex items-center">
                         {plan.kind === "bnpl" && editPlan(plan)}
-                        <RemovePlanButton id={plan.id} name={plan.name} />
+                        <RemovePlanButton
+                          id={plan.id}
+                          name={plan.name}
+                          deletesPurchase={deletesPurchase(plan)}
+                        />
                       </span>
                     </span>
                   </div>
@@ -486,6 +505,43 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
         </section>
       )}
 
+      {unbilled.length > 0 && (
+        <section aria-labelledby="unbilled-heading" className="flex flex-col gap-2">
+          <h2 id="unbilled-heading" className="font-display text-xl font-semibold">
+            Not on a bill yet
+          </h2>
+          <div className="flex flex-col gap-3 rounded-[20px] bg-card px-4 py-3.5">
+            <ul className="flex flex-col">
+              {unbilled.map((t) => (
+                <li
+                  key={t.id}
+                  className="flex items-center justify-between gap-3 border-b border-line-soft py-2.5 last:border-0"
+                >
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate font-bold">{t.name}</span>
+                    <span className="text-[13px] text-muted">
+                      {formatShortDay(t.occurredOn, today)} · {formatShortDay(t.dueOn, today)} bill
+                    </span>
+                  </span>
+                  <span className="font-display text-[17px] font-semibold">
+                    {formatPeso(t.amount)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <AddPurchasesButton
+              lineId={account.id}
+              ids={unbilled.map((t) => t.id)}
+              label={
+                unbilledDue.length === 1
+                  ? `Add ${unbilled.length === 1 ? "it" : `all ${unbilled.length}`} to the ${formatShortDay(unbilledDue[0], today)} bill · ${formatPeso(unbilledTotal)}`
+                  : `Add all ${unbilled.length} to their bills · ${formatPeso(unbilledTotal)}`
+              }
+            />
+          </div>
+        </section>
+      )}
+
       {bills.length > 0 && (
         <section aria-labelledby="upcoming-heading" className="flex flex-col gap-2">
           <h2 id="upcoming-heading" className="font-display text-xl font-semibold">
@@ -536,7 +592,11 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
                           {single && (
                             <span className="-ml-3 flex items-center">
                               {editPlan(single)}
-                              <RemovePlanButton id={single.id} name={single.name} />
+                              <RemovePlanButton
+                                id={single.id}
+                                name={single.name}
+                                deletesPurchase={deletesPurchase(single)}
+                              />
                             </span>
                           )}
                           {split && (

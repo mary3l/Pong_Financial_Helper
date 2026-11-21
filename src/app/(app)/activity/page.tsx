@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import { ChevronIcon } from "@/components/icons";
 import { Pong } from "@/components/pong";
 import { ListPages, TransactionList } from "@/components/transaction-list";
-import { getAccounts, getTransactions, withoutArchived } from "@/lib/data";
+import { getAccounts, getBillTags, getTransactions, withoutArchived } from "@/lib/data";
 import {
   formatPeriod,
   isValidDate,
@@ -50,6 +50,11 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
   // Interest on a dollar wallet counts in pesos.
   const totals = cashflow(inPesos(transactions, accounts));
   const shown = pageOfItems(groupSplits(transactions), readPage(params.page));
+  const billTags = await getBillTags(
+    shown.items.flatMap((i) => (i.kind === "one" ? [i.txn] : [])),
+    accounts,
+    today,
+  );
 
   // Another kinsenas starts on its first page.
   const href = (start: string, page = 1) => {
@@ -136,6 +141,7 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
               items={shown.items}
               accounts={accounts}
               today={today}
+              billTags={billTags}
             />
           </div>
           <ListPages

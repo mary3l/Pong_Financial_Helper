@@ -15,6 +15,7 @@ import { removeWallet, restoreWallet } from "@/app/wallet-actions";
 import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import { FormDialog } from "@/components/form-dialog";
+import { showToast } from "@/components/toast";
 import type { Account, InstallmentPlan } from "@/lib/data";
 import { formatShortDay, isValidDate } from "@/lib/dates";
 import { monthlyDates } from "@/lib/forecast";
@@ -389,7 +390,16 @@ export function EditPlanButton({
 }
 
 /** Removes a plan entered by mistake or paid off early. Asks once first. */
-export function RemovePlanButton({ id, name }: { id: string; name: string }) {
+export function RemovePlanButton({
+  id,
+  name,
+  deletesPurchase = false,
+}: {
+  id: string;
+  name: string;
+  /** Remove deletes the purchase too (see removePlan), so the confirm says so. */
+  deletesPurchase?: boolean;
+}) {
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -398,7 +408,9 @@ export function RemovePlanButton({ id, name }: { id: string; name: string }) {
       <button
         type="button"
         disabled={pending}
-        aria-label={confirm ? `Confirm remove ${name}` : `Remove ${name}`}
+        aria-label={
+          confirm ? `Confirm ${deletesPurchase ? "delete" : "remove"} ${name}` : `Remove ${name}`
+        }
         onClick={() => {
           if (!confirm) {
             setConfirm(true);
@@ -407,6 +419,7 @@ export function RemovePlanButton({ id, name }: { id: string; name: string }) {
           startTransition(async () => {
             const result = await removePlan(id);
             if (result.error) setError(result.error);
+            else showToast(`${deletesPurchase ? "Deleted" : "Removed"} · ${name}`);
           });
         }}
         onBlur={() => setConfirm(false)}
@@ -414,7 +427,13 @@ export function RemovePlanButton({ id, name }: { id: string; name: string }) {
           confirm ? "bg-coral text-white" : "text-coral-text hover:bg-coral-tint"
         }`}
       >
-        {pending ? "Removing…" : confirm ? "Tap to remove" : "Remove"}
+        {pending
+          ? "Removing…"
+          : confirm
+            ? deletesPurchase
+              ? "Tap to delete purchase"
+              : "Tap to remove"
+            : "Remove"}
       </button>
       <span role="alert" className="text-xs font-bold text-coral-text empty:hidden">
         {error}

@@ -10,6 +10,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { creditRoom } from "@/lib/bnpl";
 import { categoryInfo } from "@/lib/categories";
 import {
+  getBillTags,
   getBudgets,
   getCapLines,
   getCashSpentToday,
@@ -116,6 +117,7 @@ async function Dashboard() {
     getCashSpentToday(todays, accounts),
     getCapLines(accounts, today),
   ]);
+  const billTags = await getBillTags(activity, accounts, today);
   const day = planToday({ inWallets, cash, items, today, lines });
   const limitLeft = roundCents(
     creditRoom(accounts).reduce((sum, l) => sum + (l.creditLeft ?? 0), 0),
@@ -307,6 +309,7 @@ async function Dashboard() {
                 accounts={accounts}
                 today={today}
                 grouped={false}
+                billTags={billTags}
               />
             ) : (
               <p className="py-3 text-[15px] text-muted">

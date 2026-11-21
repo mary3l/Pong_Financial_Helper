@@ -9,7 +9,14 @@ import {
   type MoneyHistory,
 } from "@/lib/bnpl";
 import { subcategoryOptions } from "@/lib/categories";
-import { addDays, dateInMonth, daysBetween, monthContaining, today as getToday } from "@/lib/dates";
+import {
+  addDays,
+  dateInMonth,
+  daysBetween,
+  formatShortDay,
+  monthContaining,
+  today as getToday,
+} from "@/lib/dates";
 import {
   LATE_BILL_DAYS,
   scheduledItems,
@@ -36,6 +43,7 @@ import {
 } from "@/lib/money";
 import { USUAL_DAYS, billCycles, type CapLine } from "@/lib/payment-plan";
 import { paydayAmounts, type PayrollRecords } from "@/lib/payroll";
+import { offBill } from "@/lib/off-bill";
 import { personItems, type EntryKind, type Person } from "@/lib/people";
 import type { Frequency } from "@/lib/schedule";
 import { createClient } from "@/lib/supabase/server";
@@ -1272,6 +1280,110 @@ export async function getSplitsPaidWith(accountId: string): Promise<Map<string, 
     splits.set(t.splitId!, list);
   }
   return splits;
+}
+
+/**
+ * Purchases on a credit line that are on none of its bills: in what you owe,
+ * but no plan was made from them (a grocery trip before checkout made one,
+ * an expense moved onto the line in Edit, a bill taken off with Remove).
+ * Newest first. Split bills aren't here: see getSplitsPaidWith.
+ */
+export async function getUnbilledPurchases(
+  accountId: string,
+  billed: Set<string>,
+): Promise<Transaction[]> {
+  if (!/^[0-9a-f-]{36}$/i.test(accountId)) return [];
+  const supabase = await db();
+  const read = (columns: string) =>
+    supabase
+      .from("transactions")
+      .select(columns)
+      .eq("account_id", accountId)
+      .eq("type", "expense")
+      .is("split_id", null)
+      .order("occurred_on", { ascending: false })
+      .order("created_at", { ascending: false });
+  const first = await read(TXN_WITH_SUB);
+  // 42703: before migration 0015 there's no subcategory; before 0012, no splits to tell apart.
+  const { data, error } = first.error?.code === "42703" ? await read(TXN_COLUMNS) : first;
+  if (error?.code === "42703") return [];
+  if (error) throw dbError(error);
+  return (data as unknown as TxnRow[]).map(toTransaction).filter((t) => !billed.has(t.id));
+}
+
+/** Which bill a purchase on a credit line is on, for its row in Activity. */
+export type BillTag = { label: string; missing: boolean };
+
+/**
+ * For each purchase on a credit line in `transactions`: "Dec 16 bill" (its next
+ * unpaid payment), "bill paid", or "no bill" when it's in what you owe but on
+ * none of the line's bills (see offBill). Split bills show their own breakdown.
+ */
+export async function getBillTags(
+  transactions: Transaction[],
+  accounts: Account[],
+  today: string,
+): Promise<Map<string, BillTag>> {
+  const tags = new Map<string, BillTag>();
+  const lines = new Map(accounts.filter((a) => a.type === "credit_line").map((a) => [a.id, a]));
+  const purchases = transactions.filter(
+    (t) => t.type === "expense" && !t.splitId && lines.has(t.accountId),
+  );
+  if (!purchases.length) return tags;
+
+  const supabase = await db();
+  const plans = await supabase
+    .from("installment_plans")
+    .select("id, source_txn_id")
+    .in(
+      "source_txn_id",
+      purchases.map((t) => t.id),
+    );
+  if (plans.error) throw dbError(plans.error);
+  const payments = plans.data.length
+    ? await supabase
+        .from("scheduled_payments")
+        .select("plan_id, due_on, transfer_txn_id, fee_txn_id")
+        .in(
+          "plan_id",
+          plans.data.map((p) => p.id),
+        )
+        .order("due_on")
+    : { data: [], error: null };
+  if (payments.error) throw dbError(payments.error);
+
+  for (const plan of plans.data) {
+    const next = payments.data.find(
+      (p) => p.plan_id === plan.id && !p.transfer_txn_id && !p.fee_txn_id,
+    );
+    tags.set(plan.source_txn_id as string, {
+      label: next ? `${formatShortDay(next.due_on, today)} bill` : "bill paid",
+      missing: false,
+    });
+  }
+
+  // On no bill: "no bill" only if what you owe still holds it, as the line's page lists it.
+  const unchecked = [...new Set(purchases.filter((t) => !tags.has(t.id)).map((t) => t.accountId))];
+  await Promise.all(
+    unchecked.map(async (lineId) => {
+      const line = lines.get(lineId)!;
+      const [linePlans, splits] = await Promise.all([
+        getInstallmentPlans(lineId),
+        getSplitsPaidWith(lineId),
+      ]);
+      const billed = new Set(linePlans.flatMap((p) => (p.sourceTxnId ? [p.sourceTxnId] : [])));
+      const off = offBill({
+        owed: Math.max(0, -line.balance),
+        plans: linePlans,
+        splits,
+        purchases: await getUnbilledPurchases(lineId, billed),
+        line,
+        today,
+      });
+      for (const t of off.purchases) tags.set(t.id, { label: "no bill", missing: true });
+    }),
+  );
+  return tags;
 }
 
 /**

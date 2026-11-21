@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { signedInClient } from "@/lib/auth";
-import type { PaymentRow } from "@/lib/installments";
+import { buildSchedule, catchUpDue, type PaymentRow } from "@/lib/installments";
 import { isSpendable, roundCents, type AccountType } from "@/lib/money";
 
 // Write helpers shared by Server Actions. Not actions themselves: they take
@@ -81,6 +81,32 @@ export async function savePlan(
     return null;
   }
   return data.id;
+}
+
+/**
+ * Puts one purchase on a credit line on the bill it lands on, in one
+ * payment, as Add does with no installment: a purchase that's past its bill
+ * goes on the next one. Its due date when saved, else null.
+ */
+export async function billPurchase(
+  supabase: Client,
+  line: CreditTerms,
+  purchase: { id: string; name: string; amount: number; occurredOn: string },
+  today: string,
+): Promise<string | null> {
+  const amount = roundCents(purchase.amount);
+  const dueOn = catchUpDue(purchase.occurredOn, line.dueDay, today, line.cutoffDay);
+  const saved = await savePlan(supabase, {
+    kind: "bnpl",
+    accountId: line.id,
+    name: purchase.name.slice(0, 60),
+    principal: amount,
+    months: 1,
+    payFromAccountId: null,
+    sourceTxnId: purchase.id,
+    rows: buildSchedule({ principal: amount, feeTotal: 0, months: 1, firstDue: dueOn }),
+  });
+  return saved ? dueOn : null;
 }
 
 /** PostgREST says PGRST204 for a column it doesn't know, Postgres 42703: a migration hasn't been run. */

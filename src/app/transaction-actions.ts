@@ -2,9 +2,15 @@
 
 import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
-import { ADJUSTMENT, SUBCATEGORY_MAX, cleanSubcategory, isCategoryFor } from "@/lib/categories";
-import { isValidClock, isValidDate } from "@/lib/dates";
-import { bnplFee, buildSchedule } from "@/lib/installments";
+import {
+  ADJUSTMENT,
+  SUBCATEGORY_MAX,
+  categoryInfo,
+  cleanSubcategory,
+  isCategoryFor,
+} from "@/lib/categories";
+import { isValidClock, isValidDate, today } from "@/lib/dates";
+import { bnplFee, buildSchedule, catchUpDue } from "@/lib/installments";
 import {
   MAX_AMOUNT,
   isSpendable,
@@ -12,7 +18,7 @@ import {
   type AccountType,
   type TransactionType,
 } from "@/lib/money";
-import { savePlan, type Client } from "@/lib/server-writes";
+import { billPurchase, creditTerms, savePlan, type Client } from "@/lib/server-writes";
 
 export type TransactionInput = {
   type: TransactionType;
@@ -30,7 +36,11 @@ export type TransactionInput = {
   occurredTime?: string | null;
 };
 
-export type ActionResult = { error?: string };
+export type ActionResult = {
+  error?: string;
+  /** A purchase on a credit line: the due date of the bill it's on now. */
+  billDue?: string;
+};
 
 const NOTE_MAX = 120;
 
@@ -155,6 +165,17 @@ export async function saveTransaction(
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
+  // What it was before an edit, to keep its bill in step.
+  const before = id
+    ? (
+        await supabase
+          .from("transactions")
+          .select("type, account_id, amount, occurred_on, split_id")
+          .eq("id", id)
+          .maybeSingle()
+      ).data
+    : null;
+
   // RLS and the (account, owner) foreign keys reject other people's rows.
   const { data, error } = await writeTxn(supabase, checked.row, id);
   if (error?.code === "missing_subcategory") return { error: MISSING_SUBCATEGORY_ERROR };
@@ -183,14 +204,123 @@ export async function saveTransaction(
     }
   }
 
+  if (id && before && !before.split_id && !(await syncBill(supabase, id, before, checked.row))) {
+    refresh();
+    return { error: "Saved, but couldn't update its bill. Please try again." };
+  }
+
   // Pesos into dollars: the dollar wallet's rate becomes what you paid on average.
   const row = checked.row;
   if (!id && row.to_account_id && row.to_amount) {
     await averageRate(supabase, row.to_account_id, row.amount, row.to_amount);
   }
 
+  const billDue = row.type === "expense" ? await billDueOf(supabase, data[0].id) : null;
   refresh();
-  return {};
+  return billDue ? { billDue } : {};
+}
+
+/** The due date of the next unpaid payment on the bill made from a purchase, if any. */
+async function billDueOf(supabase: Client, txnId: string): Promise<string | null> {
+  const plan = await supabase
+    .from("installment_plans")
+    .select("id")
+    .eq("source_txn_id", txnId)
+    .maybeSingle();
+  if (!plan.data) return null;
+  const { data } = await supabase
+    .from("scheduled_payments")
+    .select("due_on")
+    .eq("plan_id", plan.data.id)
+    .is("transfer_txn_id", null)
+    .is("fee_txn_id", null)
+    .order("due_on")
+    .limit(1);
+  return data?.[0]?.due_on ?? null;
+}
+
+/**
+ * Keeps an edited purchase's bill in step, so what you owe on a credit line
+ * stays on its bills. Moved onto a credit line: it goes on the bill it lands
+ * on. Moved off (or no longer an expense): its bill goes, if nothing on it is
+ * paid. A one-payment bill with nothing paid follows a new amount or date.
+ * An installment you've started paying is left as it is (Edit plan changes it).
+ * False if a write failed.
+ */
+async function syncBill(
+  supabase: Client,
+  id: string,
+  before: { type: string; account_id: string; amount: number | string; occurred_on: string },
+  row: TxnRowInput,
+): Promise<boolean> {
+  const [[line], plans] = await Promise.all([
+    creditTerms(supabase, [row.account_id]),
+    supabase
+      .from("installment_plans")
+      .select("id, account_id, months, fee_total")
+      .eq("source_txn_id", id),
+  ]);
+  if (plans.error) return false;
+  const found = plans.data[0] as
+    { id: string; account_id: string; months: number; fee_total: number | string } | undefined;
+  const payments = found
+    ? await supabase
+        .from("scheduled_payments")
+        .select("id, transfer_txn_id, fee_txn_id")
+        .eq("plan_id", found.id)
+    : null;
+  if (payments?.error) return false;
+  const plan = found && { ...found, scheduled_payments: payments?.data ?? [] };
+  const untouched =
+    plan?.scheduled_payments.every((p) => !p.transfer_txn_id && !p.fee_txn_id) ?? false;
+  const onLine = row.type === "expense" && line?.type === "credit_line";
+  const now = today();
+  const name = row.note || row.subcategory || categoryInfo("expense", row.category).label;
+  const putOnBill = async () =>
+    (await billPurchase(
+      supabase,
+      line!,
+      { id, name, amount: row.amount, occurredOn: row.occurred_on },
+      now,
+    )) !== null;
+
+  if (!plan) {
+    const moved = before.type !== "expense" || before.account_id !== row.account_id;
+    return onLine && moved ? putOnBill() : true;
+  }
+  if (!untouched) return true;
+  if (!onLine || plan.account_id !== row.account_id) {
+    const { error } = await supabase.from("installment_plans").delete().eq("id", plan.id);
+    if (error) return false;
+    return onLine ? putOnBill() : true;
+  }
+
+  const amountChanged = roundCents(Number(before.amount)) !== row.amount;
+  const dateChanged = before.occurred_on !== row.occurred_on;
+  if (plan.months !== 1 || Number(plan.fee_total) !== 0 || !(amountChanged || dateChanged))
+    return true;
+  const payment = plan.scheduled_payments[0];
+  const dueOn = dateChanged
+    ? catchUpDue(row.occurred_on, line!.dueDay, now, line!.cutoffDay)
+    : null;
+  const [p, s] = await Promise.all([
+    supabase
+      .from("installment_plans")
+      .update({ principal: row.amount, ...(dueOn && { first_due: dueOn }) })
+      .eq("id", plan.id),
+    payment
+      ? supabase
+          .from("scheduled_payments")
+          .update({
+            amount: row.amount,
+            principal_part: row.amount,
+            ...(dueOn && { due_on: dueOn }),
+          })
+          .eq("id", payment.id)
+          .is("transfer_txn_id", null)
+      : Promise.resolve({ error: null }),
+  ]);
+  return !p.error && !s.error;
 }
 
 /**
