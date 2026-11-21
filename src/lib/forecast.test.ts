@@ -1,15 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  affordVerdict,
   isOwed,
   itemEffect,
   nextUnreceivedPayday,
   project,
-  safeToSpend,
   scheduledItems,
   splitAmount,
   type ScheduleInputs,
 } from "@/lib/forecast";
+import { affordVerdict } from "@/lib/payment-plan";
 
 const TODAY = "2026-11-02";
 
@@ -105,6 +104,62 @@ describe("scheduled items", () => {
     expect(itemEffect(items.find((i) => i.id === "rent")!)).toBe(-6000);
   });
 
+  describe("bills you haven't paid yet", () => {
+    // Rent was due Oct 5; it's Nov 2 and it isn't marked paid.
+    const added = { ...rent, startsOn: "2026-09-01" };
+
+    it("stay owed after their date, and count today", () => {
+      const late = scheduledItems({ ...inputs(), recurring: [payday, added] }, TODAY, "2026-12-02");
+      const owed = late.filter((i) => i.id === "rent");
+      expect(owed.map((i) => i.dueOn)).toEqual(["2026-10-05", "2026-11-05"]);
+      expect(itemEffect(owed[0])).toBe(-6000);
+      expect(project(10000, late, TODAY, 3).days[0].balance).toBe(4000);
+    });
+
+    it("drop out once paid", () => {
+      const paid = scheduledItems(
+        {
+          ...inputs(),
+          recurring: [payday, added],
+          billPayments: [{ recurringItemId: "rent", dueOn: "2026-10-05", transactionId: "t1" }],
+        },
+        TODAY,
+        "2026-12-02",
+      );
+      expect(paid.filter((i) => i.id === "rent").map((i) => i.dueOn)).toEqual(["2026-11-05"]);
+    });
+
+    it("never from before the bill was added, or more than a month back", () => {
+      const fresh = scheduledItems(
+        { ...inputs(), recurring: [{ ...rent, startsOn: "2026-10-20" }] },
+        TODAY,
+        "2026-12-02",
+      );
+      expect(fresh.map((i) => i.dueOn)).toEqual(["2026-11-05"]);
+      const old = scheduledItems(
+        { ...inputs(), recurring: [{ ...rent, startsOn: "2025-01-01" }] },
+        "2026-12-20",
+        "2026-12-21",
+      );
+      expect(old.map((i) => i.dueOn)).toEqual(["2026-12-05"]);
+    });
+
+    it("never back-fills pay or income", () => {
+      const items = scheduledItems(
+        {
+          ...inputs(),
+          recurring: [
+            { ...payday, startsOn: "2026-09-01" },
+            { ...allowance, startsOn: "2026-09-01", endsOn: null },
+          ],
+        },
+        TODAY,
+        "2026-11-03",
+      );
+      expect(items.every((i) => i.dueOn >= TODAY)).toBe(true);
+    });
+  });
+
   it("keeps unlogged planned items from before today, and planned income flows in", () => {
     const withPlanned = scheduledItems(
       inputs({
@@ -169,41 +224,7 @@ describe("scheduled items", () => {
   });
 });
 
-describe("safe to spend", () => {
-  it("is wallet money minus what's due before payday, per day", () => {
-    const items = scheduledItems(inputs(), TODAY, "2026-12-02");
-    const sts = safeToSpend({ inWallets: 10000, payday, items, today: TODAY });
-    expect(sts.nextPayday).toBe("2026-11-15");
-    expect(sts.daysLeft).toBe(13);
-    expect(sts.dueBeforePayday).toBe(6000); // rent; the allowance doesn't count
-    expect(sts.free).toBe(4000);
-    expect(sts.perDay).toBe(Math.floor(4000 / 13));
-  });
-
-  it("takes today's spending out of today's share without shrinking it", () => {
-    const items = scheduledItems(inputs(), TODAY, "2026-12-02");
-    // 300 already spent today: the wallets started the day at 10,000.
-    const sts = safeToSpend({ inWallets: 9700, payday, items, today: TODAY, spentToday: 300 });
-    expect(sts.perDay).toBe(Math.floor(4000 / 13));
-    expect(sts.spentToday).toBe(300);
-    expect(sts.leftToday).toBe(Math.floor(4000 / 13) - 300);
-  });
-
-  it("goes below 0 for today when you spend more than today's share", () => {
-    const items = scheduledItems(inputs(), TODAY, "2026-12-02");
-    const sts = safeToSpend({ inWallets: 9000, payday, items, today: TODAY, spentToday: 1000 });
-    expect(sts.leftToday).toBe(Math.floor(4000 / 13) - 1000);
-  });
-
-  it("never goes below 0", () => {
-    const items = scheduledItems(inputs(), TODAY, "2026-12-02");
-    expect(safeToSpend({ inWallets: 1000, payday, items, today: TODAY }).perDay).toBe(0);
-  });
-
-  it("without a payday is just what's in your wallets", () => {
-    expect(safeToSpend({ inWallets: 500, payday: null, items: [], today: TODAY }).free).toBe(500);
-  });
-
+describe("next payday you haven't received", () => {
   describe("pay received early", () => {
     const today = "2026-11-13";
     const philhealth = { ...rent, id: "philhealth", name: "PhilHealth", amount: 500, day1: 15 };
@@ -246,30 +267,9 @@ describe("safe to spend", () => {
         "2026-12-13",
       );
 
-    it("counts down to the payday after it, spreading what's left over those days", () => {
-      // The wallets already hold the Nov 15 pay and the side job.
-      const sts = safeToSpend({
-        inWallets: 30000,
-        payday,
-        items: early(true),
-        today,
-        spentToday: 50,
-      });
-      expect(sts.nextPayday).toBe("2026-11-30");
-      expect(sts.daysLeft).toBe(17);
-      // Water and Bonchon before Nov 30; PhilHealth is paid, rent is Dec 5.
-      expect(sts.dueBeforePayday).toBe(1355);
-      expect(sts.dueCount).toBe(2);
-      expect(sts.free).toBe(30050 - 1355);
-      expect(sts.perDay).toBe(Math.floor((30050 - 1355) / 17));
-      expect(sts.leftToday).toBe(Math.floor((30050 - 1355) / 17) - 50);
-    });
-
-    it("counts down to that payday again once it's undone", () => {
-      const sts = safeToSpend({ inWallets: 30000, payday, items: early(false), today });
-      expect(sts.nextPayday).toBe("2026-11-15");
-      expect(sts.daysLeft).toBe(2);
-      expect(sts.dueBeforePayday).toBe(0);
+    it("is the payday after it once the pay is in, and that payday again once undone", () => {
+      expect(nextUnreceivedPayday(payday, early(true), today)).toBe("2026-11-30");
+      expect(nextUnreceivedPayday(payday, early(false), today)).toBe("2026-11-15");
     });
 
     it("matches a payday moved to another day by its usual date", () => {
@@ -321,68 +321,35 @@ describe("projection and can I afford this", () => {
     expect(wait.tone).toBe("wait");
   });
 
+  it("counts your daily spending and the ₱1,000 floor, like Home", () => {
+    const items = scheduledItems(inputs(), TODAY, "2026-12-02");
+    const check = (amount: number) =>
+      affordVerdict({
+        start: 7000,
+        items,
+        purchase: { name: "Bag", amount, first: TODAY, months: 1 },
+        today: TODAY,
+        nextPayday: "2026-11-15",
+      });
+    // 9,000 today − 6,000 rent − ₱1,000 floor: ₱2,000 for the 7 days until
+    // the next allowance, ₱280 a day.
+    const small = check(100);
+    expect(small.perDayBefore).toBe(280);
+    expect(small.tone).toBe("comfortable");
+    // The old check said "comfortably" (never below ₱0 when spending nothing),
+    // but it cuts ₱280 a day to ₱70.
+    const bag = check(1500);
+    expect(bag.tone).toBe("tight");
+    expect(bag.biggestCut).toEqual({ from: TODAY, before: 280, after: 70 });
+    // Nothing left to spend until payday: wait for it.
+    expect(check(2000).tone).toBe("wait");
+  });
+
   it("splits an amount so the payments add back up exactly", () => {
     const parts = splitAmount(1000, 3);
     expect(parts).toEqual([333.33, 333.33, 333.34]);
     expect(parts.reduce((a, b) => a + b, 0)).toBeCloseTo(1000, 10);
-  });
-});
-
-describe("safe to spend with weekly pay", () => {
-  // Paid ₱3,000 every Friday; rent ₱6,000 on the 20th. Nov 2, 2026 is a Monday.
-  const weekly = { ...payday, amount: 3000, frequency: "weekly" as const, day1: 5, day2: null };
-  const bigRent = { ...rent, amount: 6000, day1: 20 };
-  const items = scheduledItems(
-    { recurring: [weekly, bigRent], billPayments: [], planned: [] },
-    TODAY,
-    "2026-12-02",
-  );
-
-  it("holds money back for a bill the next pays can't cover", () => {
-    const sts = safeToSpend({ inWallets: 4000, payday: weekly, items, today: TODAY });
-    expect(sts.nextPayday).toBe("2026-11-06");
-    expect(sts.daysLeft).toBe(4);
-    // Without looking ahead it would be 4,000 ÷ 4 = 1,000 a day. The tightest
-    // day is Nov 26, the eve of the 4th pay: 4,000 + 3 pays − 6,000 rent =
-    // 7,000 for 25 days, so ₱280 a day.
-    expect(sts.perDay).toBe(280);
-    expect(sts.setAsideLater).toBe(4000 - 280 * 4);
-    expect(sts.free).toBe(280 * 4);
-  });
-
-  it("holds nothing back when the pays cover the bills", () => {
-    const sts = safeToSpend({
-      inWallets: 4000,
-      payday: { ...weekly },
-      items: scheduledItems(
-        { recurring: [{ ...weekly, amount: 20000 }, bigRent], billPayments: [], planned: [] },
-        TODAY,
-        "2026-12-02",
-      ),
-      today: TODAY,
-    });
-    expect(sts.setAsideLater).toBe(0);
-    expect(sts.perDay).toBe(1000);
-  });
-
-  it("never counts pay toward what you can spend before it comes in", () => {
-    const rich = scheduledItems(
-      { recurring: [{ ...weekly, amount: 100000 }], billPayments: [], planned: [] },
-      TODAY,
-      "2026-12-02",
-    );
-    expect(safeToSpend({ inWallets: 400, payday: weekly, items: rich, today: TODAY }).perDay).toBe(
-      100,
-    );
-  });
-
-  it("leaves pay twice a month as it was", () => {
-    const sts = safeToSpend({
-      inWallets: 10000,
-      payday,
-      items: scheduledItems(inputs(), TODAY, "2026-12-02"),
-      today: TODAY,
-    });
-    expect(sts.setAsideLater).toBe(0);
+    // Whole centavos: no floating-point 1.14 + 1.16.
+    expect(splitAmount(2.3, 2)).toEqual([1.15, 1.15]);
   });
 });
