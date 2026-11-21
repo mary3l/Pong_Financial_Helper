@@ -576,6 +576,26 @@ select to_regclass('public.payroll_cutoff_changes') is not null;
 
 Expect `true`.
 
+## Step 24 · Contributions your office takes from your pay
+
+File: `migrations/0024_payroll_deductions.sql`
+
+Adds `payroll_deductions`: contributions like **GSIS** that your office takes from your
+salary. In the payroll calculator, **Contributions › Taken from your pay › +** adds one with its
+monthly amount. It comes off the month's last payday, so that payday shows gross pay minus your
+contributions, and the payday dialog shows the breakdown. They're not bills: Money going out and
+Pay ahead don't list them.
+
+Until you run this, the + list stays empty.
+
+**Check**
+
+```sql
+select to_regclass('public.payroll_deductions') is not null;
+```
+
+Expect `true`.
+
 ---
 
 ## All done?
@@ -618,7 +638,8 @@ select
   to_regclass('public.payroll_pay_changes') is not null     as step_21,
   exists (select 1 from information_schema.columns
           where table_name = 'recurring_items' and column_name = 'pay_amounts') as step_22,
-  to_regclass('public.payroll_cutoff_changes') is not null  as step_23;
+  to_regclass('public.payroll_cutoff_changes') is not null  as step_23,
+  to_regclass('public.payroll_deductions') is not null      as step_24;
 ```
 
 The first `false` is the step to run next.

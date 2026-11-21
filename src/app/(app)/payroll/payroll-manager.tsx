@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import {
+  addDeduction,
+  deleteDeduction,
   removeCutoffChange,
   removePayChange,
   saveContributionAmounts,
@@ -11,6 +13,7 @@ import {
   saveCutoffChange,
   savePayrollSettings,
   setContributionDay,
+  updateDeduction,
 } from "@/app/payroll-actions";
 import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
@@ -50,6 +53,7 @@ import {
   cutoffRuleText,
   cutoffsPaidOn,
   dailyFromMonthly,
+  deductionsOn,
   dayKind,
   daysFor,
   formatCutoff,
@@ -62,6 +66,7 @@ import {
   overtimeMinutes,
   pageRule,
   payForCutoff,
+  paydayAmounts,
   paydayFor,
   previousCutoff,
   settingsFor,
@@ -71,6 +76,7 @@ import {
   usualFor,
   type ContributionKey,
   type CutoffRule,
+  type Deduction,
   type DayStatus,
   type OvertimeEntry,
   type PayChange,
@@ -878,7 +884,7 @@ function SettingsForm({
       )}
 
       <fieldset className="flex flex-col gap-0.5">
-        <legend className="mb-1 text-sm font-bold">You pay these yourself</legend>
+        <legend className="mb-1 text-sm font-bold">Contributions you pay yourself</legend>
         <Toggle checked={pays.paySss} onChange={(v) => setPays((p) => ({ ...p, paySss: v }))}>
           SSS (self-employed, 15%)
         </Toggle>
@@ -894,6 +900,12 @@ function SettingsForm({
         >
           Pag-IBIG
         </Toggle>
+      </fieldset>
+      <p className="-mt-1 text-xs text-muted">
+        Ones your office takes from your pay, like GSIS: add them under Contributions.
+      </p>
+      <fieldset className="flex flex-col gap-0.5">
+        <legend className="mb-1 text-sm font-bold">Tax</legend>
         <Toggle checked={pays.payTax} onChange={(v) => setPays((p) => ({ ...p, payTax: v }))}>
           Income tax, 8% option
         </Toggle>
@@ -1839,14 +1851,27 @@ function SelfPaidCard({
   // Contributions follow the pay of the cutoff you're in now.
   const settings = settingsFor(records, today);
   const [editing, setEditing] = useState(false);
+  // The contribution being added (null) or changed; undefined while closed.
+  const [deduction, setDeduction] = useState<Deduction | null | undefined>(undefined);
   const monthly = contributions(settings);
   const taxes = settings.payTax ? upcomingTaxPayments(records, today) : [];
   const monthlyTotal = monthly.reduce((sum, c) => sum + c.amount, 0);
   const allCustom = monthly.length > 0 && monthly.every((c) => c.custom);
+  const taken = useMemo(() => records.deductions ?? [], [records]);
+  const takenTotal = taken.reduce((sum, d) => sum + d.amount, 0);
+  // The next payday they come off, with its gross and what's left.
+  const next = useMemo(() => {
+    if (!taken.length) return null;
+    const date = occurrences(payday, today, addDays(today, 62)).find(
+      (d) => deductionsOn(d, payday, taken).length > 0,
+    );
+    if (!date) return null;
+    return { date, ...paydayAmounts(records, payday, date, addDays(date, 1), today)[date] };
+  }, [records, payday, today, taken]);
 
   return (
     <Card
-      title="What you pay yourself"
+      title="Contributions"
       aside={
         monthly.length > 0 && (
           <button
@@ -1860,28 +1885,36 @@ function SelfPaidCard({
         )
       }
     >
-      <p className="text-sm text-muted">
-        These are in{" "}
-        <Link href="/plan/scheduled" className="font-extrabold text-sea-dark underline">
-          Money going out
-        </Link>
-        , so your forecast and Safe to spend set the money aside. They update when you save your pay
-        or a cutoff.
-      </p>
-
       {editing && (
         <FormDialog title="What you pay yourself" onClose={() => setEditing(false)}>
           <AmountsForm settings={settings} onClose={() => setEditing(false)} />
         </FormDialog>
       )}
-      {monthly.length > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <h3 className="text-sm font-extrabold">
-            Each month ·{" "}
-            {allCustom
-              ? "the amounts you entered"
-              : `based on ${formatPeso(monthlyBase(settings))} a month`}
-          </h3>
+      {deduction !== undefined && (
+        <FormDialog
+          title={deduction ? `Change ${deduction.name}` : "Taken from your pay"}
+          onClose={() => setDeduction(undefined)}
+        >
+          <DeductionForm deduction={deduction} onClose={() => setDeduction(undefined)} />
+        </FormDialog>
+      )}
+
+      <div className="flex flex-col gap-1.5">
+        <h3 className="text-sm font-extrabold">
+          You pay yourself
+          {monthly.length > 0 &&
+            (allCustom
+              ? " · the amounts you entered"
+              : ` · based on ${formatPeso(monthlyBase(settings))} a month`)}
+        </h3>
+        <p className="text-[13px] text-muted">
+          In{" "}
+          <Link href="/plan/scheduled" className="font-extrabold text-sea-dark underline">
+            Money going out
+          </Link>
+          , so your forecast sets the money aside. They update when you save your pay or a cutoff.
+        </p>
+        {monthly.length > 0 ? (
           <dl className="flex flex-col gap-2.5 text-[15px]">
             {monthly.map((c) => (
               <div
@@ -1914,8 +1947,66 @@ function SelfPaidCard({
               <dd className="font-extrabold">{formatPeso(monthlyTotal)}</dd>
             </div>
           </dl>
+        ) : (
+          <p className="text-[15px] text-muted">
+            None. Edit your pay to pick SSS, PhilHealth or Pag-IBIG.
+          </p>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-extrabold">Taken from your pay</h3>
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            aria-label="Add a contribution taken from your pay"
+            onClick={() => setDeduction(null)}
+            className="flex h-10 items-center gap-1 rounded-full bg-mint px-3 text-sm font-extrabold text-ink hover:bg-sea-tint"
+          >
+            <span aria-hidden="true" className="text-lg leading-none">
+              +
+            </span>
+            Add
+          </button>
         </div>
-      )}
+        <p className="text-[13px] text-muted">
+          Like GSIS: your office takes these each month from your last payday, so that payday is
+          your pay minus them. They&apos;re not bills to pay.
+        </p>
+        {taken.length > 0 && (
+          <dl className="flex flex-col gap-1 text-[15px]">
+            {taken.map((d) => (
+              <div key={d.id} className="flex items-center justify-between gap-3">
+                <dt className="min-w-0 flex-1 truncate">{d.name}</dt>
+                <dd className="flex items-center gap-1">
+                  <span className="w-20 text-right font-bold">{formatPeso(d.amount)}</span>
+                  <button
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-label={`Change ${d.name}`}
+                    onClick={() => setDeduction(d)}
+                    className="h-10 rounded-full px-3 text-sm font-extrabold text-sea-dark hover:bg-mint"
+                  >
+                    Edit
+                  </button>
+                </dd>
+              </div>
+            ))}
+            <div className="flex items-baseline justify-between gap-3 border-t-2 border-line-soft pt-1.5">
+              <dt className="font-extrabold">Each month</dt>
+              <dd className="pr-[60px] font-extrabold">{formatPeso(takenTotal)}</dd>
+            </div>
+          </dl>
+        )}
+        {next?.gross !== undefined && (
+          <p className="rounded-[14px] bg-sea-tint px-3 py-2 text-[15px]">
+            <strong>{formatShortDay(next.date, today)} payday</strong>
+            {next.estimate ? ", about" : ""}: {formatPeso(next.gross)} − {formatPeso(takenTotal)} ={" "}
+            <strong>{formatPeso(next.amount)}</strong>
+          </p>
+        )}
+      </div>
 
       {settings.payTax && (
         <div className="flex flex-col gap-1.5">
@@ -1942,12 +2033,6 @@ function SelfPaidCard({
             the year is in.
           </p>
         </div>
-      )}
-
-      {!monthly.length && !settings.payTax && (
-        <p className="text-[15px] text-muted">
-          You haven&apos;t picked any. Edit your pay to add them.
-        </p>
       )}
     </Card>
   );
@@ -2008,6 +2093,119 @@ function ContributionDay({
         {error}
       </span>
     </span>
+  );
+}
+
+/** Add or change a contribution your office takes from your pay. */
+function DeductionForm({
+  deduction,
+  onClose,
+}: {
+  /** Null: a new one. */
+  deduction: Deduction | null;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(deduction?.name ?? "");
+  const [amount, setAmount] = useState(deduction ? String(deduction.amount) : "");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function save(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const value = parseAmount(amount);
+    if (!name.trim()) return setError("Give it a name, like GSIS.");
+    if (!(value > 0)) return setError("Enter how much your office takes each month.");
+    startTransition(async () => {
+      const result = deduction
+        ? await updateDeduction(deduction.id, name, value)
+        : await addDeduction(name, value);
+      if (result.error) setError(result.error);
+      else onClose();
+    });
+  }
+
+  function remove() {
+    if (!deduction) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await deleteDeduction(deduction.id);
+      if (result.error) setError(result.error);
+      else onClose();
+    });
+  }
+
+  return (
+    <form onSubmit={save} className="flex flex-col gap-4">
+      <p className="text-[15px]">
+        What your office takes from your pay each month. It comes off your last payday of the month.
+        On payday you can correct it if your payslip says otherwise.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1">
+          <label htmlFor="deduction-name" className="text-sm font-bold">
+            Name
+          </label>
+          <input
+            id="deduction-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={40}
+            placeholder="e.g. GSIS"
+            className={FIELD_CLASS}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="deduction-amount" className="text-sm font-bold">
+            Each month
+          </label>
+          <div className="relative">
+            <span
+              aria-hidden="true"
+              className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted"
+            >
+              ₱
+            </span>
+            <AmountInput
+              id="deduction-amount"
+              value={amount}
+              onChange={setAmount}
+              placeholder="0.00"
+              className={`${FIELD_CLASS} w-full pl-8`}
+            />
+          </div>
+        </div>
+      </div>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="submit"
+          disabled={pending}
+          className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60"
+        >
+          {pending ? "Saving…" : deduction ? "Save" : "Add"}
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-card"
+        >
+          Cancel
+        </button>
+        {deduction && (
+          <button
+            type="button"
+            onClick={remove}
+            disabled={pending}
+            className="ml-auto h-11 rounded-[14px] px-4 font-extrabold text-coral-text hover:bg-coral-tint disabled:opacity-60"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+    </form>
   );
 }
 

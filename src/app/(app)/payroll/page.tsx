@@ -8,16 +8,17 @@ import { PayrollManager } from "./payroll-manager";
 export const metadata = { title: "Payroll calculator · Pong Money" };
 
 // Works out each payday from a daily rate, the days you worked, late minutes
-// and overtime, and keeps SSS, PhilHealth, Pag-IBIG and the 8% income tax in
-// Money going out. ?cutoff=2026-11-18 opens the cutoff with that day.
+// and overtime, minus contributions your office takes (GSIS), and keeps SSS,
+// PhilHealth, Pag-IBIG and the 8% income tax you pay yourself in Money going
+// out. ?cutoff=2026-11-18 opens the cutoff with that day.
 export default function PayrollPage({ searchParams }: PageProps<"/payroll">) {
   return (
     <div className="flex flex-col gap-4 lg:max-w-4xl">
       <div className="flex flex-col gap-1">
         <h1 className="font-display text-3xl font-semibold">Payroll calculator</h1>
         <p className="text-[15px] text-muted">
-          Your pay from the days you worked, minus late, plus overtime. Nothing is deducted from it,
-          so your contributions and tax go into Money going out.
+          Your pay from the days you worked, minus late, plus overtime. Contributions you pay
+          yourself and tax go into Money going out; ones your office takes come off your payday.
         </p>
       </div>
       <Suspense fallback={<div className="h-96 rounded-[20px] bg-line-soft" aria-hidden="true" />}>

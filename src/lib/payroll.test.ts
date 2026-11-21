@@ -20,6 +20,7 @@ import {
   cutoffFor,
   cutoffPay,
   daysFor,
+  deductionsOn,
   minutesLate,
   overtimeMinutes,
   pagibigContribution,
@@ -163,6 +164,54 @@ describe("cutoff pay", () => {
       "2026-11-15": { amount: 8800, estimate: true },
       "2026-11-30": { amount: 8000, estimate: true },
     });
+  });
+
+  it("takes your office's contributions off the month's last payday", () => {
+    const gsis = { id: "g", name: "GSIS", amount: 1800 };
+    const union = { id: "u", name: "Union dues", amount: 200 };
+    const records: PayrollRecords = {
+      settings,
+      days: [],
+      overtime: [],
+      deductions: [gsis, union],
+    };
+    const amounts = paydayAmounts(
+      records,
+      { frequency: "twice_monthly", day1: 15, day2: 30 },
+      "2026-11-01",
+      "2026-12-01",
+      "2026-11-04",
+    );
+    expect(amounts["2026-11-15"]).toEqual({ amount: 8800, estimate: true });
+    expect(amounts["2026-11-30"]).toEqual({
+      amount: 6000,
+      estimate: true,
+      gross: 8000,
+      deductions: [gsis, union],
+    });
+  });
+
+  it("finds the month's last payday, weekly too", () => {
+    const fridays = { frequency: "weekly" as const, day1: 5, day2: null };
+    const gsis = [{ id: "g", name: "GSIS", amount: 1800 }];
+    // November 2026's Fridays: 6, 13, 20, 27.
+    expect(deductionsOn("2026-11-20", fridays, gsis)).toEqual([]);
+    expect(deductionsOn("2026-11-27", fridays, gsis)).toEqual(gsis);
+    expect(deductionsOn("2026-11-27", fridays, [])).toEqual([]);
+  });
+
+  it("never goes below ₱0", () => {
+    const records: PayrollRecords = {
+      settings,
+      days: [],
+      overtime: [],
+      deductions: [{ id: "g", name: "GSIS", amount: 99999 }],
+    };
+    const paydays = { frequency: "twice_monthly" as const, day1: 15, day2: 30 };
+    expect(
+      paydayAmounts(records, paydays, "2026-11-30", "2026-12-01", "2026-11-04")["2026-11-30"]
+        .amount,
+    ).toBe(0);
   });
 });
 
