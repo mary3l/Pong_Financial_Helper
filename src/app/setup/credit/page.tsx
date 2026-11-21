@@ -1,8 +1,9 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { getAccounts } from "@/lib/data";
+import { getAccounts, getPayroll } from "@/lib/data";
 import { today } from "@/lib/dates";
 import { paysInPesos } from "@/lib/money";
+import { isEmployee } from "@/lib/payroll";
 import { SetupHeader } from "../setup-header";
 import { DebtsStep } from "./debts-step";
 
@@ -28,12 +29,15 @@ export default function SetupCreditPage() {
 
 async function Debts() {
   await connection();
-  const accounts = await getAccounts();
+  const [accounts, payroll] = await Promise.all([getAccounts(), getPayroll(today())]);
   return (
     <DebtsStep
       debts={accounts.filter((a) => a.type === "credit_line" || a.type === "loan")}
       wallets={accounts.filter((a) => paysInPesos(a))}
       today={today()}
+      salaryOption={
+        payroll !== null && payroll !== "missing" && isEmployee(payroll.settings.employment)
+      }
     />
   );
 }

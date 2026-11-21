@@ -2,7 +2,7 @@ import { vi } from "vitest";
 
 // A stand-in for the Supabase client that Server Actions get from
 // `createClient()`. It keeps rows in memory per table, applies the simple
-// filters our actions use (eq, neq, in, is, not-is, gt/gte/lt/lte, ilike,
+// filters our actions use (eq, neq, in, is, not-is, gt/gte/lt/lte, ilike, like,
 // limit, order), and records every query so tests can assert on writes.
 //
 //   const db = fakeSupabase({ accounts: [{ id: "w1", type: "cash", ... }] });
@@ -59,6 +59,14 @@ function matches(row: Row, f: Filter): boolean {
       return (v as number) <= (a as number);
     case "ilike":
       return String(v ?? "").toLowerCase() === String(a).toLowerCase();
+    case "like": {
+      // % matches anything; everything else is literal.
+      const pattern = String(a)
+        .split("%")
+        .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join(".*");
+      return new RegExp(`^${pattern}$`).test(String(v ?? ""));
+    }
     default:
       // or(), order(), limit()…: don't narrow.
       return true;

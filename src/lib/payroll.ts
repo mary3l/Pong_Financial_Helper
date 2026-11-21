@@ -56,7 +56,54 @@ export const RATES = {
   tax: { rate: 0.08, exempt: 250000 },
   /** The day of the month the monthly contributions are paid. */
   contributionDay: 30,
+  /**
+   * What an employer takes from an employee's pay: the employee's share only
+   * (2025 schedules, unchanged in 2026). Pong's estimates; payslip amounts win.
+   */
+  employee: {
+    /** SSS: 5% of the monthly salary credit (RA 11199); the employer adds 10%. */
+    sss: 0.05,
+    /** PhilHealth: half of the 5% premium, on pay between ₱10,000 and ₱100,000. */
+    philhealth: 0.025,
+    /** Pag-IBIG: 2% (1% on ₱1,500 or less) of pay up to ₱10,000, so at most ₱200. */
+    pagibig: { rate: 0.02, lowRate: 0.01, lowUpTo: 1500, maxBase: 10000 },
+    /** GSIS: the 9% personal share of basic monthly pay (RA 8291); government adds 12%. */
+    gsis: 0.09,
+    /**
+     * BIR withholding on compensation (TRAIN, from 2023): yearly taxable pay
+     * over `over` pays `base` plus `rate` of what's above it. ₱250,000 and under: none.
+     */
+    withholding: [
+      { over: 250000, base: 0, rate: 0.15 },
+      { over: 400000, base: 22500, rate: 0.2 },
+      { over: 800000, base: 102500, rate: 0.25 },
+      { over: 2000000, base: 402500, rate: 0.3 },
+      { over: 8000000, base: 2202500, rate: 0.35 },
+    ],
+  },
 } as const;
+
+/**
+ * How you earn (migration 0025). Employees have contributions and tax taken
+ * from their pay; self-employed pay them themselves; "none" has neither.
+ */
+export type Employment = "government" | "private" | "self" | "none";
+
+export const EMPLOYMENTS: { value: Employment; label: string }[] = [
+  { value: "government", label: "Government employee" },
+  { value: "private", label: "Private employee" },
+  { value: "self", label: "Self-employed" },
+  { value: "none", label: "Daily-paid, no contributions" },
+];
+
+export function isEmployment(value: unknown): value is Employment {
+  return EMPLOYMENTS.some((e) => e.value === value);
+}
+
+/** Employees: their office takes contributions, tax and salary loans from their pay. */
+export function isEmployee(employment: Employment | undefined): boolean {
+  return employment === "government" || employment === "private";
+}
 
 export type PayrollSettings = {
   dailyRate: number;
@@ -100,6 +147,8 @@ export type PayrollSettings = {
   sunday?: WeekendMode;
   /** Cutoffs on other dates than usual (migration 0023), read with your settings. */
   cutoffChanges?: readonly CutoffChange[];
+  /** How you earn (migration 0025). Missing: self-employed, as before. */
+  employment?: Employment;
 };
 
 /**
@@ -606,26 +655,215 @@ export type PayrollRecords = {
   overtime: OvertimeEntry[];
   /** Oldest first. Missing or empty: one rate for every cutoff. */
   changes?: PayChange[];
-  /** Contributions your office takes from your pay (migration 0024). Missing: none. */
+  /** Contributions your office takes from your pay (migration 0024), amounts filled in. Missing: none. */
   deductions?: Deduction[];
+  /** Payments on loans your office takes from your pay (migration 0025). Missing: none. */
+  salaryLoans?: SalaryLoan[];
 };
+
+/** Which contribution a deduction is (migration 0025); "other" for a union fee and the like. */
+export type DeductionKind = "gsis" | "sss" | "philhealth" | "pagibig" | "tax" | "other";
+
+/** The month's last payday, or split evenly over each payday of the month. */
+export type DeductionTaken = "last" | "each";
 
 /**
  * A contribution your office takes from your pay, like GSIS: a monthly
- * amount, taken from the month's last payday. Not a bill.
+ * amount, taken from the month's last payday (or split over each). Not a bill.
  */
-export type Deduction = { id: string; name: string; amount: number };
+export type Deduction = {
+  id: string;
+  name: string;
+  /** A month's worth. */
+  amount: number;
+  kind?: DeductionKind;
+  taken?: DeductionTaken;
+  /** Pong's estimate from your pay, not an amount you typed. */
+  estimated?: boolean;
+  /** A salary loan's payment (its scheduled payment's id), not a contribution. */
+  loanPaymentId?: string;
+};
 
-/** What comes off one payday: every deduction on the month's last payday, none on the others. */
+/** A deduction as saved: no amount means Pong estimates it from your pay. */
+export type SavedDeduction = Omit<Deduction, "amount" | "estimated" | "loanPaymentId"> & {
+  amount: number | null;
+};
+
+/** One payment on a loan your office takes from your pay: off the last payday of its month. */
+export type SalaryLoan = {
+  paymentId: string;
+  name: string;
+  amount: number;
+  /** "2026-12": the month it's due. */
+  month: string;
+};
+
+/**
+ * Unpaid payments on loans your office takes from your pay, for the paydays
+ * they come off. Someone else's loans never count.
+ */
+export function salaryLoansOf(
+  plans: readonly {
+    name: string;
+    months: number;
+    personId: string | null;
+    payBy: "wallet" | "salary";
+    payments: readonly {
+      id: string;
+      seq: number;
+      dueOn: string;
+      amount: number;
+      transactionId: string | null;
+    }[];
+  }[],
+): SalaryLoan[] {
+  return plans
+    .filter((p) => p.payBy === "salary" && !p.personId)
+    .flatMap((p) =>
+      p.payments
+        .filter((x) => !x.transactionId)
+        .map((x) => ({
+          paymentId: x.id,
+          name: `${p.name} · ${x.seq} of ${p.months}`,
+          amount: x.amount,
+          month: x.dueOn.slice(0, 7),
+        })),
+    );
+}
+
+/** What comes off one payday: monthly deductions on the month's last payday, "each" ones split. */
 export function deductionsOn(
   payday: string,
   schedule: Schedule,
   deductions: readonly Deduction[] = [],
+  salaryLoans: readonly SalaryLoan[] = [],
 ): Deduction[] {
-  if (!deductions.length) return [];
+  if (!deductions.length && !salaryLoans.length) return [];
+  const month = payday.slice(0, 7);
   const next = nextOccurrence(schedule, payday);
-  const lastOfMonth = !next || next.slice(0, 7) !== payday.slice(0, 7);
-  return lastOfMonth ? [...deductions] : [];
+  const lastOfMonth = !next || next.slice(0, 7) !== month;
+  const out: Deduction[] = [];
+  const split = deductions.filter((d) => d.taken === "each");
+  if (split.length) {
+    const start = `${month}-01`;
+    const count = Math.max(
+      1,
+      occurrences(schedule, start, addDays(start, 32)).filter((d) => d.slice(0, 7) === month)
+        .length,
+    );
+    for (const d of split) {
+      const share = roundCents(d.amount / count);
+      // The last payday takes what rounding left, so the month adds up.
+      out.push({ ...d, amount: lastOfMonth ? roundCents(d.amount - share * (count - 1)) : share });
+    }
+  }
+  if (lastOfMonth) {
+    out.push(...deductions.filter((d) => d.taken !== "each"));
+    for (const l of salaryLoans.filter((l) => l.month === month))
+      out.push({
+        id: `loan-${l.paymentId}`,
+        name: l.name,
+        amount: l.amount,
+        loanPaymentId: l.paymentId,
+      });
+  }
+  return out;
+}
+
+/** The employee's share of one contribution on `monthly` pay. */
+export function employeeShare(
+  kind: Exclude<DeductionKind, "tax" | "other">,
+  monthly: number,
+): number {
+  const e = RATES.employee;
+  switch (kind) {
+    case "sss":
+      return roundCents(sssSalaryCredit(monthly) * e.sss);
+    case "philhealth": {
+      const { floor, ceiling } = RATES.philhealth;
+      return roundCents(Math.min(ceiling, Math.max(floor, monthly)) * e.philhealth);
+    }
+    case "pagibig": {
+      const { rate, lowRate, lowUpTo, maxBase } = e.pagibig;
+      return roundCents(Math.min(maxBase, monthly) * (monthly <= lowUpTo ? lowRate : rate));
+    }
+    case "gsis":
+      return roundCents(monthly * e.gsis);
+  }
+}
+
+/** A month's withholding tax: the yearly tax on pay after contributions, ÷ 12. */
+export function withholdingTax(monthly: number, contributions: number): number {
+  const yearly = Math.max(0, monthly - contributions) * 12;
+  const bracket = [...RATES.employee.withholding].reverse().find((b) => yearly > b.over);
+  if (!bracket) return 0;
+  return roundCents((bracket.base + bracket.rate * (yearly - bracket.over)) / 12);
+}
+
+/** What an employer usually takes, before you change anything: by how you earn. */
+export function defaultDeductions(employment: Employment): Omit<SavedDeduction, "id">[] {
+  const contribution = (kind: DeductionKind, name: string) => ({
+    kind,
+    name,
+    amount: null,
+    taken: "last" as const,
+  });
+  const tax = {
+    kind: "tax" as const,
+    name: "Withholding tax",
+    amount: null,
+    taken: "each" as const,
+  };
+  if (employment === "government")
+    return [
+      contribution("gsis", "GSIS"),
+      contribution("philhealth", "PhilHealth"),
+      contribution("pagibig", "Pag-IBIG"),
+      tax,
+    ];
+  if (employment === "private")
+    return [
+      contribution("sss", "SSS"),
+      contribution("philhealth", "PhilHealth"),
+      contribution("pagibig", "Pag-IBIG"),
+      tax,
+    ];
+  return [];
+}
+
+/**
+ * Saved deductions with every missing amount filled in from your monthly pay:
+ * contributions first, then withholding tax on what's left after them.
+ */
+export function resolveDeductions(
+  settings: PayrollSettings,
+  saved: readonly SavedDeduction[],
+): Deduction[] {
+  const monthly = monthlyBase(settings);
+  const statutory = (d: SavedDeduction) =>
+    d.kind !== undefined && d.kind !== "tax" && d.kind !== "other";
+  const filled = saved.map((d): Deduction | null => {
+    if (d.kind === "tax") return null;
+    if (d.amount !== null) return { ...d, amount: d.amount };
+    if (statutory(d))
+      return {
+        ...d,
+        amount: employeeShare(d.kind as Exclude<DeductionKind, "tax" | "other">, monthly),
+        estimated: true,
+      };
+    return { ...d, amount: 0, estimated: true };
+  });
+  const contributions = saved.reduce(
+    (sum, d, i) => sum + (statutory(d) ? (filled[i]?.amount ?? 0) : 0),
+    0,
+  );
+  return saved.map(
+    (d, i) =>
+      filled[i] ??
+      (d.amount !== null
+        ? { ...d, amount: d.amount }
+        : { ...d, amount: withholdingTax(monthly, contributions), estimated: true }),
+  );
 }
 
 export function rateOf(s: CutoffRate): CutoffRate {
@@ -794,7 +1032,7 @@ export function paydayAmounts(
     const pays = cutoffs.map((c) => payForCutoff(records, c, today, index));
     const moved = cutoffs.map((c) => changeOf(c, rule)?.paidOn).find(Boolean);
     const gross = roundCents(pays.reduce((sum, p) => sum + p.total, 0));
-    const taken = deductionsOn(date, schedule, records.deductions);
+    const taken = deductionsOn(date, schedule, records.deductions, records.salaryLoans);
     const off = roundCents(taken.reduce((sum, d) => sum + d.amount, 0));
     out[date] = {
       amount: Math.max(0, roundCents(gross - off)),

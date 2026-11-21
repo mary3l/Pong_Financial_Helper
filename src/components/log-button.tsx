@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { payInstallments, undoInstallment } from "@/app/credit-actions";
 import { settlePerson } from "@/app/people-actions";
-import { logPlanned, logRecurring } from "@/app/plan-actions";
+import { logPlanned, logRecurring, undoPayday } from "@/app/plan-actions";
 import { deleteTransaction } from "@/app/transaction-actions";
 import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
@@ -21,6 +21,12 @@ import {
 } from "@/lib/money";
 
 /** Opens Add prefilled for an item, linked so saving logs that occurrence. */
+/** A payday's salary loan payments: logging it pays them from the pay. */
+function salaryLoanIds(item: ForecastItem): string[] {
+  if (item.kind !== "payday") return [];
+  return (item.pay?.deductions ?? []).flatMap((d) => (d.loanPaymentId ? [d.loanPaymentId] : []));
+}
+
 export function prefillHref(item: ForecastItem): string {
   const query = new URLSearchParams({
     type: item.flow === "in" ? "income" : "expense",
@@ -72,10 +78,18 @@ export function LogButton({
             ? undoInstallment(item.id)
             : payInstallments([item.id], walletId)
           : paid
-            ? deleteTransaction(item.transactionId!)
+            ? item.kind === "payday"
+              ? undoPayday(item.transactionId!)
+              : deleteTransaction(item.transactionId!)
             : item.kind === "planned"
               ? logPlanned(item.id, walletId)
-              : logRecurring(item.id, item.dueOn, walletId, amount ?? item.amount ?? undefined));
+              : logRecurring(
+                  item.id,
+                  item.dueOn,
+                  walletId,
+                  amount ?? item.amount ?? undefined,
+                  salaryLoanIds(item),
+                ));
       if (result.error) setError(result.error);
       else setPicking(false);
     });

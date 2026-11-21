@@ -9,6 +9,7 @@ import {
   logRecurring,
   removeBudget,
   saveBudget,
+  undoPayday,
   type PlannedInput,
 } from "./plan-actions";
 
@@ -231,5 +232,92 @@ describe("budgets", () => {
     expect(await removeBudget("bg1")).toEqual({
       error: "Couldn't remove that budget. Please try again.",
     });
+  });
+});
+
+describe("a payday with a salary loan", () => {
+  // GSIS MPL: ₱2,000 a month, ₱1,800 of it principal, taken from the month's last payday.
+  const seed = () => ({
+    accounts: [...wallets, { id: "mpl", type: "loan", archived: false, currency: "PHP" }],
+    recurring_items: [
+      {
+        id: "pay",
+        kind: "payday",
+        name: "Payday",
+        amount: 13000,
+        account_id: "bank",
+        category: null,
+      },
+    ],
+    installment_plans: [
+      {
+        id: "plan-mpl",
+        account_id: "mpl",
+        name: "GSIS MPL",
+        months: 24,
+        pay_from_account_id: null,
+        pay_by: "salary",
+      },
+    ],
+    scheduled_payments: [
+      {
+        id: "sp-3",
+        plan_id: "plan-mpl",
+        seq: 3,
+        amount: 2000,
+        principal_part: 1800,
+        fee_part: 200,
+        transfer_txn_id: null,
+        fee_txn_id: null,
+      },
+    ],
+  });
+
+  it("logs what landed plus the loan, then pays the loan from it", async () => {
+    useDb(seed());
+    expect(await logRecurring("pay", "2026-11-30", "bank", 11000, ["sp-3"])).toEqual({});
+    const txns = db.table("transactions");
+    // ₱11,000 landed; ₱2,000 went to the loan before it did.
+    expect(txns.find((t) => t.type === "income")).toMatchObject({
+      amount: 13000,
+      account_id: "bank",
+    });
+    expect(txns.find((t) => t.type === "transfer")).toMatchObject({
+      amount: 1800,
+      account_id: "bank",
+      to_account_id: "mpl",
+      note: "GSIS MPL 3 of 24 · from pay",
+    });
+    expect(txns.find((t) => t.type === "expense")).toMatchObject({
+      amount: 200,
+      account_id: "bank",
+    });
+    // The wallet moves by exactly what landed.
+    const change = txns.reduce(
+      (sum, t) => sum + (t.type === "income" ? Number(t.amount) : -Number(t.amount)),
+      0,
+    );
+    expect(change).toBe(11000);
+    expect(db.table("scheduled_payments")[0].transfer_txn_id).not.toBeNull();
+  });
+
+  it("ignores payments that aren't salary loans or are already paid", async () => {
+    const s = seed();
+    s.installment_plans[0] = { ...s.installment_plans[0], pay_by: "wallet" };
+    useDb(s);
+    expect(await logRecurring("pay", "2026-11-30", "bank", 11000, ["sp-3"])).toEqual({});
+    expect(db.table("transactions")).toEqual([
+      expect.objectContaining({ type: "income", amount: 11000 }),
+    ]);
+  });
+
+  it("undoing the payday un-pays the loan too", async () => {
+    useDb(seed());
+    await logRecurring("pay", "2026-11-30", "bank", 11000, ["sp-3"]);
+    const income = db.table("transactions").find((t) => t.type === "income")!;
+    expect(await undoPayday(income.id as string)).toEqual({});
+    // The payday, and the loan's transfer and fee: deleting those un-pays the
+    // payment (on delete set null, migration 0005; the fake has no foreign keys).
+    expect(db.table("transactions")).toEqual([]);
   });
 });

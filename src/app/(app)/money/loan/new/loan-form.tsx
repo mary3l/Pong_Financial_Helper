@@ -23,6 +23,7 @@ export function LoanForm({
   today,
   initialMode = "new",
   onDone,
+  salaryOption = false,
 }: {
   wallets: Account[];
   people: { id: string; name: string }[];
@@ -31,6 +32,8 @@ export function LoanForm({
   initialMode?: Mode;
   /** Called after saving instead of opening the loan (first-run setup stays on its step). */
   onDone?: () => void;
+  /** You're an employee with pay set up: a loan can be taken from your salary. */
+  salaryOption?: boolean;
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>(initialMode);
@@ -46,6 +49,9 @@ export function LoanForm({
   const [months, setMonths] = useState("12");
   const [firstDue, setFirstDue] = useState(monthlyDates(today, 2)[1]);
   const [payFrom, setPayFrom] = useState(wallets[0]?.id ?? "");
+  // GSIS MPL, a Pag-IBIG or SSS salary loan: your office takes it from your pay.
+  const [payBy, setPayBy] = useState<"wallet" | "salary">("wallet");
+  const fromSalary = salaryOption && payBy === "salary";
   // Counted from the due dates until you change it.
   const [paidOverride, setPaidOverride] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -130,8 +136,9 @@ export function LoanForm({
         intoAccountId: running ? null : into || null,
         receivedOn,
         nextDue,
-        payFromAccountId: payFrom || null,
+        payFromAccountId: fromSalary ? null : payFrom || null,
         alreadyPaid: paid,
+        payBy: fromSalary ? "salary" : "wallet",
       });
       if (result.error) setError(result.error);
       else if (onDone) onDone();
@@ -390,7 +397,31 @@ export function LoanForm({
           {forOther &&
             running &&
             dateField("loan-date", `${who || "They"} got it on`, receivedOn, setReceivedOn)}
-          {!forOther && (
+          {!forOther && salaryOption && (
+            <div className="flex flex-col gap-1">
+              <span id="loan-pay-by" className="text-sm font-bold">
+                How do you pay it?
+              </span>
+              <div role="group" aria-labelledby="loan-pay-by" className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ["wallet", "From a wallet"],
+                    ["salary", "Taken from my salary"],
+                  ] as const
+                ).map(([value, text]) => (
+                  <ChoiceChip
+                    key={value}
+                    selected={payBy === value}
+                    onClick={() => setPayBy(value)}
+                    className={payBy === value ? "" : "bg-mint"}
+                  >
+                    {text}
+                  </ChoiceChip>
+                ))}
+              </div>
+            </div>
+          )}
+          {!forOther && !fromSalary && (
             <div className="flex flex-col gap-1">
               <label htmlFor="loan-from" className="text-sm font-bold">
                 Pay from

@@ -6,7 +6,9 @@ import { EXPENSE_CATEGORIES, isCategoryFor } from "@/lib/categories";
 import { isValidDate, today } from "@/lib/dates";
 import { monthlyDates, recurringCategory, splitAmount } from "@/lib/forecast";
 import { MAX_AMOUNT, roundCents } from "@/lib/money";
-import { pickWallet, type Client } from "@/lib/server-writes";
+import { payInstallments, undoInstallment } from "@/app/credit-actions";
+import { deleteTransaction } from "@/app/transaction-actions";
+import { FROM_PAY, pickWallet, type Client } from "@/lib/server-writes";
 
 export type PlanResult = { error?: string };
 
@@ -52,6 +54,11 @@ export async function logRecurring(
   dueOn: string,
   walletId?: string,
   amount?: number,
+  /**
+   * A payday's salary loan payments (the month's last payday): paid from the
+   * pay as it lands, so the wallet ends at the take-home and each loan moves on.
+   */
+  salaryLoanPaymentIds: string[] = [],
 ): Promise<PlanResult> {
   if (!isValidDate(dueOn)) return FAILED;
   if (amount !== undefined && !(Number.isFinite(amount) && amount > 0 && amount <= MAX_AMOUNT)) {
@@ -71,14 +78,30 @@ export async function logRecurring(
   const accountId = await pickWallet(supabase, item.account_id, walletId);
   if (!accountId) return walletId ? PICK_WALLET : NO_WALLET;
 
+  // The pay that lands is what's left after them: log what they took too, then pay each.
+  const loans =
+    item.kind === "payday" ? await salaryLoanPayments(supabase, salaryLoanPaymentIds) : [];
+  const fromLoans = roundCents(loans.reduce((sum, p) => sum + p.amount, 0));
+  if (loans.length) {
+    const paid = await payInstallments(
+      loans.map((p) => p.id),
+      accountId,
+      true,
+    );
+    if (paid.error) return paid;
+  }
+
   const txnId = await logTransaction(supabase, {
     type: item.kind === "bill" ? "expense" : "income",
-    amount: amount !== undefined ? roundCents(amount) : Number(item.amount),
+    amount: roundCents((amount !== undefined ? amount : Number(item.amount)) + fromLoans),
     accountId,
     category: recurringCategory(item),
     note: item.kind === "payday" ? "Payday" : item.name,
   });
-  if (!txnId) return FAILED;
+  if (!txnId) {
+    for (const p of loans) await undoInstallment(p.id);
+    return FAILED;
+  }
 
   const { error } = await supabase
     .from("bill_payments")
@@ -91,6 +114,65 @@ export async function logRecurring(
 
   refresh();
   return {};
+}
+
+/** The unpaid payments among `ids` on loans your office takes from your pay. */
+async function salaryLoanPayments(
+  supabase: Client,
+  ids: string[],
+): Promise<{ id: string; amount: number }[]> {
+  if (!ids.length) return [];
+  const { data: payments } = await supabase
+    .from("scheduled_payments")
+    .select("id, plan_id, amount, transfer_txn_id, fee_txn_id")
+    .in("id", ids);
+  const unpaid = (payments ?? []).filter((p) => !p.transfer_txn_id && !p.fee_txn_id);
+  if (!unpaid.length) return [];
+  const { data: plans } = await supabase
+    .from("installment_plans")
+    .select("id, pay_by")
+    .in("id", [...new Set(unpaid.map((p) => p.plan_id))]);
+  const salary = new Set((plans ?? []).filter((p) => p.pay_by === "salary").map((p) => p.id));
+  return unpaid
+    .filter((p) => salary.has(p.plan_id))
+    .map((p) => ({ id: p.id as string, amount: Number(p.amount) }));
+}
+
+/**
+ * Undo a logged payday: deletes it, and un-pays the salary loan payments it
+ * paid (their transfers from that wallet that day, noted "· from pay").
+ */
+export async function undoPayday(transactionId: string): Promise<PlanResult> {
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const { data: payday } = await supabase
+    .from("transactions")
+    .select("account_id, occurred_on")
+    .eq("id", transactionId)
+    .maybeSingle();
+  if (payday) {
+    const { data: fromPay } = await supabase
+      .from("transactions")
+      .select("id")
+      .eq("account_id", payday.account_id)
+      .eq("occurred_on", payday.occurred_on)
+      .like("note", `%${FROM_PAY}`);
+    const txnIds = (fromPay ?? []).map((t) => t.id as string);
+    if (txnIds.length) {
+      const [byTransfer, byFee] = await Promise.all([
+        supabase.from("scheduled_payments").select("id").in("transfer_txn_id", txnIds),
+        supabase.from("scheduled_payments").select("id").in("fee_txn_id", txnIds),
+      ]);
+      const paymentIds = new Set(
+        [...(byTransfer.data ?? []), ...(byFee.data ?? [])].map((p) => p.id as string),
+      );
+      for (const id of paymentIds) {
+        const undone = await undoInstallment(id);
+        if (undone.error) return undone;
+      }
+    }
+  }
+  return deleteTransaction(transactionId);
 }
 
 /** "Mark paid" or "Add income" for a planned item: logs it today and links the two. */

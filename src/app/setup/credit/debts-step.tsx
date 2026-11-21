@@ -20,12 +20,15 @@ export function DebtsStep({
   debts,
   wallets,
   today,
+  salaryOption = false,
 }: {
   /** Credit lines and loans already added. */
   debts: Account[];
   /** Wallets a loan's payments can come from. */
   wallets: Account[];
   today: string;
+  /** You're an employee with pay set up: loans can be taken from your salary. */
+  salaryOption?: boolean;
 }) {
   const router = useRouter();
   const [adding, setAdding] = useState<"credit" | "loan" | null>(null);
@@ -77,6 +80,7 @@ export function DebtsStep({
             today={today}
             initialMode="running"
             onDone={done}
+            salaryOption={salaryOption}
           />
           <button
             type="button"

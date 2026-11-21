@@ -50,8 +50,18 @@ export type ForecastItem = {
   pay?: PayBreakdown;
 };
 
-/** A payday's gross pay and the contributions your office takes from it. */
-export type PayBreakdown = { gross: number; deductions: { name: string; amount: number }[] };
+/** A payday's gross pay and what your office takes from it: contributions, tax, salary loan payments. */
+export type PayBreakdown = {
+  gross: number;
+  deductions: {
+    name: string;
+    amount: number;
+    /** Pong's estimate, not your payslip's amount. */
+    estimated?: boolean;
+    /** A salary loan's scheduled payment: logging the payday pays it. */
+    loanPaymentId?: string;
+  }[];
+};
 
 export type ScheduleInputs = {
   recurring: (Schedule & {
@@ -90,7 +100,7 @@ export type ScheduleInputs = {
       estimate: boolean;
       paidOn?: string;
       gross?: number;
-      deductions?: { name: string; amount: number }[];
+      deductions?: PayBreakdown["deductions"];
     }
   >;
   /** BNPL and loan payments (Phase 3). */
@@ -187,7 +197,12 @@ export function scheduledItems(
           ? {
               pay: {
                 gross: payroll.gross!,
-                deductions: payroll.deductions.map((d) => ({ name: d.name, amount: d.amount })),
+                deductions: payroll.deductions.map((d) => ({
+                  name: d.name,
+                  amount: d.amount,
+                  ...(d.estimated ? { estimated: true } : {}),
+                  ...(d.loanPaymentId ? { loanPaymentId: d.loanPaymentId } : {}),
+                })),
               },
             }
           : {}),

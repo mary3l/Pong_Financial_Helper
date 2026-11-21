@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { getAccounts, getPeople } from "@/lib/data";
+import { getAccounts, getPayroll, getPeople } from "@/lib/data";
 import { today } from "@/lib/dates";
 import { paysInPesos } from "@/lib/money";
+import { isEmployee } from "@/lib/payroll";
 import { LoanForm } from "./loan-form";
 
 export const metadata = { title: "Add loan · Pong Money" };
@@ -25,12 +26,19 @@ export default function NewLoanPage() {
 
 async function Loan() {
   await connection();
-  const [accounts, people] = await Promise.all([getAccounts(), getPeople()]);
+  const [accounts, people, payroll] = await Promise.all([
+    getAccounts(),
+    getPeople(),
+    getPayroll(today()),
+  ]);
   return (
     <LoanForm
       wallets={accounts.filter((a) => paysInPesos(a))}
       people={people.map((p) => ({ id: p.id, name: p.name }))}
       today={today()}
+      salaryOption={
+        Boolean(payroll) && payroll !== "missing" && isEmployee(payroll?.settings.employment)
+      }
     />
   );
 }
