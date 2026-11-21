@@ -407,6 +407,25 @@ function DueRow({
         <span className={`text-[13px] ${late ? "font-bold text-coral-text" : "text-muted"}`}>
           {meta}
         </span>
+        {item.pay && !paid && (
+          <details className="text-[13px] text-muted">
+            <summary className="w-fit cursor-pointer font-bold text-sea-dark">
+              {formatPeso(item.pay.gross)} −{" "}
+              {formatPeso(roundCents(item.pay.gross - (item.amount ?? 0)))} taken
+            </summary>
+            <dl className="mt-1 flex flex-col gap-0.5">
+              {item.pay.deductions.map((d) => (
+                <div key={d.name} className="flex justify-between gap-3">
+                  <dt>
+                    {d.name}
+                    {d.estimated && " · estimate"}
+                  </dt>
+                  <dd>{formatPeso(d.amount)}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
+        )}
       </span>
       <span
         className={`font-display text-[17px] font-semibold ${paid ? "text-muted line-through" : incoming ? "text-sea" : ""}`}

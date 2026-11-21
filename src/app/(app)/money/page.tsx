@@ -6,14 +6,16 @@ import {
   getAccounts,
   getInstallmentPlans,
   getLastInterest,
+  getPayroll,
   getPeople,
   getRecurringItems,
   type Account,
   type InstallmentPlan,
 } from "@/lib/data";
-import { formatShortDay, today as getToday } from "@/lib/dates";
+import { addDays, formatShortDay, today as getToday } from "@/lib/dates";
 import { getUsdRate } from "@/lib/fx";
 import { formatPeso, isDebt, isSpendable, pesoTotal, roundCents } from "@/lib/money";
+import { paydayAmounts, salaryLoansOf, type PayrollRecords } from "@/lib/payroll";
 import { dueDate, isOverdue, type Person } from "@/lib/people";
 import { payPerMonth as monthlyPay } from "@/lib/schedule";
 import { MoneyTabs } from "./money-tabs";
@@ -42,14 +44,20 @@ async function Wallets() {
   // Read the clock only at request time (Cache Components).
   await connection();
   const today = getToday();
-  const [accounts, plans, recurring, people, lastInterest, usdRate] = await Promise.all([
+  const [accounts, plans, recurring, people, lastInterest, usdRate, payroll] = await Promise.all([
     getAccounts({ includeArchived: true }),
     getInstallmentPlans(),
     getRecurringItems(),
     getPeople(),
     getLastInterest(),
     getUsdRate(),
+    getPayroll(today),
   ]);
+  const paySchedule = recurring.find((r) => r.kind === "payday") ?? null;
+  const pay =
+    payroll && payroll !== "missing" && paySchedule
+      ? nextPay({ ...payroll, salaryLoans: salaryLoansOf(plans) }, paySchedule, today)
+      : null;
   const active = accounts.filter((a) => !a.archived);
   const wallets = active.filter((a) => isSpendable(a.type));
   // Savings, emergency fund, investments and dollars are on the Savings tab.
@@ -132,6 +140,34 @@ async function Wallets() {
             </span>
           </span>
           <span className="font-display text-[17px] font-semibold">{formatPeso(savedTotal)}</span>
+          <ChevronIcon size={20} className="text-muted" />
+        </Link>
+
+        <Link
+          href="/payroll"
+          className="flex min-h-14 items-center gap-3 rounded-[20px] bg-card px-4 py-2.5 text-ink hover:bg-sea-tint"
+        >
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="font-bold">Pay</span>
+            <span className="text-[13px] text-muted">
+              {pay
+                ? [
+                    `${formatShortDay(pay.date, today)} payday`,
+                    pay.gross !== undefined
+                      ? `${formatPeso(pay.gross)} − ${formatPeso(roundCents(pay.gross - pay.amount))} taken`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
+                : "Gross pay, contributions, tax, salary loans"}
+            </span>
+          </span>
+          {pay && (
+            <span className="font-display text-[17px] font-semibold">
+              {pay.estimate ? "≈ " : ""}
+              {formatPeso(pay.amount)}
+            </span>
+          )}
           <ChevronIcon size={20} className="text-muted" />
         </Link>
 
@@ -331,11 +367,34 @@ function debtDetail(account: Account, plans: InstallmentPlan[], today: string): 
   const loan = mine[0];
   const total = loan?.months ?? 0;
   const left = loan?.payments.filter((p) => !p.transactionId).length ?? 0;
+  const fromPay = loan?.payBy === "salary";
   return [
-    "Loan",
+    fromPay ? "Salary loan" : "Loan",
     loan ? `${total - left} of ${total} paid` : null,
-    next ? `${formatPeso(next.amount)} on ${formatShortDay(next.dueOn, today)}` : "paid off",
+    next
+      ? fromPay
+        ? `${formatPeso(next.amount)} from ${formatMonth(next.dueOn)} pay`
+        : `${formatPeso(next.amount)} on ${formatShortDay(next.dueOn, today)}`
+      : "paid off",
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/** "Dec" for 2026-12-15. */
+function formatMonth(date: string): string {
+  return new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" }).format(
+    new Date(`${date}T00:00:00Z`),
+  );
+}
+
+/** The next payday, with what your office takes from it. */
+function nextPay(
+  records: PayrollRecords,
+  payday: Parameters<typeof paydayAmounts>[1],
+  today: string,
+) {
+  const amounts = paydayAmounts(records, payday, today, addDays(today, 62), today);
+  const date = Object.keys(amounts).sort()[0];
+  return date ? { date, ...amounts[date] } : null;
 }

@@ -62,7 +62,7 @@ export default function SettingsPage() {
         />
         <Row title="Grocery mode" detail="Scan as you shop and stay in budget" href="/grocery" />
         <Row
-          title="Payroll calculator"
+          title="Pay"
           detail="Days worked, late, overtime, SSS, PhilHealth, Pag-IBIG, tax"
           href="/payroll"
         />

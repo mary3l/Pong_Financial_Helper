@@ -1,11 +1,11 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { getPayroll, getRecurringItems } from "@/lib/data";
+import { getInstallmentPlans, getPayroll, getRecurringItems } from "@/lib/data";
 import { isValidDate, today as getToday } from "@/lib/dates";
-import { cutoffContaining, cutoffRuleOf, pageRule } from "@/lib/payroll";
+import { cutoffContaining, cutoffRuleOf, pageRule, salaryLoansOf } from "@/lib/payroll";
 import { PayrollManager } from "./payroll-manager";
 
-export const metadata = { title: "Payroll calculator · Pong Money" };
+export const metadata = { title: "Pay · Pong Money" };
 
 // Works out each payday from a daily rate, the days you worked, late minutes
 // and overtime, minus contributions your office takes (GSIS), and keeps SSS,
@@ -15,11 +15,8 @@ export default function PayrollPage({ searchParams }: PageProps<"/payroll">) {
   return (
     <div className="flex flex-col gap-4 lg:max-w-4xl">
       <div className="flex flex-col gap-1">
-        <h1 className="font-display text-3xl font-semibold">Payroll calculator</h1>
-        <p className="text-[15px] text-muted">
-          Your pay from the days you worked, minus late, plus overtime. Contributions you pay
-          yourself and tax go into Money going out; ones your office takes come off your payday.
-        </p>
+        <h1 className="font-display text-3xl font-semibold">Pay</h1>
+        <p className="text-[15px] text-muted">Gross pay − what your office takes = each payday</p>
       </div>
       <Suspense fallback={<div className="h-96 rounded-[20px] bg-line-soft" aria-hidden="true" />}>
         <Payroll searchParams={searchParams} />
@@ -32,10 +29,11 @@ async function Payroll({ searchParams }: Pick<PageProps<"/payroll">, "searchPara
   // Read the clock only at request time (Cache Components).
   await connection();
   const today = getToday();
-  const [{ cutoff }, payroll, recurring] = await Promise.all([
+  const [{ cutoff }, payroll, recurring, plans] = await Promise.all([
     searchParams,
     getPayroll(today),
     getRecurringItems(),
+    getInstallmentPlans(),
   ]);
   const picked = typeof cutoff === "string" && isValidDate(cutoff) ? cutoff : today;
   const payday = recurring.find((r) => r.kind === "payday") ?? null;
@@ -56,7 +54,9 @@ async function Payroll({ searchParams }: Pick<PageProps<"/payroll">, "searchPara
       key={period.start}
       today={today}
       period={period}
-      records={payroll === "missing" ? null : payroll}
+      records={
+        payroll === "missing" || !payroll ? null : { ...payroll, salaryLoans: salaryLoansOf(plans) }
+      }
       missing={payroll === "missing"}
       contributionDays={contributionDays}
       payday={

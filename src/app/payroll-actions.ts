@@ -17,7 +17,10 @@ import {
   cutoffDaysOf,
   cutoffRuleOf,
   dailyFromMonthly,
+  defaultDeductions,
   isCutoffDays,
+  isEmployee,
+  isEmployment,
   isCutoffMonthDay,
   isCutoffWeekday,
   isTime,
@@ -32,6 +35,8 @@ import {
   type CutoffChange,
   type CutoffRate,
   type CutoffRule,
+  type DeductionTaken,
+  type Employment,
   type OvertimeEntry,
   type PayrollDay,
   type PayrollSettings,
@@ -575,6 +580,114 @@ export async function deleteDeduction(id: string): Promise<PayrollResult> {
   const { error } = await supabase.from("payroll_deductions").delete().eq("id", id);
   if (error?.code === "PGRST205") return DEDUCTIONS_MISSING;
   if (error) return FAILED;
+  refresh();
+  return {};
+}
+
+const STEP_25 = {
+  error: "To pick how you earn, run step 25 in supabase/SQL_GUIDE.md first.",
+};
+
+/** Deductions an employer takes by law (and withholding tax): Pong can estimate these. */
+const ESTIMATED_KINDS = ["gsis", "sss", "philhealth", "pagibig", "tax"];
+
+/**
+ * How you earn. Employees get what their office usually takes (GSIS or SSS,
+ * PhilHealth, Pag-IBIG, withholding tax) as Pong's estimates, unless they
+ * already have them, and stop paying those themselves. Self-employed and
+ * daily-paid lose the estimated ones: nobody takes them from their pay.
+ */
+export async function setEmployment(employment: Employment): Promise<PayrollResult> {
+  if (!isEmployment(employment)) return { error: "Pick how you earn." };
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+
+  const update = isEmployee(employment)
+    ? {
+        employment,
+        pay_sss: false,
+        pay_philhealth: false,
+        pay_pagibig: false,
+        pay_tax: false,
+      }
+    : { employment };
+  const { data, error } = await supabase.from("payroll_settings").update(update).select("user_id");
+  if (missingColumn(error) || error?.code === "23514") return STEP_25;
+  if (error?.code === "PGRST205") return MISSING;
+  if (error) return FAILED;
+  if (!data.length) return { error: "Set up your pay first." };
+
+  const { data: saved, error: readError } = await supabase
+    .from("payroll_deductions")
+    .select("id, kind");
+  if (missingColumn(readError)) return STEP_25;
+  if (readError) return FAILED;
+  const estimated = (saved ?? []).filter((d) => ESTIMATED_KINDS.includes(d.kind as string));
+  if (isEmployee(employment)) {
+    // A different office takes different ones: start again from the usual.
+    if (estimated.length) {
+      const removed = await supabase
+        .from("payroll_deductions")
+        .delete()
+        .in(
+          "id",
+          estimated.map((d) => d.id),
+        );
+      if (removed.error) return FAILED;
+    }
+    const added = await supabase.from("payroll_deductions").insert(defaultDeductions(employment));
+    if (added.error) return FAILED;
+  } else if (estimated.length) {
+    const removed = await supabase
+      .from("payroll_deductions")
+      .delete()
+      .in(
+        "id",
+        estimated.map((d) => d.id),
+      );
+    if (removed.error) return FAILED;
+  }
+  return syncAndRefresh(supabase);
+}
+
+/** Back to Pong's estimate for a contribution or withholding tax, instead of the amount you typed. */
+export async function estimateDeduction(id: string): Promise<PayrollResult> {
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const { data, error } = await supabase
+    .from("payroll_deductions")
+    .update({ amount: null })
+    .eq("id", id)
+    .in("kind", ESTIMATED_KINDS)
+    .select("id");
+  if (missingColumn(error)) return STEP_25;
+  if (error) return FAILED;
+  if (!data.length) return { error: "Pong can only estimate contributions and tax." };
+  refresh();
+  return {};
+}
+
+/** Whether a deduction comes off the month's last payday or is split over each payday. */
+export async function setDeductionTaken(id: string, taken: DeductionTaken): Promise<PayrollResult> {
+  if (taken !== "last" && taken !== "each") return { error: "Pick which payday." };
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const { data, error } = await supabase
+    .from("payroll_deductions")
+    .update({ taken })
+    .eq("id", id)
+    .select("id");
+  if (missingColumn(error)) return STEP_25;
+  if (error) return FAILED;
+  if (!data.length) return { error: "Couldn't find that contribution." };
+  refresh();
+  return {};
+}
+
+/** The payday's amount and the bills you pay yourself follow your settings. */
+async function syncAndRefresh(supabase: Client): Promise<PayrollResult> {
+  const synced = await sync(supabase);
+  if (synced.error) return synced;
   refresh();
   return {};
 }

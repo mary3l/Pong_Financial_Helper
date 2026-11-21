@@ -153,7 +153,7 @@ function SidebarPanel({ isActive }: { isActive: IsActive }) {
           }`}
         >
           <CalculatorIcon size={22} />
-          Payroll calculator
+          Pay
         </Link>
       </nav>
     </aside>

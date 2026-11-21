@@ -255,7 +255,7 @@ export function BillsByPayday({
               {" "}
               Days off and leave you saved in the{" "}
               <Link href="/payroll" className="font-extrabold text-sea-dark underline">
-                Payroll calculator
+                Pay
               </Link>{" "}
               are left out of the days you can still go in.
             </>

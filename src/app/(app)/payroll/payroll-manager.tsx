@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import {
+  setDeductionTaken,
+  setEmployment,
+  estimateDeduction,
   addDeduction,
   deleteDeduction,
   removeCutoffChange,
@@ -37,6 +40,8 @@ import {
 import { formatPeso, parseAmount } from "@/lib/money";
 import {
   DEFAULT_CUTOFF_WEEKDAY,
+  EMPLOYMENTS,
+  isEmployee,
   LEAVE_TYPES,
   RATES,
   WEEKEND_MODES,
@@ -77,6 +82,7 @@ import {
   type ContributionKey,
   type CutoffRule,
   type Deduction,
+  type Employment,
   type DayStatus,
   type OvertimeEntry,
   type PayChange,
@@ -154,8 +160,8 @@ export function PayrollManager({
       <SettingsCard records={records} period={period} today={today} payday={payday} />
       {records && payday && (
         <>
-          <CutoffCard records={records} period={period} payday={payday} today={today} />
           <SelfPaidCard records={records} today={today} payday={payday} days={contributionDays} />
+          <CutoffCard records={records} period={period} payday={payday} today={today} />
         </>
       )}
       {records && !payday && (
@@ -287,6 +293,7 @@ function SettingsCard({
         <p className="text-[15px] text-muted">
           {weekendText(records.settings)} · late is {formatPeso(hourlyRate(settings) / 60)} a minute
         </p>
+        <EmploymentPicker employment={records.settings.employment ?? "self"} />
         {changes.length > 0 && (
           <PayByCutoff records={records} changes={changes} period={period} today={today} />
         )}
@@ -322,6 +329,41 @@ function SettingsCard({
         onClose={() => undefined}
       />
     </Card>
+  );
+}
+
+/** How you earn: what your office takes from your pay, and what you pay yourself. */
+function EmploymentPicker({ employment }: { employment: Employment }) {
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span id="employment-label" className="text-sm font-bold">
+        How you earn
+      </span>
+      <div role="group" aria-labelledby="employment-label" className="flex flex-wrap gap-2">
+        {EMPLOYMENTS.map((e) => (
+          <ChoiceChip
+            key={e.value}
+            selected={employment === e.value}
+            onClick={() => {
+              if (pending || e.value === employment) return;
+              setError(null);
+              startTransition(async () => {
+                const result = await setEmployment(e.value);
+                if (result.error) setError(result.error);
+              });
+            }}
+            className={employment === e.value ? "" : "bg-mint"}
+          >
+            {e.label}
+          </ChoiceChip>
+        ))}
+      </div>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
+        {error}
+      </p>
+    </div>
   );
 }
 
@@ -1857,17 +1899,24 @@ function SelfPaidCard({
   const taxes = settings.payTax ? upcomingTaxPayments(records, today) : [];
   const monthlyTotal = monthly.reduce((sum, c) => sum + c.amount, 0);
   const allCustom = monthly.length > 0 && monthly.every((c) => c.custom);
+  const employee = isEmployee(settings.employment);
+  // Self-employed pay theirs themselves; employees' offices take them from their pay.
+  const showSelfPaid = !employee && (settings.employment !== "none" || monthly.length > 0);
   const taken = useMemo(() => records.deductions ?? [], [records]);
+  const loans = useMemo(() => records.salaryLoans ?? [], [records]);
   const takenTotal = taken.reduce((sum, d) => sum + d.amount, 0);
+  // This month's salary loan payments, or the next month that has any.
+  const loanMonth = loans.map((l) => l.month).sort()[0];
+  const loansNow = loans.filter((l) => l.month === loanMonth);
   // The next payday they come off, with its gross and what's left.
   const next = useMemo(() => {
-    if (!taken.length) return null;
+    if (!taken.length && !loans.length) return null;
     const date = occurrences(payday, today, addDays(today, 62)).find(
-      (d) => deductionsOn(d, payday, taken).length > 0,
+      (d) => deductionsOn(d, payday, taken, loans).length > 0,
     );
     if (!date) return null;
     return { date, ...paydayAmounts(records, payday, date, addDays(date, 1), today)[date] };
-  }, [records, payday, today, taken]);
+  }, [records, payday, today, taken, loans]);
 
   return (
     <Card
@@ -1899,60 +1948,62 @@ function SelfPaidCard({
         </FormDialog>
       )}
 
-      <div className="flex flex-col gap-1.5">
-        <h3 className="text-sm font-extrabold">
-          You pay yourself
-          {monthly.length > 0 &&
-            (allCustom
-              ? " · the amounts you entered"
-              : ` · based on ${formatPeso(monthlyBase(settings))} a month`)}
-        </h3>
-        <p className="text-[13px] text-muted">
-          In{" "}
-          <Link href="/plan/scheduled" className="font-extrabold text-sea-dark underline">
-            Money going out
-          </Link>
-          , so your forecast sets the money aside. They update when you save your pay or a cutoff.
-        </p>
-        {monthly.length > 0 ? (
-          <dl className="flex flex-col gap-2.5 text-[15px]">
-            {monthly.map((c) => (
-              <div
-                key={c.key}
-                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1"
-              >
-                <dt className="min-w-0 flex-1">
-                  {c.name}
-                  {c.custom && !allCustom && (
-                    <span className="block text-xs text-muted">Your amount</span>
-                  )}
-                </dt>
-                {payday.frequency === "twice_monthly" ? (
-                  <ContributionDay
-                    contribution={c.key}
-                    name={c.name}
-                    day={days[c.key] ?? RATES.contributionDay}
-                    paydays={[payday.day1, payday.day2 ?? RATES.contributionDay]}
-                  />
-                ) : (
-                  <span className="text-xs font-bold text-muted">
-                    Due the {ordinal(days[c.key] ?? RATES.contributionDay)}
-                  </span>
-                )}
-                <dd className="w-20 text-right font-bold">{formatPeso(c.amount)}</dd>
-              </div>
-            ))}
-            <div className="flex items-baseline justify-between gap-3 border-t-2 border-line-soft pt-1.5">
-              <dt className="font-extrabold">Each month</dt>
-              <dd className="font-extrabold">{formatPeso(monthlyTotal)}</dd>
-            </div>
-          </dl>
-        ) : (
-          <p className="text-[15px] text-muted">
-            None. Edit your pay to pick SSS, PhilHealth or Pag-IBIG.
+      {showSelfPaid && (
+        <div className="flex flex-col gap-1.5">
+          <h3 className="text-sm font-extrabold">
+            You pay yourself
+            {monthly.length > 0 &&
+              (allCustom
+                ? " · the amounts you entered"
+                : ` · based on ${formatPeso(monthlyBase(settings))} a month`)}
+          </h3>
+          <p className="text-[13px] text-muted">
+            In{" "}
+            <Link href="/plan/scheduled" className="font-extrabold text-sea-dark underline">
+              Money going out
+            </Link>
+            , so your forecast sets the money aside. They update when you save your pay or a cutoff.
           </p>
-        )}
-      </div>
+          {monthly.length > 0 ? (
+            <dl className="flex flex-col gap-2.5 text-[15px]">
+              {monthly.map((c) => (
+                <div
+                  key={c.key}
+                  className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1"
+                >
+                  <dt className="min-w-0 flex-1">
+                    {c.name}
+                    {c.custom && !allCustom && (
+                      <span className="block text-xs text-muted">Your amount</span>
+                    )}
+                  </dt>
+                  {payday.frequency === "twice_monthly" ? (
+                    <ContributionDay
+                      contribution={c.key}
+                      name={c.name}
+                      day={days[c.key] ?? RATES.contributionDay}
+                      paydays={[payday.day1, payday.day2 ?? RATES.contributionDay]}
+                    />
+                  ) : (
+                    <span className="text-xs font-bold text-muted">
+                      Due the {ordinal(days[c.key] ?? RATES.contributionDay)}
+                    </span>
+                  )}
+                  <dd className="w-20 text-right font-bold">{formatPeso(c.amount)}</dd>
+                </div>
+              ))}
+              <div className="flex items-baseline justify-between gap-3 border-t-2 border-line-soft pt-1.5">
+                <dt className="font-extrabold">Each month</dt>
+                <dd className="font-extrabold">{formatPeso(monthlyTotal)}</dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="text-[15px] text-muted">
+              None. Edit your pay to pick SSS, PhilHealth or Pag-IBIG.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between gap-3">
@@ -1971,15 +2022,22 @@ function SelfPaidCard({
           </button>
         </div>
         <p className="text-[13px] text-muted">
-          Like GSIS: your office takes these each month from your last payday, so that payday is
-          your pay minus them. They&apos;re not bills to pay.
+          Before your pay lands · not bills
+          {taken.some((d) => d.estimated) && " · estimates until you type your payslip's"}
         </p>
         {taken.length > 0 && (
           <dl className="flex flex-col gap-1 text-[15px]">
             {taken.map((d) => (
               <div key={d.id} className="flex items-center justify-between gap-3">
-                <dt className="min-w-0 flex-1 truncate">{d.name}</dt>
+                <dt className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate">{d.name}</span>
+                  <span className="text-xs text-muted">
+                    {d.estimated ? "Estimate · " : ""}
+                    {d.taken === "each" ? "each payday" : "last payday of the month"}
+                  </span>
+                </dt>
                 <dd className="flex items-center gap-1">
+                  <DeductionQuickActions deduction={d} />
                   <span className="w-20 text-right font-bold">{formatPeso(d.amount)}</span>
                   <button
                     type="button"
@@ -1999,11 +2057,24 @@ function SelfPaidCard({
             </div>
           </dl>
         )}
+        {loansNow.length > 0 && (
+          <dl className="flex flex-col gap-1 text-[15px]">
+            {loansNow.map((l) => (
+              <div key={l.paymentId} className="flex items-center justify-between gap-3">
+                <dt className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate">{l.name}</span>
+                  <span className="text-xs text-muted">Salary loan · last payday of the month</span>
+                </dt>
+                <dd className="pr-[60px] text-right font-bold">{formatPeso(l.amount)}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
         {next?.gross !== undefined && (
           <p className="rounded-[14px] bg-sea-tint px-3 py-2 text-[15px]">
             <strong>{formatShortDay(next.date, today)} payday</strong>
-            {next.estimate ? ", about" : ""}: {formatPeso(next.gross)} − {formatPeso(takenTotal)} ={" "}
-            <strong>{formatPeso(next.amount)}</strong>
+            {next.estimate ? ", about" : ""}: {formatPeso(next.gross)} −{" "}
+            {formatPeso(next.gross - next.amount)} = <strong>{formatPeso(next.amount)}</strong>
           </p>
         )}
       </div>
@@ -2097,6 +2168,42 @@ function ContributionDay({
 }
 
 /** Add or change a contribution your office takes from your pay. */
+
+/** Back to Pong's estimate, or switch which payday it comes off. */
+function DeductionQuickActions({ deduction }: { deduction: Deduction }) {
+  const [pending, startTransition] = useTransition();
+  const estimable = deduction.kind !== undefined && deduction.kind !== "other";
+  const run = (action: () => Promise<{ error?: string }>) =>
+    startTransition(async () => {
+      await action();
+    });
+  return (
+    <span className="flex items-center">
+      {estimable && !deduction.estimated && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => run(() => estimateDeduction(deduction.id))}
+          className="h-10 rounded-full px-2 text-xs font-extrabold text-sea-dark hover:bg-mint disabled:opacity-60"
+        >
+          Use estimate
+        </button>
+      )}
+      <button
+        type="button"
+        disabled={pending}
+        aria-label={`${deduction.name}: take it ${deduction.taken === "each" ? "on the last payday" : "each payday"}`}
+        onClick={() =>
+          run(() => setDeductionTaken(deduction.id, deduction.taken === "each" ? "last" : "each"))
+        }
+        className="h-10 rounded-full px-2 text-xs font-extrabold text-sea-dark hover:bg-mint disabled:opacity-60"
+      >
+        {deduction.taken === "each" ? "Last only" : "Split"}
+      </button>
+    </span>
+  );
+}
+
 function DeductionForm({
   deduction,
   onClose,
