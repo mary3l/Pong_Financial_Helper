@@ -651,6 +651,27 @@ Expect `true`.
 
 ---
 
+## Step 27 · Your own categories
+
+File: `migrations/0027_user_categories.sql`
+
+- `user_categories`: categories you add in **Settings › Categories**, for expenses or income,
+  each with a name, an icon and a colour. Entries keep its key (`u_milk_tea`), like the built-in
+  ones, so renaming it renames it everywhere. Hidden ones aren't offered for new entries.
+- Only you can see or change yours (row-level security, like every other table).
+
+Until you run this, only the built-in categories are there.
+
+**Check**
+
+```sql
+select to_regclass('public.user_categories') is not null;
+```
+
+Expect `true`.
+
+---
+
 ## All done?
 
 This one query shows which steps have been run. Every column should be `true`.
@@ -696,7 +717,8 @@ select
   exists (select 1 from information_schema.columns
           where table_name = 'installment_plans' and column_name = 'pay_by') as step_25,
   exists (select 1 from information_schema.columns
-          where table_name = 'accounts' and column_name = 'credit_kind') as step_26;
+          where table_name = 'accounts' and column_name = 'credit_kind') as step_26,
+  to_regclass('public.user_categories') is not null       as step_27;
 ```
 
 The first `false` is the step to run next.
