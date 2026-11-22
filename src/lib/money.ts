@@ -287,6 +287,38 @@ export function isSpendable(type: AccountType): boolean {
   return type === "cash" || type === "bank" || type === "ewallet";
 }
 
+export type AccountGroupKey = "wallets" | "savings" | "cards" | "bnpl" | "loans" | "people";
+
+const ACCOUNT_GROUPS: { key: AccountGroupKey; label: string }[] = [
+  { key: "wallets", label: "Wallets" },
+  { key: "savings", label: "Savings" },
+  { key: "cards", label: "Credit cards" },
+  { key: "bnpl", label: "BNPL" },
+  { key: "loans", label: "Loans" },
+  { key: "people", label: "People" },
+];
+
+/** Which group an account is picked from: your wallets first, then savings, cards, BNPL, loans, people. */
+export function accountGroup(a: {
+  type: AccountType;
+  purpose?: WalletPurpose;
+  creditKind?: "bnpl" | "card";
+}): AccountGroupKey {
+  if (isSpendable(a.type)) return (a.purpose ?? "spending") === "spending" ? "wallets" : "savings";
+  if (a.type === "credit_line") return a.creditKind === "card" ? "cards" : "bnpl";
+  return a.type === "loan" ? "loans" : "people";
+}
+
+/** `list` in groups, in that order, keeping each group's own order; empty groups left out. */
+export function groupAccounts<
+  T extends { type: AccountType; purpose?: WalletPurpose; creditKind?: "bnpl" | "card" },
+>(list: readonly T[]): { key: AccountGroupKey; label: string; accounts: T[] }[] {
+  return ACCOUNT_GROUPS.map((g) => ({
+    ...g,
+    accounts: list.filter((a) => accountGroup(a) === g.key),
+  })).filter((g) => g.accounts.length > 0);
+}
+
 /** Largest amount numeric(14, 2) can hold. */
 export const MAX_AMOUNT = 999_999_999_999.99;
 

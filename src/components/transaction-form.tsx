@@ -35,6 +35,7 @@ import {
   currencySymbol,
   formatMoney,
   formatPeso,
+  groupAccounts,
   isSpendable,
   parseAmount,
   paysInPesos,
@@ -177,7 +178,8 @@ export function TransactionForm({
   const editing = Boolean(transaction);
 
   const prefillAccount = accounts.find((a) => a.id === prefill?.accountId);
-  const defaultFrom = prefillAccount?.id ?? templates[0]?.accountId ?? accounts[0]?.id ?? "";
+  // Nothing guessed: a wallet is picked by you (or the wallet page you came from).
+  const defaultFrom = prefillAccount?.id ?? "";
   // A dollar wallet's + Add moves money: dollars aren't spent.
   const startType =
     prefillAccount?.currency === "USD" && prefill?.type === "expense" ? "transfer" : prefill?.type;
@@ -189,29 +191,16 @@ export function TransactionForm({
   });
   const prefillCategory = (t: "expense" | "income") =>
     prefill?.type === t && prefill.category ? prefill.category : null;
-  const [categories, setCategories] = useState({
-    expense:
-      transaction?.type === "expense"
-        ? transaction.category
-        : (prefillCategory("expense") ?? "food"),
-    income:
-      transaction?.type === "income"
-        ? transaction.category
-        : (prefillCategory("income") ?? "salary"),
+  const [categories, setCategories] = useState<{ expense: string | null; income: string | null }>({
+    expense: transaction?.type === "expense" ? transaction.category : prefillCategory("expense"),
+    income: transaction?.type === "income" ? transaction.category : prefillCategory("income"),
   });
   const [subcategory, setSubcategory] = useState<string | null>(transaction?.subcategory ?? null);
   // Typed here but not saved yet, by category key.
   const [addedSubs, setAddedSubs] = useState<Record<string, string[]>>({});
   const [newSub, setNewSub] = useState("");
   const [accountId, setAccountId] = useState(transaction?.accountId ?? defaultFrom);
-  const [toAccountId, setToAccountId] = useState(
-    transaction?.toAccountId ??
-      transferTargets(
-        accounts.find((a) => a.id === defaultFrom),
-        accounts,
-      )[0]?.id ??
-      "",
-  );
+  const [toAccountId, setToAccountId] = useState(transaction?.toAccountId ?? "");
   // Pesos to dollars or back: what landed, typed or worked out from the wallet's rate.
   const [landed, setLanded] = useState(transaction?.toAmount ? String(transaction.toAmount) : "");
   const [date, setDate] = useState(transaction?.occurredOn ?? today);
@@ -228,7 +217,8 @@ export function TransactionForm({
   const [planMonths, setPlanMonths] = useState(3);
   const [planRate, setPlanRate] = useState("0");
   const [planFirstDue, setPlanFirstDue] = useState<string | null>(null);
-  const [planPayFrom, setPlanPayFrom] = useState(accounts.find((a) => paysInPesos(a))?.id ?? "");
+  // "": any wallet, picked when each payment is made.
+  const [planPayFrom, setPlanPayFrom] = useState("");
   // Split a bill (design canvas row 5).
   const [splitOn, setSplitOn] = useState(startSplit && !transaction);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -262,6 +252,20 @@ export function TransactionForm({
   // A split you paid with a credit line goes on its bill too, for the whole amount.
   const iPaid = !splitting || paidBy === "me";
   const withPlan = !editing && iPaid && type === "expense" && account?.type === "credit_line";
+  // Save waits for these; its label names the first one missing.
+  const missing = !amount
+    ? "Enter an amount"
+    : type !== "transfer" && !note.trim()
+      ? "Add a description"
+      : type !== "transfer" && !category
+        ? "Pick a category"
+        : iPaid && !accountId
+          ? type === "income"
+            ? "Pick where it went"
+            : "Pick a wallet"
+          : type === "transfer" && !toAccountId
+            ? "Pick where it goes"
+            : null;
   const shares = splitting ? splitShares(amount, participants, splitMethod, exact) : null;
   // Exact amounts: what's still to be shared out, counting down to ₱0.
   const leftToSplit =
@@ -369,7 +373,7 @@ export function TransactionForm({
     setSubcategory(null);
     setSaveError(null);
     const list = usableFor(next, accounts, keep);
-    const from = list.some((a) => a.id === accountId) ? accountId : (list[0]?.id ?? "");
+    const from = list.some((a) => a.id === accountId) ? accountId : "";
     setAccountId(from);
     if (next === "transfer") keepTarget(from);
   }
@@ -381,7 +385,7 @@ export function TransactionForm({
       accounts,
       keep,
     );
-    if (!targets.some((a) => a.id === toAccountId)) setToAccountId(targets[0]?.id ?? "");
+    if (!targets.some((a) => a.id === toAccountId)) setToAccountId("");
   }
 
   function pickTo(id: string) {
@@ -421,6 +425,10 @@ export function TransactionForm({
     }
     if (!amount) {
       setSaveError(`Enter an amount above ${currencySymbol(currency)}0.`);
+      return;
+    }
+    if (missing) {
+      setSaveError(`${missing}.`);
       return;
     }
     if (crossing && !(toAmount !== null && toAmount > 0)) {
@@ -652,8 +660,8 @@ export function TransactionForm({
       : editing
         ? "Updating…"
         : "Saving…"
-    : !amount
-      ? "Enter an amount"
+    : missing
+      ? missing
       : splitting
         ? `Split ${formatPeso(amount)}`
         : `${editing ? "Update" : "Enter"} ${money(amount)}`;
@@ -679,32 +687,43 @@ export function TransactionForm({
     </div>
   );
 
+  // Wallets, Savings, Credit cards, BNPL, Loans, People: a heading over each kind there is.
   const walletChips = (
     selected: string,
     onPick: (id: string) => void,
     list: Account[],
     label: string,
-  ) => (
-    <div
-      role="group"
-      aria-label={label}
-      className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0"
-    >
-      {list.map((a) => (
-        <button
-          key={a.id}
-          type="button"
-          aria-pressed={selected === a.id}
-          onClick={() => onPick(a.id)}
-          className={`h-9 shrink-0 rounded-full px-3.5 text-sm font-extrabold ${
-            selected === a.id ? "bg-ink text-mint" : "bg-card text-ink hover:bg-sea-tint"
-          }`}
-        >
-          {a.name}
-        </button>
-      ))}
-    </div>
-  );
+  ) => {
+    const groups = groupAccounts(list);
+    return (
+      <div role="group" aria-label={label} className="flex flex-col gap-2">
+        {groups.map((g) => (
+          <div key={g.key} className="flex flex-col gap-1">
+            {groups.length > 1 && (
+              <span className="text-[11px] font-extrabold tracking-wide text-muted uppercase">
+                {g.label}
+              </span>
+            )}
+            <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0">
+              {g.accounts.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  aria-pressed={selected === a.id}
+                  onClick={() => onPick(a.id)}
+                  className={`h-9 shrink-0 rounded-full px-3.5 text-sm font-extrabold ${
+                    selected === a.id ? "bg-ink text-mint" : "bg-card text-ink hover:bg-sea-tint"
+                  }`}
+                >
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <form
@@ -863,6 +882,35 @@ export function TransactionForm({
             </div>
           </div>
         )}
+
+        <div className="order-5 flex flex-col gap-1 lg:order-none">
+          <label htmlFor="txn-note" className="text-sm font-extrabold">
+            Description
+            {type === "transfer" && <span className="font-semibold text-muted"> (optional)</span>}
+          </label>
+          <input
+            id="txn-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={120}
+            list="txn-note-suggestions"
+            placeholder={
+              type === "income"
+                ? "Salary, refund…"
+                : type === "transfer"
+                  ? ""
+                  : "Lunch, jeep, Meralco…"
+            }
+            className="h-11 min-w-0 rounded-[14px] bg-card px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
+          />
+          <datalist id="txn-note-suggestions">
+            {[...new Set(templates.map((t) => t.note).filter((n): n is string => Boolean(n)))].map(
+              (n) => (
+                <option key={n} value={n} />
+              ),
+            )}
+          </datalist>
+        </div>
 
         {type !== "transfer" && (
           <div className="order-5 flex flex-col gap-1.5 lg:order-none">
@@ -1202,6 +1250,7 @@ export function TransactionForm({
                   onChange={(e) => setPlanPayFrom(e.target.value)}
                   className="h-11 w-full min-w-0 rounded-[14px] bg-mint px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
                 >
+                  <option value="">Any wallet</option>
                   {accounts
                     .filter((a) => paysInPesos(a))
                     .map((a) => (
@@ -1281,7 +1330,7 @@ export function TransactionForm({
           </div>
         )}
 
-        <div className="order-8 grid grid-cols-2 gap-2.5 lg:order-none lg:grid-cols-[minmax(0,1fr)_minmax(0,8.5rem)_minmax(0,1.3fr)]">
+        <div className="order-8 grid grid-cols-2 gap-2.5 lg:order-none lg:grid-cols-[minmax(0,1fr)_minmax(0,8.5rem)]">
           <div className={`flex flex-col gap-1 ${splitting ? "col-span-2" : ""}`}>
             <label htmlFor="txn-date" className="text-[13px] font-extrabold">
               Date
@@ -1312,19 +1361,6 @@ export function TransactionForm({
               />
             </div>
           )}
-          <div className="col-span-2 flex flex-col gap-1 lg:col-span-1">
-            <label htmlFor="txn-note" className="text-[13px] font-extrabold">
-              Note
-            </label>
-            <input
-              id="txn-note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              maxLength={120}
-              placeholder="optional"
-              className="h-11 min-w-0 rounded-[14px] bg-card px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
-            />
-          </div>
         </div>
 
         <div className="hidden flex-1 lg:block" />
@@ -1363,7 +1399,7 @@ export function TransactionForm({
             )}
             <button
               type="submit"
-              disabled={pending}
+              disabled={pending || (missing !== null && Boolean(amount))}
               className="h-14 flex-[2] rounded-[18px] bg-sun text-[17px] font-extrabold text-ink disabled:opacity-60"
             >
               {saveLabel}
@@ -1515,7 +1551,9 @@ function summary({
   if (type === "transfer") {
     return `${account?.name ?? "?"} → ${toAccount?.name ?? "?"} · ${when}`;
   }
-  return `${categoryLabel(type, category, subcategory)} · ${account?.name ?? ""} · ${when}`;
+  return [category && categoryLabel(type, category, subcategory), account?.name, when]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function templateLabel(t: Template, accounts: Account[]) {

@@ -19,6 +19,11 @@ test("adding an expense takes it off the Home balance", async ({ page }) => {
   await page.goto("/add");
   await expect(page.getByRole("group", { name: "Category" })).toBeVisible();
 
+  // Nothing is guessed: say what it was, its category and which wallet paid.
+  await (await hydrated(page.getByLabel("Description"))).fill("Lunch");
+  await page.getByRole("group", { name: "Category" }).getByRole("button", { name: /Food/ }).click();
+  await page.getByRole("group", { name: "Pay with" }).getByRole("button", { name: "Cash" }).click();
+
   // Typed the way a computer user does: the form listens to the keyboard. It
   // starts listening a moment after the page draws, so keys typed too early are
   // lost: clear and retype until the amount shows.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  groupAccounts,
   balanceEffect,
   canEarnInterest,
   cashflow,
@@ -387,5 +388,25 @@ describe("what the exchange rate did to your dollars", () => {
   it("is nothing for pesos, or without both rates", () => {
     expect(fxGain({ balance: 1000, currency: "PHP" })).toBe(0);
     expect(fxGain({ balance: 5, currency: "USD", fxRate: 63.48, boughtAt: null })).toBe(0);
+  });
+});
+
+describe("groupAccounts", () => {
+  it("puts wallets first, then savings, cards, BNPL, loans and people, dropping empty groups", () => {
+    const list = [
+      { id: "p", type: "person" as const },
+      { id: "spl", type: "credit_line" as const },
+      { id: "bpi", type: "credit_line" as const, creditKind: "card" as const },
+      { id: "ef", type: "bank" as const, purpose: "emergency" as const },
+      { id: "cash", type: "cash" as const, purpose: "spending" as const },
+      { id: "gcash", type: "ewallet" as const },
+    ];
+    expect(groupAccounts(list).map((g) => [g.label, g.accounts.map((a) => a.id)])).toEqual([
+      ["Wallets", ["cash", "gcash"]],
+      ["Savings", ["ef"]],
+      ["Credit cards", ["bpi"]],
+      ["BNPL", ["spl"]],
+      ["People", ["p"]],
+    ]);
   });
 });

@@ -65,7 +65,7 @@ function validate(input: TransactionInput) {
   if (toAccountId === accountId) return { error: "Pick two different wallets." };
   const category = type === "transfer" ? null : input.category;
   if (category !== null && !isCategoryFor(type, category)) return { error: "Pick a category." };
-  if (type === "expense" && !category) return { error: "Pick a category." };
+  if (type !== "transfer" && !category) return { error: "Pick a category." };
   const subcategory = category ? cleanSubcategory(input.subcategory) : null;
   if (subcategory && subcategory.length > SUBCATEGORY_MAX) {
     return { error: `Keep the subcategory to ${SUBCATEGORY_MAX} characters.` };
@@ -76,7 +76,9 @@ function validate(input: TransactionInput) {
   const note = String(input.note ?? "")
     .replace(/\s+/g, " ")
     .trim();
-  if (note.length > NOTE_MAX) return { error: `Keep the note to ${NOTE_MAX} characters.` };
+  if (note.length > NOTE_MAX) return { error: `Keep the description to ${NOTE_MAX} characters.` };
+  // What it was for, so Activity reads "Lunch at Jollibee", not just "Food". Transfers can go without.
+  if (type !== "transfer" && !note) return { error: "Add a description." };
 
   return {
     row: {

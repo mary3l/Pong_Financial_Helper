@@ -76,6 +76,20 @@ const first = (name: string | RegExp) => screen.getAllByRole("button", { name })
 const submitButton = () =>
   screen.getAllByRole("button").find((b) => b.getAttribute("type") === "submit")!;
 
+/** Picks a button inside the group labelled `group` ("Pay with", "Category", "To"…). */
+async function pick(
+  user: ReturnType<typeof userEvent.setup>,
+  group: string,
+  name: string | RegExp,
+) {
+  await user.click(
+    within(screen.getByRole("group", { name: group })).getByRole("button", { name }),
+  );
+}
+
+const describeIt = (user: ReturnType<typeof userEvent.setup>, text: string) =>
+  user.type(screen.getByLabelText(/^Description/), text);
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -95,11 +109,46 @@ describe("TransactionForm", () => {
     expect(saveTransaction).not.toHaveBeenCalled();
   });
 
-  it("types the amount from the keyboard and saves a Food expense from the first wallet", async () => {
+  it("guesses nothing: Save names what's missing, in order", async () => {
+    const user = renderForm();
+    await user.keyboard("150");
+    expect(submitButton()).toHaveTextContent("Add a description");
+    expect(submitButton()).toBeDisabled();
+    await describeIt(user, "Lunch");
+    expect(submitButton()).toHaveTextContent("Pick a category");
+    await pick(user, "Category", /Food/);
+    expect(submitButton()).toHaveTextContent("Pick a wallet");
+    // No wallet is picked for you.
+    const payWith = within(screen.getByRole("group", { name: "Pay with" }));
+    for (const b of payWith.getAllByRole("button"))
+      expect(b).toHaveAttribute("aria-pressed", "false");
+    await pick(user, "Pay with", "Cash");
+    expect(submitButton()).toHaveTextContent("Enter ₱150");
+    expect(submitButton()).toBeEnabled();
+  });
+
+  it("groups Pay with into wallets, savings, credit cards and BNPL", () => {
+    renderForm({
+      accounts: [
+        cash,
+        account("emergency", "Emergency Savings", { type: "bank", purpose: "emergency" }),
+        spl,
+      ],
+    });
+    const payWith = within(screen.getByRole("group", { name: "Pay with" }));
+    expect(payWith.getByText("Wallets")).toBeInTheDocument();
+    expect(payWith.getByText("Savings")).toBeInTheDocument();
+    expect(payWith.getByText("BNPL")).toBeInTheDocument();
+  });
+
+  it("types the amount from the keyboard and saves a Food expense from the wallet you pick", async () => {
     const user = renderForm();
     await user.keyboard("120+30");
+    await describeIt(user, "Lunch");
+    await pick(user, "Category", /Food/);
+    await pick(user, "Pay with", "Cash");
     expect(submitButton()).toHaveTextContent("Enter ₱150");
-    await user.keyboard("{Enter}");
+    await user.click(submitButton());
 
     expect(saveTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -108,6 +157,7 @@ describe("TransactionForm", () => {
         accountId: "cash",
         toAccountId: null,
         category: "food",
+        note: "Lunch",
         occurredOn: TODAY,
       }),
       undefined,
@@ -129,7 +179,7 @@ describe("TransactionForm", () => {
         name: "GCash",
       }),
     );
-    await user.type(screen.getByLabelText(/^Note/), "  Grab home ");
+    await describeIt(user, "  Grab home ");
     await user.click(submitButton());
 
     expect(saveTransaction).toHaveBeenCalledWith(
@@ -149,7 +199,11 @@ describe("TransactionForm", () => {
       error: "Couldn't save that. Please try again.",
     });
     const user = renderForm();
-    await user.keyboard("99{Enter}");
+    await user.keyboard("99");
+    await describeIt(user, "Lunch");
+    await pick(user, "Category", /Food/);
+    await pick(user, "Pay with", "Cash");
+    await user.click(submitButton());
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't save that.");
     expect(router.push).not.toHaveBeenCalled();
   });
@@ -168,9 +222,18 @@ describe("TransactionForm", () => {
     expect(into.queryByRole("button", { name: "SPayLater" })).not.toBeInTheDocument();
     expect(into.queryByRole("button", { name: "Dollars" })).toBeInTheDocument();
     await user.keyboard("18000");
+    await describeIt(user, "Payday");
+    await pick(user, "Category", /Salary/);
+    expect(submitButton()).toHaveTextContent("Pick where it went");
+    await pick(user, "Received in", "GCash");
     await user.click(submitButton());
     expect(saveTransaction).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "income", category: "salary", amount: 18000 }),
+      expect.objectContaining({
+        type: "income",
+        category: "salary",
+        amount: 18000,
+        accountId: "gcash",
+      }),
       undefined,
       undefined,
     );
@@ -180,6 +243,7 @@ describe("TransactionForm", () => {
     const user = renderForm();
     await user.click(first("Transfer"));
     expect(screen.queryByRole("group", { name: "Category" })).not.toBeInTheDocument();
+    await pick(user, "From", "Cash");
     const to = within(screen.getByRole("group", { name: "To" }));
     expect(to.queryByRole("button", { name: "Cash" })).not.toBeInTheDocument();
     await user.click(to.getByRole("button", { name: "GCash" }));
@@ -200,6 +264,7 @@ describe("TransactionForm", () => {
   it("works out the dollars that land at the wallet's rate", async () => {
     const user = renderForm();
     await user.click(first("Transfer"));
+    await pick(user, "From", "Cash");
     await user.click(
       within(screen.getByRole("group", { name: "To" })).getByRole("button", { name: "Dollars" }),
     );
@@ -220,11 +285,14 @@ describe("TransactionForm", () => {
       }),
     );
     await user.keyboard("3000");
+    await describeIt(user, "Shoes");
+    await pick(user, "Category", /Shopping/);
     await user.click(submitButton());
     expect(saveTransaction).not.toHaveBeenCalled();
+    // Which wallet pays each bill isn't guessed either: any, picked when paying.
     expect(saveBnplPurchase).toHaveBeenCalledWith(
-      expect.objectContaining({ accountId: "spl", amount: 3000, note: "Food" }),
-      expect.objectContaining({ months: 3, ratePerMonth: 0, payFromAccountId: "cash" }),
+      expect.objectContaining({ accountId: "spl", amount: 3000, note: "Shoes" }),
+      expect.objectContaining({ months: 3, ratePerMonth: 0, payFromAccountId: null }),
     );
   });
 
@@ -300,14 +368,20 @@ describe("TransactionForm", () => {
       toAmount: null,
       category: "transport",
       subcategory: "Jeep",
-      note: null,
+      note: "Jeep to work",
     };
     const user = renderForm({ templates: [template] });
     const recent = within(screen.getByRole("group", { name: "RECENT · TAP TO REUSE" }));
     await user.click(recent.getAllByRole("button")[0]);
     await user.click(submitButton());
     expect(saveTransaction).toHaveBeenCalledWith(
-      expect.objectContaining({ amount: 13, category: "transport", subcategory: "Jeep" }),
+      expect.objectContaining({
+        amount: 13,
+        category: "transport",
+        subcategory: "Jeep",
+        accountId: "cash",
+        note: "Jeep to work",
+      }),
       undefined,
       undefined,
     );
