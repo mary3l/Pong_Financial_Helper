@@ -1,162 +1,98 @@
 # Pong Money
 
-A cashflow helper with Pong the turtle. Next.js 16 (App Router, Cache Components) + Supabase.
-Screens and the phased dev plan live on the design canvas.
+A cashflow helper for Filipino earners, with Pong the turtle. It tells you how much you can spend
+this week while every bill, loan and BNPL payment still gets paid on time.
 
-## Setup
+Built with Next.js 16 (App Router, Cache Components) and Supabase.
 
-1. `npm install`
-2. Copy `.env.example` to `.env.local` and fill in the Supabase URL and publishable key.
-3. In Supabase, open **SQL Editor** and run each file in `supabase/migrations/` once, in
-   order. [`supabase/SQL_GUIDE.md`](supabase/SQL_GUIDE.md) walks through it step by step,
-   with a check query for each phase.
-4. In Supabase, open **Authentication > URL Configuration** and add
-   `http://localhost:3000/auth/callback` to **Redirect URLs**.
-5. Optional, for "Continue with Google": enable the Google provider under
-   **Authentication > Sign In / Providers** (needs a Google Cloud OAuth client).
-   Email sign-in links work without this.
-6. `npm run dev` and open http://localhost:3000
-7. `npm test` runs two Vitest projects:
-   - **unit** (Node): the money rules in `src/lib/*.test.ts`, and the Server
-     Actions in `src/app/*-actions.test.ts`. Action tests swap Supabase for the
-     in-memory fake in `src/test/fake-supabase.ts`, so they need no database.
-   - **dom** (jsdom + Testing Library): components in `src/**/*.test.tsx`.
+## Features
 
-   Run one with `npx vitest run --project dom`.
+- **Left this week**: a weekly spending pool with a daily pace. Going over one day comes out of the
+  rest of the week; nothing you skip is lost.
+- **Add**: expense, income or transfer with a required description, no guessed wallet or category,
+  and wallets grouped (Wallets, Savings, Credit cards, BNPL, Loans, People).
+- **Money**: wallets, savings goals, dollar time deposits, credit cards, BNPL and loans, with
+  interest estimates for MariBank, GoTyme and Maya.
+- **Pay**: gross pay, cutoffs and paydays. Pong estimates GSIS or SSS, PhilHealth, Pag-IBIG and
+  withholding tax, and takes salary loans off the payday.
+- **Plan**: 90-day forecast, scheduled bills and income, bills by payday, budgets per kinsenas, and
+  "Can I afford this?".
+- **Utang & pautang**: lend, borrow and split bills, with a shareable breakdown.
+- **Grocery mode**: scan barcodes while you shop and check out as one expense.
+- **Settings**: your own categories, payday and bills, and the iPhone home screen widget.
+- **First-run setup**: spending wallets → savings → your pay → what's taken → what you owe → bills.
 
-8. `npm run test:db` runs the database tests in `supabase/tests/database/`
-   (pgTAP): row-level security on every table, what signed-out visitors can
-   reach, and the widget functions. It needs Docker Desktop running and a local
-   Supabase: `npm run db:start` first (applies `supabase/migrations`), and
-   `npm run db:stop` when done. GitHub runs them on any push that changes
-   `supabase/**` (the **Database** check). No Docker on your PC? Open the repo
-   in GitHub Codespaces instead: see `.devcontainer/README.md`.
+## Getting started
 
-## Layout
+Needs **Node 24** or newer. Docker Desktop is only needed for the database and end-to-end tests.
 
-- `src/proxy.ts` refreshes the session and sends signed-out visitors to `/login`.
-- `src/lib/supabase/` has the browser, server and proxy clients.
-- `src/lib/auth.ts` has `getCurrentUser()`. It reads cookies, so call it inside `<Suspense>`.
-- `src/app/(app)/` holds the signed-in screens: bottom nav on phones, sidebar from `lg` (1024px) up.
-- `src/app/(app)/@modal/(.)add` opens Add over the current page when you tap +. Loading `/add`
-  directly shows it as a page. Both render `src/components/transaction-form.tsx`.
-- `src/app/setup/` is first-run setup (wallets, then payday and bills). The proxy sends Home there
-  until the user finishes or skips it, which sets `setup_done` in their user metadata.
-- `src/lib/data.ts` has the reads; `src/app/*-actions.ts` have the writes.
-- `src/app/(app)/money/` is Money: wallets, BNPL credit lines and loans (with their
-  payment plans in `[id]`), and `people/` for utang & pautang.
-- `src/app/(app)/grocery/` is Grocery mode: start a trip, scan (BarcodeDetector, with
-  `@zxing/library` as the fallback for iPhone Safari; see `src/lib/barcode-decode.ts`), check out. The trip in progress lives in
-  IndexedDB (`src/lib/active-trip.ts`) until checkout saves one Groceries expense.
-- `src/app/(app)/plan/` is Plan: Forecast, Scheduled (recurring and planned income and
-  expenses), Can I afford this? and Budgets per kinsenas.
-- `src/lib/money.ts`, `schedule.ts`, `forecast.ts`, `dates.ts` and `calculator.ts` are pure helpers:
-  money rules, pay and bill schedules, the forecast and Safe to spend, Philippine-time dates and the
-  keypad.
-- `src/components/pong.tsx` is Pong, with every mood. Swap the art there.
-- `public/pong-widget.js` is the iPhone home screen widget (Safe to spend today) for the Scriptable
-  app. Settings › Home screen widget makes its widget key (`src/app/widget-actions.ts`); the widget
-  reads Supabase directly through `widget_safe_to_spend` (migration 0020), so it works even when
-  this app isn't reachable from the phone. Home saves the day's amount on the widget key
-  (`src/lib/widget-snapshot.ts`) and the widget takes today's spending off it live. Before step 20
-  it falls back to `widget_spent_today` (migration 0009).
-- `scripts/make-icons.mjs` regenerates the app icons.
-- `public/sw.js` is the service worker (production only): it caches the hashed build files
-  and shows `public/offline.html` when a page is opened with no signal. Pages themselves are
-  never cached, since they hold your money data. `experimental.useOffline` makes saves and
-  page loads wait and retry while offline, with a banner (`src/components/offline.tsx`).
+```bash
+npm install
+cp .env.example .env.local   # add your Supabase URL and publishable key
+npm run dev                  # http://localhost:3000
+```
+
+Then, in Supabase:
+
+1. **SQL Editor**: run each file in `supabase/migrations/` once, in order.
+   [`supabase/SQL_GUIDE.md`](supabase/SQL_GUIDE.md) walks through steps 1–27, with a check query for each.
+2. **Authentication › URL Configuration**: add `http://localhost:3000/auth/callback` to Redirect URLs.
+3. Optional: enable **Google** under Authentication › Sign In / Providers. Email sign-in links
+   work without it.
+
+## Scripts
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Dev server |
+| `npm run build` / `npm start` | Production build and server |
+| `npm run qa` | Typecheck, lint, format check and unit tests (runs before every push) |
+| `npm test` | Unit tests (Vitest): `unit` for money rules and actions, `dom` for components |
+| `npm run test:coverage` | Unit tests with coverage floors |
+| `npm run db:start` / `db:stop` | Local Supabase in Docker |
+| `npm run test:db` | Database tests (pgTAP): row-level security on every table |
+| `npm run e2e:env` → `npm run e2e` | End-to-end tests (Playwright) against the local Supabase |
+| `npm run lighthouse` | Lighthouse checks |
+| `npm run format` | Prettier |
+
+No Docker on your PC? Open the repo in GitHub Codespaces: see [`.devcontainer/README.md`](.devcontainer/README.md).
+
+## Project layout
+
+| Path | What's there |
+|---|---|
+| `src/app/(app)/` | Signed-in screens: Home, Activity, Plan, Money, Pay, Settings, Grocery |
+| `src/app/(app)/@modal/(.)add` | Add over the current page (`/add` opens it as a page) |
+| `src/app/setup/` | First-run setup; the proxy sends Home there until `setup_done` |
+| `src/app/*-actions.ts` | Server Actions (writes) |
+| `src/lib/data.ts` | Reads |
+| `src/lib/*.ts` | Pure money rules, each with a `*.test.ts` beside it |
+| `src/components/` | Shared UI: the Add form, Pong, pickers, keypad |
+| `src/proxy.ts` | Session refresh and sign-in redirects |
+| `supabase/migrations/` | Database schema, in order |
+| `supabase/tests/database/` | Row-level security tests |
+| `e2e/` | Playwright tests |
+| `public/pong-widget.js` | iPhone home screen widget (Scriptable) |
+| `public/sw.js` | Service worker: offline page and cached build files |
 
 ## Money rules
 
-Transfers between your own wallets are never spending. See the comments in the migrations.
+| Rule | Where |
+|---|---|
+| Transfers between your own wallets, savings and people are never spending or income | migrations |
+| Only **Spending** wallets count toward this week; savings count in Net worth | `money.ts` |
+| Left this week: planned from Monday so every bill stays paid, with a pace for each day left | `payment-plan.ts` |
+| A BNPL or card purchase is spending on the day you buy; paying its bill is a transfer, and only fees are spending | `installments.ts` |
+| A purchase goes on the bill after its statement cutoff; without one, the next due day a week out | `installments.ts` |
+| BNPL is capped by your take-home and spending, and held on each bill's due day; credit cards aren't capped | `bnpl.ts`, `payment-plan.ts` |
+| A loan's money is a transfer in, never income; each payment is principal (transfer) plus interest (expense) | `installments.ts` |
+| Salary loans and office deductions come off the payday, never as bills (no double count) | `payroll.ts` |
+| Contribution and tax amounts are estimates until you type your payslip's | `payroll.ts` (`RATES`) |
+| Pautang only counts in the forecast if you choose, and never once it's late | `people.ts` |
+| Interest is estimated after the 20% final tax; Pong never adds it by itself | `money.ts` |
 
-BNPL (SPayLater, Atome): the purchase is an expense on the day you buy, paid from the credit
-line, so its balance goes below 0 (what you owe). Each installment is a transfer from a
-wallet to the credit line, plus an expense for the fee. Loans (SLoan, MariLoan): the money
-received is a transfer from the loan account, never income; each amortization is a transfer
-for the principal plus an expense for the interest. `src/lib/installments.ts` has the math.
+## Docs
 
-Upcoming payments on SPayLater, Atome or a bank credit line like MariBank (the **+** on a credit
-line): a bill you already expect, or an installment that's already running ("4 of 6", with the
-interest or fee in each payment). They're a payment plan with no purchase behind it, so they
-count in Coming up, the forecast and Safe to spend, and the interest part is an expense when you
-pay. They only raise what you owe (by the principal left) if you tick "Add it to what I owe", for
-a purchase you haven't logged. The credit line screen shows one bill per due date, so a purchase
-logged with + adds to the bill it's due with.
-
-Statement cutoff: a credit line can save the day its statement closes (**Statement cuts off**,
-step 19 in `supabase/SQL_GUIDE.md`). A purchase on or before it goes on the bill due after that
-statement; one after it waits for the next. Without it, Pong guesses: the next due day at least a
-week after buying. `bnplFirstDue` in `src/lib/installments.ts` has the math.
-
-Someone else on your credit line (Tita Flora used your Atome and pays it herself): Lend from the
-credit line, or tap **Someone else pays this** on a plan already there. What's left of it is
-pautang (a transfer from the credit line to her, never your spending), and its payments stay on
-the credit line's bills marked as hers but never count in your forecast, Safe to spend or BNPL
-cap. **They paid** records her money going straight to the bill (a transfer from her to the
-credit line), so your wallets don't move. If you cover a payment yourself, Pay bill as usual: she
-still owes you. A loan in your name works the same (Tita Flora's MariLoan): **+ Loan › Someone
-else's, in my name**, or **Someone else pays this** on a loan already added. The money went to her,
-so what's still owed is her pautang, and every payment, interest included, is hers: the interest is
-never your expense. Her page and **Send breakdown** show what she'll pay in all, interest included.
-
-Wallet categories: each cash, bank or e-wallet is Spending, Savings, Emergency fund or
-Investments. All of it counts in You have and Net worth; only Spending counts in Safe to spend
-and the forecast. Moving money into savings is a transfer, so it's never spending.
-
-Daily interest (MariBank, GoTyme, Maya Savings): save the rate (% a year) on the wallet and
-Money estimates what it earns a day after the 20% final tax, and what's built up since you last
-logged interest. **+ Add interest** logs it as income (category Interest), so the balance keeps
-up with the bank's. Pong never adds interest by itself.
-
-GoTyme Go Save works interest out daily but adds the month's interest on the 1st, so a wallet
-can be set to **Interest is added: On the 1st of the month** (a new wallet named GoTyme starts
-that way; needs step 11 in `supabase/SQL_GUIDE.md`). Money then shows what's building up until
-the next 1st, and after a 1st, what the bank added that isn't logged yet. **+ Add interest**
-logs it dated the 1st. `interestEstimate` in `src/lib/money.ts` has the math.
-
-Utang & pautang: each person is an account of type `person` whose balance is what they owe
-you (or, below 0, what you owe them). Lending is a transfer to them, borrowing a transfer
-from them, and being paid back a transfer again, so none of it is spending or income. In a
-split you paid, only your share is an expense and the rest is pautang; if they paid, your
-share is an expense from their account (utang). Forgiving turns what's left into Gifts.
-Safe to spend and the forecast never count pautang unless you switch on "Count it in my
-forecast", and never once it's late.
-
-BNPL you can still use (Home, under Safe to spend): never part of Safe to spend, You have, Net
-worth or the forecast, because it's borrowed. It's what's left of your credit limits, but never
-more than Pong's monthly cap, which Pong works out each day from your records: every BNPL and loan
-payment together stays under the smaller of 15% of what you take home and half of what's left
-after spending (monthly averages over the last 3 full months), minus the installments and loans
-due in the next 30 days, rounded down to ₱100. Everything charged to a credit line this month
-counts against it. It's ₱0 (paused) while a bill or installment is late, when the forecast dips
-below ₱0 within 30 days, or when you spend all you take home. "Can I afford this?" shows the same
-purchase on each line within the cap. `src/lib/bnpl.ts` has the math.
-
-Bills by payday (Plan): each bill goes with the pay that covers it, from one payday to the day
-before the next; what's due before the next payday comes out of your wallets now. With the
-Payroll calculator, each pay also says how many days to go in during its cutoff to cover those
-bills (pay is one cutoff late: the 15th pays the 16th–end of last month, the 30th pays the
-1st–15th), counting what you've already earned and leaving out days off and leave you saved. What a
-pay can't cover even going in every day carries into the next one. `src/lib/office-days.ts`.
-
-Breakdowns: a person's page and a split bill's page have **Send breakdown**: a receipt card with
-Pong (PNG, `src/components/receipt-image.ts` from `src/lib/receipt.ts`) to send through the phone's
-share sheet or copy as a picture, and **Copy text** for the same breakdown as plain text
-(`breakdownText` in `src/lib/people.ts`, `billBreakdownText` in `src/lib/splits.ts`).
-
-Safe to spend = spending money in cash, bank and e-wallets, minus unpaid bills and expenses due
-before the next payday, divided by the days until payday. With pay every week, Pong also looks a
-month ahead: the daily amount is the most you could spend every day without any day's balance
-dropping below ₱0, counting each week's pay only from its payday. Whatever that holds back for
-bills the coming pays can't cover shows in the breakdown. Future pay only ever lowers what's held
-back; it never raises the daily amount above what's in your wallets now. Income you haven't received yet
-never counts. Coming up on Home lists the next 7 days: **Mark paid** logs the real expense
-and **Add income** logs the real income, so the item stops counting and the wallet balance
-changes instead. Deleting that transaction in Activity un-marks it. Log pay with Add income
-(not with +) so it isn't counted twice on payday. When the amount is an estimate (a payday from
-the Payroll calculator, a bill that varies), the sheet starts at the estimate and you can change
-it to what actually came in or went out.
-
-The forecast starts from the same wallet money, adds each payday (if net pay is saved) and
-each expected income, and subtracts each unpaid bill and expense on its date.
+- [`supabase/SQL_GUIDE.md`](supabase/SQL_GUIDE.md): database setup, step by step
+- [`AGENTS.md`](AGENTS.md): notes for coding agents on this Next.js version
+- The comments at the top of each `src/lib/*.ts` file explain its rules in full

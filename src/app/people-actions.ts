@@ -2,7 +2,7 @@
 
 import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
-import { SUBCATEGORY_MAX, cleanSubcategory, isCategoryFor } from "@/lib/categories";
+import { SUBCATEGORY_MAX, cleanSubcategory, couldBeCategory } from "@/lib/categories";
 import { isValidDate, today } from "@/lib/dates";
 import {
   bnplFee,
@@ -171,7 +171,7 @@ export async function lendOrBorrow(input: LendInput): Promise<PeopleResult> {
 
   const lend = input.direction === "lend";
   const paidFor = !lend ? (input.paidForMe ?? null) : null;
-  if (paidFor && !isCategoryFor("expense", paidFor.category))
+  if (paidFor && !couldBeCategory("expense", paidFor.category))
     return { error: "Pick what it was for." };
 
   const supabase = await signedInClient();
@@ -234,7 +234,7 @@ export async function borrowWasPaidForMe(
 ): Promise<PeopleResult> {
   if (!/^[0-9a-f-]{36}$/i.test(personId) || !/^[0-9a-f-]{36}$/i.test(txnId))
     return { error: "Couldn't find that." };
-  if (!isCategoryFor("expense", category)) return { error: "Pick what it was for." };
+  if (!couldBeCategory("expense", category)) return { error: "Pick what it was for." };
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
   const { data: entry } = await supabase
@@ -381,7 +381,7 @@ export async function saveSplit(input: SplitInput): Promise<PeopleResult> {
   const total = roundCents(Number(input.total));
   const mine = roundCents(Number(input.myShare));
   if (!validAmount(total)) return { error: "Enter an amount above ₱0." };
-  if (!isCategoryFor("expense", input.category)) return { error: "Pick a category." };
+  if (!couldBeCategory("expense", input.category)) return { error: "Pick a category." };
   if (!isValidDate(input.occurredOn)) return { error: "Pick a date." };
   if (!input.others.length) return { error: "Pick who you split it with." };
   if (!(mine >= 0) || input.others.some((o) => !(o.amount >= 0)))

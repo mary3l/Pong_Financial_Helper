@@ -5,7 +5,7 @@ import { AdjustmentEditor } from "@/components/adjust-balance";
 import { AddTransactionSkeleton } from "@/components/add-transaction";
 import { TransactionForm } from "@/components/transaction-form";
 import { isAdjustment } from "@/lib/categories";
-import { getAccounts, getSubcategories, getTransaction } from "@/lib/data";
+import { getAccounts, getSubcategories, getTransaction, getUserCategories } from "@/lib/data";
 import { today } from "@/lib/dates";
 
 export const metadata = { title: "Edit · Pong Money" };
@@ -21,10 +21,11 @@ export default function EditTransactionPage({ params }: PageProps<"/activity/[id
 
 async function EditTransaction({ params }: Pick<PageProps<"/activity/[id]">, "params">) {
   const { id } = await params;
-  const [transaction, accounts, subcategories] = await Promise.all([
+  const [transaction, accounts, subcategories, customCategories] = await Promise.all([
     getTransaction(id),
     getAccounts({ includeArchived: true, includePeople: true }),
     getSubcategories(),
+    getUserCategories(),
   ]);
   if (!transaction) notFound();
 
@@ -50,6 +51,7 @@ async function EditTransaction({ params }: Pick<PageProps<"/activity/[id]">, "pa
       templates={[]}
       transaction={transaction}
       subcategories={subcategories}
+      customCategories={customCategories}
       today={today()}
       mode="page"
       closeHref={

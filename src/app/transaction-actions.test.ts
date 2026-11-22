@@ -89,6 +89,21 @@ describe("saveTransaction", () => {
     expect(db.writeLog()).toEqual([]);
   });
 
+  it("takes one of your own categories, but not a made-up one", async () => {
+    useDb({
+      user_categories: [{ id: "c1", type: "expense", key: "u_milk_tea", label: "Milk tea" }],
+    });
+    expect(await saveTransaction({ ...expense, category: "u_milk_tea" })).toEqual({});
+    expect(db.table("transactions")[0]).toMatchObject({ category: "u_milk_tea" });
+    expect(await saveTransaction({ ...expense, category: "u_vape" })).toEqual({
+      error: "Pick a category.",
+    });
+    // Yours are for their own type only.
+    expect(await saveTransaction({ ...expense, type: "income", category: "u_milk_tea" })).toEqual({
+      error: "Pick a category.",
+    });
+  });
+
   it("inserts a cleaned-up row and refreshes", async () => {
     expect(await saveTransaction(expense)).toEqual({});
     expect(db.writes("transactions", "insert")).toEqual([

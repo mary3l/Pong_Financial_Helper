@@ -1,9 +1,10 @@
 import { TransactionForm, type Prefill } from "@/components/transaction-form";
-import { isCategoryFor } from "@/lib/categories";
+import { isCategoryFor, type UserCategory } from "@/lib/categories";
 import {
   getAccounts,
   getPeople,
   getSubcategories,
+  getUserCategories,
   getTransactions,
   templatesFrom,
 } from "@/lib/data";
@@ -17,7 +18,7 @@ type Params = Record<string, string | string[] | undefined>;
  * scheduled items use to open Add filled in. `?account=…` alone (a wallet's
  * + Add) just picks the wallet.
  */
-function prefillFrom(params: Params): Prefill | undefined {
+function prefillFrom(params: Params, custom: UserCategory[] = []): Prefill | undefined {
   const get = (key: string) => {
     const value = params[key];
     return typeof value === "string" ? value : "";
@@ -41,7 +42,7 @@ function prefillFrom(params: Params): Prefill | undefined {
   return {
     type,
     amount: amount > 0 ? amount : null,
-    category: isCategoryFor(type, category) ? category : null,
+    category: isCategoryFor(type, category, custom) ? category : null,
     accountId: get("account") || null,
     note: get("note").slice(0, 120),
     link: /^[0-9a-f-]{36}\|\d{4}-\d{2}-\d{2}$/i.test(link) ? link : null,
@@ -57,11 +58,12 @@ export async function AddTransaction({
   mode: "modal" | "page";
   searchParams?: Promise<Params>;
 }) {
-  const [accounts, recent, people, subcategories, params] = await Promise.all([
+  const [accounts, recent, people, subcategories, customCategories, params] = await Promise.all([
     getAccounts(),
     getTransactions({ limit: 60 }),
     getPeople(),
     getSubcategories(),
+    getUserCategories(),
     searchParams ?? Promise.resolve<Params>({}),
   ]);
   const templates = templatesFrom(recent, new Set(accounts.map((a) => a.id)));
@@ -72,10 +74,11 @@ export async function AddTransaction({
       templates={templates}
       today={today()}
       mode={mode}
-      prefill={prefillFrom(params)}
+      prefill={prefillFrom(params, customCategories)}
       people={people.map((p) => ({ id: p.id, name: p.name, balance: p.balance }))}
       startSplit={params.split === "1"}
       subcategories={subcategories}
+      customCategories={customCategories}
     />
   );
 }

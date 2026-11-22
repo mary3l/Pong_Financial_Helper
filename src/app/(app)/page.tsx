@@ -12,6 +12,7 @@ import { categoryInfo } from "@/lib/categories";
 import {
   getBillTags,
   getBudgets,
+  getUserCategories,
   getCapLines,
   getCashSpent,
   getPlanInputs,
@@ -331,7 +332,7 @@ async function Dashboard() {
 }
 
 /** Desktop dashboard: budgets this kinsenas at a glance (design "Web · Dashboard"). */
-function BudgetsCard({
+async function BudgetsCard({
   budgets,
   spent,
 }: {
@@ -339,6 +340,7 @@ function BudgetsCard({
   spent: { type: string; category: string | null; amount: number }[];
 }) {
   if (!budgets.length) return null;
+  const custom = await getUserCategories();
   const used = (category: string) =>
     roundCents(
       spent
@@ -360,7 +362,7 @@ function BudgetsCard({
         return (
           <span key={b.id} className="flex flex-col gap-1">
             <span className="flex justify-between text-sm">
-              <span className="font-bold">{categoryInfo("expense", b.category).label}</span>
+              <span className="font-bold">{categoryInfo("expense", b.category, custom).label}</span>
               <span className={over ? "font-bold text-coral-text" : "text-muted"}>
                 {formatPeso(u)} of {formatPeso(b.amount)}
               </span>

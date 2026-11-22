@@ -26,6 +26,7 @@ import {
   categoryInfo,
   categoryLabel,
   cleanSubcategory,
+  type UserCategory,
 } from "@/lib/categories";
 import type { Account, Template, Transaction } from "@/lib/data";
 import { clockOf, formatRelativeDay, formatShortDay, isValidDate } from "@/lib/dates";
@@ -156,6 +157,7 @@ export function TransactionForm({
   people = [],
   startSplit = false,
   subcategories = {},
+  customCategories = [],
 }: {
   accounts: Account[];
   templates: Template[];
@@ -172,6 +174,8 @@ export function TransactionForm({
   startSplit?: boolean;
   /** Subcategories typed before, by category key, most used first. */
   subcategories?: Record<string, string[]>;
+  /** Your own categories (Settings › Categories), offered beside the built-in ones. */
+  customCategories?: UserCategory[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -503,7 +507,10 @@ export function TransactionForm({
       };
       if (withPlan) {
         const result = await saveBnplPurchase(
-          { ...input, note: note.trim() || sub || categoryInfo("expense", category).label },
+          {
+            ...input,
+            note: note.trim() || sub || categoryInfo("expense", category, customCategories).label,
+          },
           {
             months: planMonths,
             ratePerMonth: rate,
@@ -782,7 +789,16 @@ export function TransactionForm({
           >
             {calc.error ??
               (leftToSplit === null || !amount
-                ? summary({ type, category, subcategory: sub, account, toAccount, date, today })
+                ? summary({
+                    type,
+                    category,
+                    subcategory: sub,
+                    account,
+                    toAccount,
+                    date,
+                    today,
+                    custom: customCategories,
+                  })
                 : splitLeftLabel(leftToSplit))}
           </span>
         </div>
@@ -879,7 +895,7 @@ export function TransactionForm({
                   onClick={() => applyTemplate(t)}
                   className="h-9 shrink-0 rounded-full border-2 border-dashed border-line bg-card px-3 text-[13px] font-bold hover:border-sea"
                 >
-                  {templateLabel(t, accounts)}
+                  {templateLabel(t, accounts, customCategories)}
                 </button>
               ))}
             </div>
@@ -925,7 +941,7 @@ export function TransactionForm({
               aria-label="Category"
               className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 lg:mx-0 lg:grid lg:grid-cols-5 lg:overflow-visible lg:px-0"
             >
-              {categoriesFor(type).map((c) => (
+              {categoriesFor(type, customCategories).map((c) => (
                 <button
                   key={c.key}
                   type="button"
@@ -947,7 +963,8 @@ export function TransactionForm({
             {category && (
               <div className="flex flex-col gap-1.5">
                 <span id="subcategory-label" className="text-[13px] font-extrabold text-muted">
-                  {categoryInfo(type, category).label.toUpperCase()} · SUBCATEGORY (OPTIONAL)
+                  {categoryInfo(type, category, customCategories).label.toUpperCase()} · SUBCATEGORY
+                  (OPTIONAL)
                 </span>
                 {subOptions.length > 0 && (
                   <div
@@ -1545,6 +1562,7 @@ function summary({
   toAccount,
   date,
   today,
+  custom,
 }: {
   type: TransactionType;
   category: string | null;
@@ -1553,21 +1571,22 @@ function summary({
   toAccount?: Account;
   date: string;
   today: string;
+  custom: readonly UserCategory[];
 }) {
   const when = isValidDate(date) ? formatRelativeDay(date, today) : "Pick a date";
   if (type === "transfer") {
     return `${account?.name ?? "?"} → ${toAccount?.name ?? "?"} · ${when}`;
   }
-  return [category && categoryLabel(type, category, subcategory), account?.name, when]
+  return [category && categoryLabel(type, category, subcategory, custom), account?.name, when]
     .filter(Boolean)
     .join(" · ");
 }
 
-function templateLabel(t: Template, accounts: Account[]) {
+function templateLabel(t: Template, accounts: Account[], custom: readonly UserCategory[]) {
   const name = (id: string | null) => accounts.find((a) => a.id === id)?.name ?? "";
   const amount = formatMoney(t.amount, accounts.find((a) => a.id === t.accountId)?.currency);
   if (t.type === "transfer") return `${name(t.accountId)} → ${name(t.toAccountId)} · ${amount}`;
-  const what = t.note || t.subcategory || categoryInfo(t.type, t.category).label;
+  const what = t.note || t.subcategory || categoryInfo(t.type, t.category, custom).label;
   return `${what} · ${amount} · ${name(t.accountId)}`;
 }
 

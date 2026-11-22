@@ -8,7 +8,7 @@ import { FIELD_CLASS } from "@/components/choice-chip";
 import { FormDialog } from "@/components/form-dialog";
 import { PathIcon } from "@/components/icons";
 import { Pong } from "@/components/pong";
-import { EXPENSE_CATEGORIES, categoryInfo } from "@/lib/categories";
+import { categoriesFor, categoryInfo, type Category, type UserCategory } from "@/lib/categories";
 import { formatPeso, parseAmount } from "@/lib/money";
 
 export type BudgetRow = {
@@ -24,17 +24,28 @@ export type BudgetRow = {
 /** Warn from 80% used. */
 const WARN_AT = 0.8;
 
-export function BudgetManager({ rows, view }: { rows: BudgetRow[]; view: "kinsenas" | "month" }) {
+export function BudgetManager({
+  rows,
+  view,
+  custom = [],
+}: {
+  rows: BudgetRow[];
+  view: "kinsenas" | "month";
+  /** Your own categories, which can have budgets too. */
+  custom?: UserCategory[];
+}) {
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
-  const free = EXPENSE_CATEGORIES.filter((c) => !rows.some((r) => r.category === c.key));
+  const free = categoriesFor("expense", custom).filter(
+    (c) => !rows.some((r) => r.category === c.key),
+  );
   const edited = rows.find((r) => r.id === editing) ?? null;
 
   return (
     <div className="flex flex-col gap-4">
       {edited && (
         <FormDialog
-          title={`${categoryInfo("expense", edited.category).label} budget`}
+          title={`${categoryInfo("expense", edited.category, custom).label} budget`}
           onClose={() => setEditing(null)}
         >
           <BudgetForm row={edited} onDone={() => setEditing(null)} />
@@ -49,7 +60,7 @@ export function BudgetManager({ rows, view }: { rows: BudgetRow[]; view: "kinsen
         <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
           {rows.map((r) => (
             <li key={r.id} className="border-b border-line-soft py-3 last:border-0">
-              <BudgetLine row={r} onEdit={() => setEditing(r.id)} />
+              <BudgetLine row={r} custom={custom} onEdit={() => setEditing(r.id)} />
             </li>
           ))}
         </ul>
@@ -85,8 +96,16 @@ export function BudgetManager({ rows, view }: { rows: BudgetRow[]; view: "kinsen
   );
 }
 
-function BudgetLine({ row, onEdit }: { row: BudgetRow; onEdit: () => void }) {
-  const info = categoryInfo("expense", row.category);
+function BudgetLine({
+  row,
+  custom,
+  onEdit,
+}: {
+  row: BudgetRow;
+  custom: UserCategory[];
+  onEdit: () => void;
+}) {
+  const info = categoryInfo("expense", row.category, custom);
   const share = row.spent / row.limit;
   const over = row.spent > row.limit;
   const warn = !over && share >= WARN_AT;
@@ -152,7 +171,7 @@ function BudgetForm({
   /** The budget to edit; omit to add one. */
   row?: BudgetRow;
   /** Categories you can add a budget for. */
-  categories?: typeof EXPENSE_CATEGORIES;
+  categories?: Category[];
   onDone: () => void;
 }) {
   const [category, setCategory] = useState(row?.category ?? categories?.[0]?.key ?? "");

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { createContext, use, useState, useTransition } from "react";
 import {
   removeScheduled,
   saveScheduled,
@@ -13,7 +13,7 @@ import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import { FormDialog } from "@/components/form-dialog";
 import { PathIcon } from "@/components/icons";
 import { LogButton } from "@/components/log-button";
-import { categoriesFor, categoryInfo } from "@/lib/categories";
+import { categoriesFor, categoryInfo, type UserCategory } from "@/lib/categories";
 import type { Account, PlannedExpense, RecurringItem } from "@/lib/data";
 import { addDays, formatRelativeDay, formatShortDay } from "@/lib/dates";
 import type { ForecastItem } from "@/lib/forecast";
@@ -65,6 +65,9 @@ type Row = {
   input: ScheduledInput;
 };
 
+/** Your own categories, for the rows and the form under ScheduledManager. */
+const CustomCategories = createContext<UserCategory[]>([]);
+
 export function ScheduledManager({
   accounts,
   recurring,
@@ -73,6 +76,7 @@ export function ScheduledManager({
   payroll,
   today,
   startEditing = null,
+  custom = [],
 }: {
   accounts: Account[];
   recurring: RecurringItem[];
@@ -83,6 +87,8 @@ export function ScheduledManager({
   today: string;
   /** An item's id from ?edit=: its form opens first. */
   startEditing?: string | null;
+  /** Your own categories (Settings › Categories). */
+  custom?: UserCategory[];
 }) {
   const [editing, setEditingState] = useState<string | null>(startEditing);
   function setEditing(id: string | null) {
@@ -223,41 +229,43 @@ export function ScheduledManager({
   const edited = editingRow(editing);
 
   return (
-    <div className="flex flex-col gap-6">
-      {edited && (
-        <FormDialog title={`Edit ${edited.name}`} onClose={() => setEditing(null)}>
-          <ScheduledForm
-            accounts={accounts}
-            initial={edited.input}
-            existing={edited.ref}
-            today={today}
-            onClose={() => setEditing(null)}
-          />
-        </FormDialog>
-      )}
-      {adding && (
-        <FormDialog
-          title={adding === "in" ? "Add income" : "Add expense"}
-          onClose={() => setAdding(null)}
-        >
-          <ScheduledForm
-            accounts={accounts}
-            initial={blankInput(adding, today)}
-            today={today}
+    <CustomCategories value={custom}>
+      <div className="flex flex-col gap-6">
+        {edited && (
+          <FormDialog title={`Edit ${edited.name}`} onClose={() => setEditing(null)}>
+            <ScheduledForm
+              accounts={accounts}
+              initial={edited.input}
+              existing={edited.ref}
+              today={today}
+              onClose={() => setEditing(null)}
+            />
+          </FormDialog>
+        )}
+        {adding && (
+          <FormDialog
+            title={adding === "in" ? "Add income" : "Add expense"}
             onClose={() => setAdding(null)}
-          />
-        </FormDialog>
-      )}
-      <p className="text-[15px] leading-relaxed text-muted">
-        Everything you expect to come in or go out, once or on repeat. It all counts in your
-        forecast. When the day comes, tap <strong className="text-ink">Add income</strong> or{" "}
-        <strong className="text-ink">Mark paid</strong> to log it in one go.
-      </p>
-      <div className="flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start">
-        {section("in")}
-        {section("out")}
+          >
+            <ScheduledForm
+              accounts={accounts}
+              initial={blankInput(adding, today)}
+              today={today}
+              onClose={() => setAdding(null)}
+            />
+          </FormDialog>
+        )}
+        <p className="text-[15px] leading-relaxed text-muted">
+          Everything you expect to come in or go out, once or on repeat. It all counts in your
+          forecast. When the day comes, tap <strong className="text-ink">Add income</strong> or{" "}
+          <strong className="text-ink">Mark paid</strong> to log it in one go.
+        </p>
+        <div className="flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start">
+          {section("in")}
+          {section("out")}
+        </div>
       </div>
-    </div>
+    </CustomCategories>
   );
 }
 
@@ -296,7 +304,8 @@ function ItemRow({
   today: string;
   onEdit: () => void;
 }) {
-  const info = categoryInfo(row.flow === "in" ? "income" : "expense", row.category);
+  const custom = use(CustomCategories);
+  const info = categoryInfo(row.flow === "in" ? "income" : "expense", row.category, custom);
   const wallet = accounts.find((a) => a.id === row.accountId);
   const next = row.next;
   const soon = next && next.dueOn < addDays(today, 8);
@@ -380,6 +389,7 @@ function ScheduledForm({
   today: string;
   onClose: () => void;
 }) {
+  const custom = use(CustomCategories);
   const [flow, setFlow] = useState(initial.flow);
   const [name, setName] = useState(initial.name);
   const [amount, setAmount] = useState(initial.amount ? String(initial.amount) : "");
@@ -641,7 +651,7 @@ function ScheduledForm({
           Category
         </span>
         <div role="group" aria-labelledby={`sched-cat-${key}`} className="flex flex-wrap gap-2">
-          {categoriesFor(type).map((c) => (
+          {categoriesFor(type, custom).map((c) => (
             <button
               key={c.key}
               type="button"

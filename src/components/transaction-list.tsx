@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ChevronIcon, PathIcon } from "@/components/icons";
-import { categoryInfo, categoryLabel, isAdjustment } from "@/lib/categories";
-import type { Account, BillTag, Transaction } from "@/lib/data";
+import { categoryInfo, categoryLabel, isAdjustment, type UserCategory } from "@/lib/categories";
+import { getUserCategories, type Account, type BillTag, type Transaction } from "@/lib/data";
 import { formatRelativeDay, formatShortDay, transactionTime } from "@/lib/dates";
 import { balanceEffect, formatMoney, formatPeso, type Currency } from "@/lib/money";
 import { groupSplits, itemDate, type ListItem, type SplitBill } from "@/lib/splits";
@@ -10,7 +10,7 @@ import { groupSplits, itemDate, type ListItem, type SplitBill } from "@/lib/spli
  * Transactions grouped under day headings, each opening its edit screen. A
  * split bill shows as one row that opens its breakdown.
  */
-export function TransactionList({
+export async function TransactionList({
   transactions,
   items,
   accounts,
@@ -31,6 +31,8 @@ export function TransactionList({
   /** Purchases on a credit line: which bill each is on (getBillTags). */
   billTags?: Map<string, BillTag>;
 }) {
+  // Your own categories show with their name and icon (cached per request).
+  const custom = await getUserCategories();
   const names = new Map(accounts.map((a) => [a.id, a.name]));
   // Amounts are in their wallet's currency: dollars on a USD time deposit.
   const currencies = new Map(accounts.map((a) => [a.id, a.currency]));
@@ -65,9 +67,15 @@ export function TransactionList({
                     today={grouped ? null : today}
                     walletId={walletId}
                     bill={billTags?.get(item.txn.id)}
+                    custom={custom}
                   />
                 ) : (
-                  <SplitRow split={item.split} names={names} today={grouped ? null : today} />
+                  <SplitRow
+                    split={item.split}
+                    names={names}
+                    today={grouped ? null : today}
+                    custom={custom}
+                  />
                 )}
               </li>
             ))}
@@ -141,12 +149,14 @@ function SplitRow({
   split,
   names,
   today,
+  custom,
 }: {
   split: SplitBill;
   names: Map<string, string>;
   today: string | null;
+  custom: UserCategory[];
 }) {
-  const info = categoryInfo("expense", split.mine?.category ?? "family");
+  const info = categoryInfo("expense", split.mine?.category ?? "family", custom);
   const people = split.others.length;
   const detail = [
     split.mine ? info.label : null,
@@ -189,6 +199,7 @@ function TransactionRow({
   today,
   walletId,
   bill,
+  custom,
 }: {
   txn: Transaction;
   names: Map<string, string>;
@@ -197,8 +208,9 @@ function TransactionRow({
   today: string | null;
   walletId?: string;
   bill?: BillTag;
+  custom: UserCategory[];
 }) {
-  const info = categoryInfo(txn.type, txn.category);
+  const info = categoryInfo(txn.type, txn.category, custom);
   const from = names.get(txn.accountId) ?? "Removed wallet";
   const to = txn.toAccountId ? (names.get(txn.toAccountId) ?? "Removed wallet") : "";
 
@@ -221,7 +233,7 @@ function TransactionRow({
         ? [txn.note ? info.label : null, from, "not spending"]
         : [
             txn.note
-              ? categoryLabel(txn.type, txn.category, txn.subcategory)
+              ? categoryLabel(txn.type, txn.category, txn.subcategory, custom)
               : txn.subcategory
                 ? info.label
                 : null,
