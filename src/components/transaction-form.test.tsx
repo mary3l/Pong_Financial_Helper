@@ -112,7 +112,8 @@ describe("TransactionForm", () => {
   it("guesses nothing: Save names what's missing, in order", async () => {
     const user = renderForm();
     await user.keyboard("150");
-    expect(submitButton()).toHaveTextContent("Add a description");
+    // Description is optional.
+    expect(submitButton()).toHaveTextContent("Pick a category");
     expect(submitButton()).toBeDisabled();
     await describeIt(user, "Lunch");
     expect(submitButton()).toHaveTextContent("Pick a category");

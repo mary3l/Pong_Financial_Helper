@@ -259,17 +259,15 @@ export function TransactionForm({
   // Save waits for these; its label names the first one missing.
   const missing = !amount
     ? "Enter an amount"
-    : type !== "transfer" && !note.trim()
-      ? "Add a description"
-      : type !== "transfer" && !category
-        ? "Pick a category"
-        : iPaid && !accountId
-          ? type === "income"
-            ? "Pick where it went"
-            : "Pick a wallet"
-          : type === "transfer" && !toAccountId
-            ? "Pick where it goes"
-            : null;
+    : type !== "transfer" && !category
+      ? "Pick a category"
+      : iPaid && !accountId
+        ? type === "income"
+          ? "Pick where it went"
+          : "Pick a wallet"
+        : type === "transfer" && !toAccountId
+          ? "Pick where it goes"
+          : null;
   const shares = splitting ? splitShares(amount, participants, splitMethod, exact) : null;
   // Exact amounts: what's still to be shared out, counting down to ₱0.
   const leftToSplit =
@@ -904,8 +902,7 @@ export function TransactionForm({
 
         <div className="order-5 flex flex-col gap-1 lg:order-none">
           <label htmlFor="txn-note" className="text-sm font-extrabold">
-            Description
-            {type === "transfer" && <span className="font-semibold text-muted"> (optional)</span>}
+            Description <span className="font-semibold text-muted">(optional)</span>
           </label>
           <input
             id="txn-note"

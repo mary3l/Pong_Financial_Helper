@@ -93,8 +93,6 @@ function validate(input: TransactionInput) {
     .replace(/\s+/g, " ")
     .trim();
   if (note.length > NOTE_MAX) return { error: `Keep the description to ${NOTE_MAX} characters.` };
-  // What it was for, so Activity reads "Lunch at Jollibee", not just "Food". Transfers can go without.
-  if (type !== "transfer" && !note) return { error: "Add a description." };
 
   return {
     row: {
