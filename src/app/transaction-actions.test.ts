@@ -54,7 +54,14 @@ describe("saveTransaction", () => {
     ["unknown category", { category: "yachts" }, "Pick a category."],
     ["bad date", { occurredOn: "2026-02-30" }, "Pick a date."],
     ["bad time", { occurredTime: "25:00" }, "Check the time."],
-    ["long note", { note: "x".repeat(121) }, "Keep the note to 120 characters."],
+    ["long description", { note: "x".repeat(121) }, "Keep the description to 120 characters."],
+    ["no description", { note: "   " }, "Add a description."],
+    ["income with no category", { type: "income", category: null }, "Pick a category."],
+    [
+      "income with no description",
+      { type: "income", category: "salary", note: "" },
+      "Add a description.",
+    ],
   ])("rejects %s without touching the database", async (_, patch, error) => {
     expect(await saveTransaction({ ...expense, ...patch })).toEqual({ error });
     expect(createClient).not.toHaveBeenCalled();
