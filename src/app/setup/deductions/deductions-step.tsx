@@ -80,7 +80,7 @@ export function DeductionsStep({
         const was = d.amount === null ? "" : String(d.amount);
         if (text === was) continue;
         const result = text
-          ? await updateDeduction(d.id, d.name, parseAmount(text))
+          ? await updateDeduction(d.id, d.name, parseAmount(text), d.kind)
           : await estimateDeduction(d.id);
         if (result.error) return setError(result.error);
       }
