@@ -39,6 +39,7 @@ import {
 } from "@/lib/dates";
 import { formatPeso, parseAmount } from "@/lib/money";
 import {
+  DEDUCTION_KINDS,
   DEFAULT_CUTOFF_WEEKDAY,
   EMPLOYMENTS,
   isEmployee,
@@ -82,6 +83,7 @@ import {
   type ContributionKey,
   type CutoffRule,
   type Deduction,
+  type DeductionKind,
   type Employment,
   type DayStatus,
   type OvertimeEntry,
@@ -1895,7 +1897,8 @@ function SelfPaidCard({
   const [editing, setEditing] = useState(false);
   // The contribution being added (null) or changed; undefined while closed.
   const [deduction, setDeduction] = useState<Deduction | null | undefined>(undefined);
-  const monthly = contributions(settings);
+  // One taken from your pay isn't one you pay yourself too.
+  const monthly = contributions(settings, records.deductions ?? []);
   const taxes = settings.payTax ? upcomingTaxPayments(records, today) : [];
   const monthlyTotal = monthly.reduce((sum, c) => sum + c.amount, 0);
   const allCustom = monthly.length > 0 && monthly.every((c) => c.custom);
@@ -2212,10 +2215,18 @@ function DeductionForm({
   deduction: Deduction | null;
   onClose: () => void;
 }) {
+  const [kind, setKind] = useState<DeductionKind>(deduction?.kind ?? "other");
   const [name, setName] = useState(deduction?.name ?? "");
   const [amount, setAmount] = useState(deduction ? String(deduction.amount) : "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  // Picking one names it, unless you typed your own name.
+  function pick(next: DeductionKind) {
+    const named = (k: DeductionKind) => DEDUCTION_KINDS.find((d) => d.kind === k)!.name;
+    if (!name.trim() || name === named(kind)) setName(next === "other" ? "" : named(next));
+    setKind(next);
+  }
 
   function save(e: React.FormEvent) {
     e.preventDefault();
@@ -2225,8 +2236,8 @@ function DeductionForm({
     if (!(value > 0)) return setError("Enter how much your office takes each month.");
     startTransition(async () => {
       const result = deduction
-        ? await updateDeduction(deduction.id, name, value)
-        : await addDeduction(name, value);
+        ? await updateDeduction(deduction.id, name, value, kind)
+        : await addDeduction(name, value, kind);
       if (result.error) setError(result.error);
       else onClose();
     });
@@ -2248,6 +2259,23 @@ function DeductionForm({
         What your office takes from your pay each month. It comes off your last payday of the month.
         On payday you can correct it if your payslip says otherwise.
       </p>
+      <div className="flex flex-col gap-1">
+        <span id="deduction-kind" className="text-sm font-bold">
+          Which one
+        </span>
+        <div role="group" aria-labelledby="deduction-kind" className="flex flex-wrap gap-2">
+          {DEDUCTION_KINDS.map((k) => (
+            <ChoiceChip
+              key={k.kind}
+              selected={kind === k.kind}
+              onClick={() => pick(k.kind)}
+              className={kind === k.kind ? "" : "bg-mint"}
+            >
+              {k.kind === "tax" ? "Tax" : k.name}
+            </ChoiceChip>
+          ))}
+        </div>
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1">
           <label htmlFor="deduction-name" className="text-sm font-bold">

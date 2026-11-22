@@ -11,6 +11,7 @@ import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import { CloseIcon } from "@/components/icons";
 import type { Account } from "@/lib/data";
 import type { ForecastItem, PayBreakdown } from "@/lib/forecast";
+import { isContribution } from "@/lib/payroll";
 import {
   accountTypeLabel,
   formatPeso,
@@ -488,19 +489,26 @@ function PayLines({
   return (
     <div className="flex flex-col gap-1.5 text-[15px]">
       {field("gross", "Gross pay", texts.gross, (v) => onChange({ ...texts, gross: v }))}
-      {breakdown.deductions.map((d, i) =>
-        field(
-          `d${i}`,
-          d.name,
-          texts.deductions[i],
-          (v) =>
-            onChange({
-              ...texts,
-              deductions: texts.deductions.map((t, j) => (j === i ? v : t)),
-            }),
-          "− ",
-        ),
-      )}
+      {breakdown.deductions.map((d, i) => (
+        <div key={`d${i}`} className="flex flex-col gap-1.5">
+          {/* Contributions come first, right after gross pay. */}
+          {isContribution(d.kind) &&
+            (i === 0 || !isContribution(breakdown.deductions[i - 1].kind)) && (
+              <span className="text-[13px] font-extrabold text-muted">Contributions</span>
+            )}
+          {field(
+            `d${i}`,
+            d.name,
+            texts.deductions[i],
+            (v) =>
+              onChange({
+                ...texts,
+                deductions: texts.deductions.map((t, j) => (j === i ? v : t)),
+              }),
+            "− ",
+          )}
+        </div>
+      ))}
       <div className="flex items-baseline justify-between gap-3 border-t-2 border-line-soft pt-1.5">
         <span className="font-extrabold">= Take-home</span>
         <span className={`font-extrabold ${net > 0 ? "" : "text-coral-text"}`}>

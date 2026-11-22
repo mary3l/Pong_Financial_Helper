@@ -259,6 +259,13 @@ describe("contributions", () => {
       contributions({ ...settings, sssAmount: 1125, paySss: false }).map((c) => c.key),
     ).toEqual(["philhealth", "pagibig"]);
   });
+
+  it("isn't a bill when it's taken from your pay instead", () => {
+    const taken = [{ kind: "sss" as const }, { kind: "other" as const }];
+    expect(contributions(settings, taken).map((c) => c.key)).toEqual(["philhealth", "pagibig"]);
+    // Removed from your pay: a bill again.
+    expect(contributions(settings, []).map((c) => c.key)).toEqual(["sss", "philhealth", "pagibig"]);
+  });
 });
 
 describe("8% income tax", () => {
@@ -775,6 +782,23 @@ describe("what an employer takes", () => {
       { id: "loan-p3", name: "GSIS MPL · 3 of 24", amount: 2000, loanPaymentId: "p3" },
     ]);
     expect(deductionsOn("2026-12-30", kinsenas, [], loan)).toEqual([]);
+  });
+
+  it("lists contributions first, then tax, then the rest, then salary loans", () => {
+    const saved = [
+      { id: "u", name: "Union dues", amount: 100, kind: "other" as const },
+      { id: "t", name: "Withholding tax", amount: 300, kind: "tax" as const },
+      { id: "s", name: "SSS", amount: 750, kind: "sss" as const },
+      { id: "p", name: "Pag-IBIG", amount: 400, kind: "pagibig" as const },
+    ];
+    const loan = [{ paymentId: "p3", name: "SSS salary loan", amount: 1000, month: "2026-11" }];
+    expect(deductionsOn("2026-11-30", kinsenas, saved, loan).map((d) => d.name)).toEqual([
+      "SSS",
+      "Pag-IBIG",
+      "Withholding tax",
+      "Union dues",
+      "SSS salary loan",
+    ]);
   });
 });
 

@@ -1,5 +1,6 @@
 import { addDays, dateInMonth } from "@/lib/dates";
 import { roundCents } from "@/lib/money";
+import type { DeductionKind } from "@/lib/payroll";
 import { amountOn, nextOccurrence, occurrences, type Schedule } from "@/lib/schedule";
 
 // The forecast (design canvas 3.1): what's scheduled, and what it does to
@@ -58,6 +59,8 @@ export type PayBreakdown = {
     amount: number;
     /** Pong's estimate, not your payslip's amount. */
     estimated?: boolean;
+    /** Which contribution it is: GSIS, SSS, PhilHealth and Pag-IBIG are listed first. */
+    kind?: DeductionKind;
     /** A salary loan's scheduled payment: logging the payday pays it. */
     loanPaymentId?: string;
   }[];
@@ -201,6 +204,7 @@ export function scheduledItems(
                   name: d.name,
                   amount: d.amount,
                   ...(d.estimated ? { estimated: true } : {}),
+                  ...(d.kind ? { kind: d.kind } : {}),
                   ...(d.loanPaymentId ? { loanPaymentId: d.loanPaymentId } : {}),
                 })),
               },

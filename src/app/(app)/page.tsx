@@ -44,6 +44,7 @@ import {
   roundCents,
 } from "@/lib/money";
 import { PLAN_DAYS, PLAN_FLOOR, planToday, weekStartOf } from "@/lib/payment-plan";
+import { isContribution } from "@/lib/payroll";
 import { dueDate, isOverdue } from "@/lib/people";
 import { saveWidgetSnapshot } from "@/lib/widget-snapshot";
 import { SafeToSpendCard, pongSays } from "./safe-to-spend-card";
@@ -413,17 +414,29 @@ function DueRow({
               {formatPeso(item.pay.gross)} −{" "}
               {formatPeso(roundCents(item.pay.gross - (item.amount ?? 0)))} taken
             </summary>
-            <dl className="mt-1 flex flex-col gap-0.5">
-              {item.pay.deductions.map((d) => (
-                <div key={d.name} className="flex justify-between gap-3">
-                  <dt>
-                    {d.name}
-                    {d.estimated && " · estimate"}
-                  </dt>
-                  <dd>{formatPeso(d.amount)}</dd>
-                </div>
-              ))}
-            </dl>
+            {/* Contributions first, right after gross pay; then tax, the rest and salary loans. */}
+            {[
+              item.pay.deductions.filter((d) => isContribution(d.kind)),
+              item.pay.deductions.filter((d) => !isContribution(d.kind)),
+            ].map(
+              (group, g) =>
+                group.length > 0 && (
+                  <div key={g} className="mt-1 flex flex-col gap-0.5">
+                    {g === 0 && <p className="font-extrabold">Contributions</p>}
+                    <dl className="flex flex-col gap-0.5">
+                      {group.map((d) => (
+                        <div key={d.name} className="flex justify-between gap-3">
+                          <dt>
+                            {d.name}
+                            {d.estimated && " · estimate"}
+                          </dt>
+                          <dd>{formatPeso(d.amount)}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                ),
+            )}
           </details>
         )}
       </span>

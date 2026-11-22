@@ -664,6 +664,25 @@ export type PayrollRecords = {
 /** Which contribution a deduction is (migration 0025); "other" for a union fee and the like. */
 export type DeductionKind = "gsis" | "sss" | "philhealth" | "pagibig" | "tax" | "other";
 
+/** Each kind, in the order a payday lists them, with the name it gets when you pick it. */
+export const DEDUCTION_KINDS: readonly { kind: DeductionKind; name: string }[] = [
+  { kind: "gsis", name: "GSIS" },
+  { kind: "sss", name: "SSS" },
+  { kind: "philhealth", name: "PhilHealth" },
+  { kind: "pagibig", name: "Pag-IBIG" },
+  { kind: "tax", name: "Withholding tax" },
+  { kind: "other", name: "Other" },
+];
+
+export function isDeductionKind(value: unknown): value is DeductionKind {
+  return DEDUCTION_KINDS.some((k) => k.kind === value);
+}
+
+/** GSIS, SSS, PhilHealth and Pag-IBIG: the contributions. Not tax, not other. */
+export function isContribution(kind: DeductionKind | undefined): boolean {
+  return kind === "gsis" || kind === "sss" || kind === "philhealth" || kind === "pagibig";
+}
+
 /** The month's last payday, or split evenly over each payday of the month. */
 export type DeductionTaken = "last" | "each";
 
@@ -767,7 +786,14 @@ export function deductionsOn(
         loanPaymentId: l.paymentId,
       });
   }
-  return out;
+  // Right after gross pay: contributions first, then tax, then anything else, then salary loans.
+  return out.sort((a, b) => takenOrder(a) - takenOrder(b));
+}
+
+function takenOrder(d: Deduction): number {
+  if (d.loanPaymentId) return 3;
+  if (isContribution(d.kind)) return 0;
+  return d.kind === "tax" ? 1 : 2;
 }
 
 /** The employee's share of one contribution on `monthly` pay. */
@@ -1108,8 +1134,15 @@ export function calculatedContributions(s: PayrollSettings): Record<Contribution
   };
 }
 
-/** The monthly contributions you've chosen to pay, due on the 30th. Your own amounts win. */
-export function contributions(s: PayrollSettings): Contribution[] {
+/**
+ * The monthly contributions you've chosen to pay yourself, due on the 30th.
+ * Your own amounts win. One you put under Taken from your pay (`takenFromPay`)
+ * comes off your payday instead, so it isn't a bill too.
+ */
+export function contributions(
+  s: PayrollSettings,
+  takenFromPay: readonly { kind?: DeductionKind }[] = [],
+): Contribution[] {
   const calculated = calculatedContributions(s);
   const all: { key: ContributionKey; name: string; own: number | null; on: boolean }[] = [
     { key: "sss", name: "SSS contribution", own: s.sssAmount, on: s.paySss },
@@ -1129,7 +1162,7 @@ export function contributions(s: PayrollSettings): Contribution[] {
       custom: own !== null,
       amount: own ?? calculated[key],
     }))
-    .filter((c) => c.on && c.amount > 0)
+    .filter((c) => c.on && c.amount > 0 && !takenFromPay.some((d) => d.kind === c.key))
     .map(({ key, name, amount, custom }) => ({ key, name, amount, custom }));
 }
 

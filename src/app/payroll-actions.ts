@@ -3,7 +3,7 @@
 import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
 import { readPayroll } from "@/lib/data";
-import { addDays, isValidDate, today as getToday } from "@/lib/dates";
+import { isValidDate, today as getToday } from "@/lib/dates";
 import { MAX_AMOUNT, roundCents } from "@/lib/money";
 import { isValidSchedule, type Frequency, type Schedule } from "@/lib/schedule";
 import {
@@ -19,6 +19,7 @@ import {
   dailyFromMonthly,
   defaultDeductions,
   isCutoffDays,
+  isDeductionKind,
   isEmployee,
   isEmployment,
   isCutoffMonthDay,
@@ -35,9 +36,11 @@ import {
   type CutoffChange,
   type CutoffRate,
   type CutoffRule,
+  type DeductionKind,
   type DeductionTaken,
   type Employment,
   type OvertimeEntry,
+  type PayChange,
   type PayrollDay,
   type PayrollSettings,
 } from "@/lib/payroll";
@@ -336,13 +339,24 @@ export async function savePayrollSettings(
   // Days just changed: pay before `from` is read with the new cutoffs.
   before.settings = { ...before.settings, ...kept, frequency };
 
-  // The same as the cutoff before it already gets: no change to keep.
-  const unchanged = sameRate(rateOf(input), settingsFor(before, addDays(from, -1)));
-  const { error } = unchanged
+  // The same as this cutoff gets without a change of its own: no change to
+  // keep. That's the latest change before it, not the cutoff before's pay: a
+  // change saved under other cutoff days (Nov 9, with cutoffs on the 3rd and
+  // 18th) skips the cutoff before and still pays this one.
+  const inherited = (before.changes ?? [])
+    .filter((c) => c.from < from)
+    .reduce<PayChange | null>((last, c) => (!last || c.from > last.from ? c : last), null);
+  const unchanged = sameRate(rateOf(input), inherited ?? before.settings);
+  const upsert = (row: Record<string, unknown>) =>
+    supabase.from("payroll_pay_changes").upsert(row, { onConflict: "user_id,starts_on" });
+  // Pay per day clears a monthly rate this cutoff's change already had: an
+  // upsert leaves out what it isn't given.
+  const change = { starts_on: from, ...rateRow(input) };
+  let { error } = unchanged
     ? await supabase.from("payroll_pay_changes").delete().eq("starts_on", from)
-    : await supabase
-        .from("payroll_pay_changes")
-        .upsert({ starts_on: from, ...rateRow(input) }, { onConflict: "user_id,starts_on" });
+    : await upsert(input.monthlyPay ? change : { ...change, monthly_pay: null });
+  // Before migration 0023 there's no monthly rate to clear.
+  if (!unchanged && !input.monthlyPay && missingColumn(error)) ({ error } = await upsert(change));
   if (error?.code === "PGRST205") return CHANGES_MISSING;
   if (missingColumn(error)) return STEP_23("use a monthly rate");
   if (error) return FAILED;
@@ -527,13 +541,50 @@ const DEDUCTIONS_MISSING = {
 };
 
 /** A contribution's name and amount, or what's wrong with them. */
-function checkDeduction(name: string, amount: number): { name: string; amount: number } | string {
+function checkDeduction(
+  name: string,
+  amount: number,
+  kind: DeductionKind,
+): { name: string; amount: number; kind: DeductionKind } | string {
   const trimmed = typeof name === "string" ? name.trim() : "";
   if (!trimmed) return "Give it a name, like GSIS.";
   if (trimmed.length > 40) return "Keep the name under 40 characters.";
   if (!(typeof amount === "number" && amount > 0 && amount <= MAX_AMOUNT))
     return "Enter how much your office takes each month.";
-  return { name: trimmed, amount: roundCents(amount) };
+  if (!isDeductionKind(kind)) return "Pick which one it is.";
+  return { name: trimmed, amount: roundCents(amount), kind };
+}
+
+/**
+ * Writes a deduction, without its kind before migration 0025. Then the SSS,
+ * PhilHealth and Pag-IBIG you pay yourself follow it: one taken from your
+ * pay stops being a bill, and comes back when it isn't.
+ */
+async function writeDeduction(
+  supabase: Client,
+  row: { name: string; amount: number; kind: DeductionKind },
+  write: (row: { name: string; amount: number; kind?: DeductionKind }) => PromiseLike<{
+    error: { code?: string } | null;
+    found?: boolean;
+  }>,
+): Promise<PayrollResult> {
+  let result = await write(row);
+  if (missingColumn(result.error)) result = await write({ name: row.name, amount: row.amount });
+  if (result.error?.code === "PGRST205") return DEDUCTIONS_MISSING;
+  if (result.error) return FAILED;
+  if (result.found === false) return { error: "Couldn't find that contribution." };
+  return billsFollowDeductions(supabase);
+}
+
+/**
+ * The bills you pay yourself, after Taken from your pay changed. The
+ * deduction is saved either way: with no pay set up there's nothing to
+ * follow, and otherwise the next time your pay is saved catches up.
+ */
+async function billsFollowDeductions(supabase: Client): Promise<PayrollResult> {
+  await sync(supabase);
+  refresh();
+  return {};
 }
 
 /**
@@ -541,37 +592,38 @@ function checkDeduction(name: string, amount: number): { name: string; amount: n
  * amount, taken from the month's last payday. The forecast shows that
  * payday as gross pay minus it. Not a bill, so not in Money going out.
  */
-export async function addDeduction(name: string, amount: number): Promise<PayrollResult> {
-  const checked = checkDeduction(name, amount);
+export async function addDeduction(
+  name: string,
+  amount: number,
+  kind: DeductionKind = "other",
+): Promise<PayrollResult> {
+  const checked = checkDeduction(name, amount, kind);
   if (typeof checked === "string") return { error: checked };
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
-  const { error } = await supabase.from("payroll_deductions").insert(checked);
-  if (error?.code === "PGRST205") return DEDUCTIONS_MISSING;
-  if (error) return FAILED;
-  refresh();
-  return {};
+  return writeDeduction(supabase, checked, (row) =>
+    supabase.from("payroll_deductions").insert(row),
+  );
 }
 
 export async function updateDeduction(
   id: string,
   name: string,
   amount: number,
+  kind: DeductionKind = "other",
 ): Promise<PayrollResult> {
-  const checked = checkDeduction(name, amount);
+  const checked = checkDeduction(name, amount, kind);
   if (typeof checked === "string") return { error: checked };
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
-  const { data, error } = await supabase
-    .from("payroll_deductions")
-    .update(checked)
-    .eq("id", id)
-    .select("id");
-  if (error?.code === "PGRST205") return DEDUCTIONS_MISSING;
-  if (error) return FAILED;
-  if (!data.length) return { error: "Couldn't find that contribution." };
-  refresh();
-  return {};
+  return writeDeduction(supabase, checked, async (row) => {
+    const { data, error } = await supabase
+      .from("payroll_deductions")
+      .update(row)
+      .eq("id", id)
+      .select("id");
+    return { error, found: error ? undefined : data.length > 0 };
+  });
 }
 
 export async function deleteDeduction(id: string): Promise<PayrollResult> {
@@ -580,8 +632,7 @@ export async function deleteDeduction(id: string): Promise<PayrollResult> {
   const { error } = await supabase.from("payroll_deductions").delete().eq("id", id);
   if (error?.code === "PGRST205") return DEDUCTIONS_MISSING;
   if (error) return FAILED;
-  refresh();
-  return {};
+  return billsFollowDeductions(supabase);
 }
 
 const STEP_25 = {
@@ -756,7 +807,8 @@ async function sync(supabase: Client): Promise<PayrollResult> {
     .select("id, payroll_key, day1")
     .not("payroll_key", "is", null);
   if (bills.error) return FAILED;
-  const wanted = contributions(settings);
+  // One taken from your pay comes off the payday instead: not a bill too.
+  const wanted = contributions(settings, payroll.deductions ?? []);
   for (const c of wanted) {
     const found = bills.data.find((b) => b.payroll_key === c.key);
     const row = {
