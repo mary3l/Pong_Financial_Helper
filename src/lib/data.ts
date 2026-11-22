@@ -74,6 +74,8 @@ export type Account = {
   dueDay: number | null;
   /** Credit lines: the day the statement closes (migration 0019). Null: not saved. */
   cutoffDay: number | null;
+  /** Credit lines: a revolving credit card, or BNPL (migration 0026). Missing: BNPL. */
+  creditKind?: "bnpl" | "card";
   archived: boolean;
   /** Cash, bank and e-wallets: what the money is for. Only "spending" counts in Safe to spend. */
   purpose: WalletPurpose;
@@ -259,15 +261,15 @@ const readAccounts = cache(
     const dollars = `${goals}, currency, fx_rate, matures_on`;
 
     const [first, balances] = await Promise.all([
-      select(`${dollars}, cutoff_day`),
+      select(`${dollars}, cutoff_day, credit_kind`),
       supabase.from("account_balances").select("account_id, balance"),
     ]);
-    // 42703: migration 0019 (or 0017, 0016, 0011, 0010) hasn't been run yet.
-    // Credit lines then have no cutoff day, every wallet is in pesos, wallets
-    // have no goals, interest is credited daily, and without 0010 every wallet
-    // is spending money.
+    // 42703: migration 0026 (or 0019, 0017, 0016, 0011, 0010) hasn't been run
+    // yet. Every credit line is then BNPL, credit lines have no cutoff day,
+    // every wallet is in pesos, wallets have no goals, interest is credited
+    // daily, and without 0010 every wallet is spending money.
     let accounts = first;
-    for (const columns of [dollars, goals, payout, wallet, base]) {
+    for (const columns of [`${dollars}, cutoff_day`, dollars, goals, payout, wallet, base]) {
       if (accounts.error?.code !== "42703") break;
       accounts = await select(columns);
     }
@@ -289,6 +291,7 @@ const readAccounts = cache(
       creditLimit: a.credit_limit === null ? null : Number(a.credit_limit),
       dueDay: a.due_day,
       cutoffDay: a.cutoff_day ?? null,
+      ...(a.credit_kind === "card" ? { creditKind: "card" as const } : {}),
       archived: a.archived,
       purpose: isWalletPurpose(a.purpose) ? a.purpose : "spending",
       interestRate: a.interest_rate == null ? null : Number(a.interest_rate),
@@ -314,6 +317,7 @@ function dollarRates(a: AccountRow, today: UsdRate | null) {
 
 type AccountRow = {
   id: string;
+  credit_kind?: string | null;
   name: string;
   type: string;
   starting_balance: number | string;
@@ -1039,7 +1043,10 @@ export async function getCashSpent(todays: Transaction[], accounts: Account[]): 
  * purchase on your line.
  */
 export async function getCapLines(accounts: Account[], today: string): Promise<CapLine[]> {
-  const lines = accounts.filter((a) => a.type === "credit_line" && a.dueDay);
+  // Credit cards are revolving, not BNPL: no cap and nothing held for new buys.
+  const lines = accounts.filter(
+    (a) => a.type === "credit_line" && a.dueDay && a.creditKind !== "card",
+  );
   if (!lines.length) return [];
   const since = new Map(
     lines.map((a) => [

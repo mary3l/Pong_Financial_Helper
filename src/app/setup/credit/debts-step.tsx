@@ -13,7 +13,7 @@ const NEXT = "/setup/payday";
 
 /**
  * Step 3 of setup: what you've added so far, and one form at a time to add
- * a BNPL or credit line, or a loan you're already paying. Saving closes the
+ * a credit card or BNPL, or a loan you're already paying. Saving closes the
  * form and the list picks it up.
  */
 export function DebtsStep({
@@ -53,7 +53,7 @@ export function DebtsStep({
               <div className="flex flex-col">
                 <span className="font-bold">{a.name}</span>
                 <span className="text-sm text-muted">
-                  {a.type === "loan" ? "Loan" : "BNPL / credit line"}
+                  {a.type === "loan" ? "Loan" : a.creditKind === "card" ? "Credit card" : "BNPL"}
                   {a.dueDay ? ` · due ${ordinal(a.dueDay)}` : ""}
                 </span>
               </div>
@@ -67,7 +67,7 @@ export function DebtsStep({
 
       {adding === "credit" ? (
         <div className="flex flex-col gap-3 rounded-[20px] bg-card p-4">
-          <h2 className="font-display text-xl font-semibold">BNPL or credit line</h2>
+          <h2 className="font-display text-xl font-semibold">Credit card or BNPL</h2>
           {/* Its own Cancel calls onDone too. */}
           <CreditLineForm onDone={done} />
         </div>
@@ -97,7 +97,7 @@ export function DebtsStep({
             onClick={() => setAdding("credit")}
             className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
           >
-            + BNPL or credit line
+            + Credit card or BNPL
           </button>
           <button
             type="button"
@@ -107,7 +107,7 @@ export function DebtsStep({
             + Loan
           </button>
           <p className="text-sm leading-relaxed text-muted">
-            SPayLater, Atome, MariBank, GoTyme · SLoan, MariLoan
+            BPI, BDO · SPayLater, Atome · SLoan, MariLoan
           </p>
         </div>
       )}

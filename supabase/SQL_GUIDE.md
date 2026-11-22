@@ -629,6 +629,28 @@ Expect `true`.
 
 ---
 
+## Step 26 · Credit cards
+
+File: `migrations/0026_credit_cards.sql`
+
+- `accounts.credit_kind`: `card` for a bank credit card (BPI, BDO, Metrobank…), `bnpl` (the
+  default) for SPayLater, Atome and the like. Picked with **Credit card / BNPL** when you add a
+  credit line. A card's purchases go on the statement in full ("Straight") unless you pick
+  installments; it has no BNPL cap and can be paid early.
+
+Until you run this, every credit line is BNPL.
+
+**Check**
+
+```sql
+select exists (select 1 from information_schema.columns
+               where table_name = 'accounts' and column_name = 'credit_kind');
+```
+
+Expect `true`.
+
+---
+
 ## All done?
 
 This one query shows which steps have been run. Every column should be `true`.
@@ -672,7 +694,9 @@ select
   to_regclass('public.payroll_cutoff_changes') is not null  as step_23,
   to_regclass('public.payroll_deductions') is not null      as step_24,
   exists (select 1 from information_schema.columns
-          where table_name = 'installment_plans' and column_name = 'pay_by') as step_25;
+          where table_name = 'installment_plans' and column_name = 'pay_by') as step_25,
+  exists (select 1 from information_schema.columns
+          where table_name = 'accounts' and column_name = 'credit_kind') as step_26;
 ```
 
 The first `false` is the step to run next.

@@ -395,6 +395,9 @@ export function TransactionForm({
 
   function pickFrom(id: string) {
     setAccountId(id);
+    // A credit card goes on its statement in full; BNPL starts at 3 months.
+    const picked = accounts.find((a) => a.id === id);
+    if (picked?.type === "credit_line") setPlanMonths(picked.creditKind === "card" ? 1 : 3);
     setPlanFirstDue(null);
     setLanded("");
     keepTarget(id);
@@ -1210,7 +1213,11 @@ export function TransactionForm({
                   onClick={() => setPlanMonths(m)}
                   className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${planMonths === m ? "bg-ink text-mint" : "bg-mint text-ink hover:bg-sea-tint"}`}
                 >
-                  {m === 1 ? "Pay next month" : `${m} months`}
+                  {m === 1
+                    ? account?.creditKind === "card"
+                      ? "Straight"
+                      : "Pay next month"
+                    : `${m} months`}
                 </button>
               ))}
             </div>
