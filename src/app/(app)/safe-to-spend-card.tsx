@@ -39,6 +39,8 @@ export function SafeToSpendCard({
         ? "text-[2.25rem] sm:text-[2.6rem]"
         : "text-[1.6rem] sm:text-[2rem]";
   const scale = Math.max(week.pool, spent) || 1;
+  // What this week has to spend: the pool, less anything bills ahead need back.
+  const budget = week.pool - week.heldForBills;
   return (
     <section className="relative flex flex-col gap-1.5 overflow-hidden rounded-[28px] bg-sea p-6 text-white lg:p-7">
       <div
@@ -53,16 +55,29 @@ export function SafeToSpendCard({
           >
             {amount}
           </p>
-          <p className="text-[15px] leading-snug font-extrabold">
-            {formatPeso(week.pace)}/day ·{" "}
-            {week.daysLeft === 1 ? "last day" : `${week.daysLeft} days`}
+          {/* Over: nothing left to spread, and the Over by tag says it. */}
+          {left >= 0 && (
+            <p className="text-[15px] leading-snug font-extrabold">
+              {formatPeso(week.pace)}/day ·{" "}
+              {week.daysLeft === 1 ? "last day" : `${week.daysLeft} days`}
+            </p>
+          )}
+          {/* The week's budget: its daily amount when every day gets the same one. */}
+          <p className="text-[15px] leading-snug text-sea-text">
+            Budget{" "}
+            {week.budgetPerDay !== null && week.heldForBills === 0
+              ? `${formatPeso(week.budgetPerDay)}/day · ${formatPeso(budget)} this week`
+              : `${formatPeso(budget)} this week`}
           </p>
           {spent > 0 && (
             <>
-              <p className="text-[15px] leading-snug text-sea-text">
-                {left < 0
-                  ? `Over by ${formatPeso(-left)}`
-                  : `Spent ${formatPeso(spent)} of ${formatPeso(week.pool - week.heldForBills)}`}
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] leading-snug text-sea-text">
+                <span>Spent {formatPeso(spent)}</span>
+                {left < 0 && (
+                  <span className="rounded-full bg-sun px-2 py-0.5 text-xs font-extrabold text-ink">
+                    Over by {formatPeso(-left)}
+                  </span>
+                )}
               </p>
               <span
                 aria-hidden="true"
@@ -206,8 +221,8 @@ export function pongSays(
   }
   // Nothing spent this week yet: the amount says it all, so no bubble.
   if (week.spent === 0) return { mood: "peek", message: "" };
-  if (week.left < 0)
-    return { mood: "worried", message: `Over by ${formatPeso(-week.left)} · new week Monday` };
+  // Over: the card's Over by tag already says it, so Pong just looks worried.
+  if (week.left < 0) return { mood: "worried", message: "" };
   if (week.left === 0) return { mood: "listen", message: "This week's used up · new week Monday" };
   if (week.pace < plan.perDay / 2)
     return { mood: "listen", message: `Go easy · ${formatPeso(week.pace)} a day till Sunday` };
