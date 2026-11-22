@@ -540,19 +540,19 @@ const DEDUCTIONS_MISSING = {
   error: "To add contributions taken from your pay, run step 24 in supabase/SQL_GUIDE.md first.",
 };
 
-/** A contribution's name and amount, or what's wrong with them. */
+/** A contribution's name, amount and kind (when given), or what's wrong with them. */
 function checkDeduction(
   name: string,
   amount: number,
-  kind: DeductionKind,
-): { name: string; amount: number; kind: DeductionKind } | string {
+  kind: DeductionKind | undefined,
+): { name: string; amount: number; kind?: DeductionKind } | string {
   const trimmed = typeof name === "string" ? name.trim() : "";
   if (!trimmed) return "Give it a name, like GSIS.";
   if (trimmed.length > 40) return "Keep the name under 40 characters.";
   if (!(typeof amount === "number" && amount > 0 && amount <= MAX_AMOUNT))
     return "Enter how much your office takes each month.";
-  if (!isDeductionKind(kind)) return "Pick which one it is.";
-  return { name: trimmed, amount: roundCents(amount), kind };
+  if (kind !== undefined && !isDeductionKind(kind)) return "Pick which one it is.";
+  return { name: trimmed, amount: roundCents(amount), ...(kind ? { kind } : {}) };
 }
 
 /**
@@ -562,7 +562,7 @@ function checkDeduction(
  */
 async function writeDeduction(
   supabase: Client,
-  row: { name: string; amount: number; kind: DeductionKind },
+  row: { name: string; amount: number; kind?: DeductionKind },
   write: (row: { name: string; amount: number; kind?: DeductionKind }) => PromiseLike<{
     error: { code?: string } | null;
     found?: boolean;
@@ -606,11 +606,12 @@ export async function addDeduction(
   );
 }
 
+/** Changes a deduction. Without `kind` it keeps the one it has (GSIS stays GSIS). */
 export async function updateDeduction(
   id: string,
   name: string,
   amount: number,
-  kind: DeductionKind = "other",
+  kind?: DeductionKind,
 ): Promise<PayrollResult> {
   const checked = checkDeduction(name, amount, kind);
   if (typeof checked === "string") return { error: checked };

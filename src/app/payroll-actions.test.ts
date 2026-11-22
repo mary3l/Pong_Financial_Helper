@@ -871,16 +871,35 @@ describe("contributions taken from your pay", () => {
   });
 
   it("changes and removes one", async () => {
-    useDb({ payroll_deductions: [{ id: "g", name: "GSIS", amount: 1800 }] });
+    useDb({ payroll_deductions: [{ id: "g", name: "GSIS", amount: 1800, kind: "gsis" }] });
     expect(await updateDeduction("g", "GSIS", 1900)).toEqual({});
     expect(db.table("payroll_deductions")).toEqual([
-      { id: "g", name: "GSIS", amount: 1900, kind: "other" },
+      { id: "g", name: "GSIS", amount: 1900, kind: "gsis" },
     ]);
     expect(await updateDeduction("nope", "GSIS", 1900)).toEqual({
       error: "Couldn't find that contribution.",
     });
     expect(await deleteDeduction("g")).toEqual({});
     expect(db.table("payroll_deductions")).toEqual([]);
+  });
+
+  it("keeps what it's for when only the amount changes, as setup's payslip amounts do", async () => {
+    useDb({
+      payroll_deductions: [
+        { id: "t", name: "Withholding tax", amount: null, kind: "tax", taken: "each" },
+      ],
+    });
+    expect(await updateDeduction("t", "Withholding tax", 1200)).toEqual({});
+    expect(db.table("payroll_deductions")[0]).toMatchObject({ kind: "tax", amount: 1200 });
+  });
+
+  it("changes what it's for when you pick another", async () => {
+    useDb({ payroll_deductions: [{ id: "u", name: "Union", amount: 100, kind: "other" }] });
+    expect(await updateDeduction("u", "SSS", 1500, "sss")).toEqual({});
+    expect(db.table("payroll_deductions")[0]).toMatchObject({ name: "SSS", kind: "sss" });
+    expect(await updateDeduction("u", "SSS", 1500, "boss" as never)).toEqual({
+      error: "Pick which one it is.",
+    });
   });
 
   it("asks for step 24 when the table isn't there", async () => {
