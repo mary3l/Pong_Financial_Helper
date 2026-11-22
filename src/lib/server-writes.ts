@@ -1,4 +1,5 @@
 import "server-only";
+import { CUSTOM_PREFIX, isCategoryFor } from "@/lib/categories";
 
 import type { signedInClient } from "@/lib/auth";
 import { buildSchedule, catchUpDue, type PaymentRow } from "@/lib/installments";
@@ -8,6 +9,23 @@ import { isSpendable, roundCents, type AccountType } from "@/lib/money";
 // the signed-in client from the action that calls them.
 
 export type Client = NonNullable<Awaited<ReturnType<typeof signedInClient>>>;
+
+/** A built-in category, or one of yours (Settings › Categories) of that type. */
+export async function knownCategory(
+  supabase: Client,
+  type: "expense" | "income",
+  key: string,
+): Promise<boolean> {
+  if (isCategoryFor(type, key)) return true;
+  if (!key.startsWith(CUSTOM_PREFIX)) return false;
+  const { data, error } = await supabase
+    .from("user_categories")
+    .select("key")
+    .eq("type", type)
+    .eq("key", key)
+    .maybeSingle();
+  return !error && Boolean(data);
+}
 
 /** Ends the note of a salary loan payment taken from a payday ("GSIS MPL 3 of 24 · from pay"). */
 export const FROM_PAY = " · from pay";

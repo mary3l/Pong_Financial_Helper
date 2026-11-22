@@ -148,14 +148,91 @@ export function isAdjustment(txn: { type: TransactionType; category: string | nu
   return txn.type !== "transfer" && txn.category === ADJUSTMENT;
 }
 
-export function categoriesFor(type: TransactionType): Category[] {
-  if (type === "expense") return EXPENSE_CATEGORIES;
-  if (type === "income") return INCOME_CATEGORIES;
-  return [];
+// ── Your own categories (migration 0027) ─────────────────────────────────
+
+/** A category you added in Settings › Categories. Its key starts with "u_". */
+export type UserCategory = Category & {
+  id: string;
+  type: "expense" | "income";
+  /** Not offered for new entries; old ones still show it. */
+  hidden: boolean;
+};
+
+/** Icons to pick from for your own categories: each a 24×24 stroke path. */
+export const CATEGORY_ICONS: readonly { name: string; icon: string }[] = [
+  ...[...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES]
+    .filter((c, i, all) => all.findIndex((x) => x.icon === c.icon) === i)
+    .map((c) => ({ name: c.label, icon: c.icon })),
+  { name: "Home", icon: "M4 11l8-7 8 7M6 10v10h12V10" },
+  {
+    name: "Pet",
+    icon: "M8 8a2 2 0 1 0 0-.01M16 8a2 2 0 1 0 0-.01M12 20c-3 0-5-2-5-4s2-4 5-4 5 2 5 4-2 4-5 4z",
+  },
+  { name: "School", icon: "M3 9l9-5 9 5-9 5zM7 11v5c3 2 7 2 10 0v-5" },
+  { name: "Car", icon: "M5 16h14M6 16l1.5-5h9L18 16M7 19v-3M17 19v-3" },
+  { name: "Coffee", icon: "M5 9h11v5a5 5 0 0 1-10 0zM16 10h2a2 2 0 0 1 0 4h-2M8 4v2M11 4v2" },
+  { name: "Baby", icon: "M12 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8M8 20c0-2 2-4 4-4s4 2 4 4" },
+];
+
+/** Colours to pick from: the tints the built-in categories use (Tailwind keeps these classes). */
+export const CATEGORY_TINTS: readonly string[] = [
+  "bg-sun-tint",
+  "bg-sea-tint",
+  "bg-sky-tint",
+  "bg-coral-tint",
+  "bg-plum-tint",
+  "bg-mint",
+  "bg-line-soft",
+];
+
+export const CUSTOM_PREFIX = "u_";
+export const CATEGORY_LABEL_MAX = 30;
+
+/** "u_milk_tea" for "Milk tea": the key a new category of yours is saved under. */
+export function categoryKey(label: string): string {
+  const slug = label
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 30);
+  return `${CUSTOM_PREFIX}${slug || "category"}`;
 }
 
-export function isCategoryFor(type: TransactionType, key: unknown): boolean {
-  return categoriesFor(type).some((c) => c.key === key);
+/**
+ * Before signing in: a built-in key, or one shaped like yours (u_milk_tea).
+ * Whether one of yours really exists is checked against the database after.
+ */
+export function couldBeCategory(type: TransactionType, key: unknown): boolean {
+  return (
+    isCategoryFor(type, key) ||
+    (type !== "transfer" && typeof key === "string" && /^u_[a-z0-9_]{1,36}$/.test(key))
+  );
+}
+
+/** Built-in categories, then yours that aren't hidden: what Add and the pickers offer. */
+export function categoriesFor(
+  type: TransactionType,
+  custom: readonly UserCategory[] = [],
+): Category[] {
+  const builtIn =
+    type === "expense" ? EXPENSE_CATEGORIES : type === "income" ? INCOME_CATEGORIES : [];
+  if (type === "transfer") return builtIn;
+  // Yours go before Other, so Other stays last.
+  const mine = custom.filter((c) => c.type === type && !c.hidden);
+  return [...builtIn.slice(0, -1), ...mine, builtIn.at(-1)!];
+}
+
+/** A key you can save under: built-in, or one of yours (hidden ones too, for old entries). */
+export function isCategoryFor(
+  type: TransactionType,
+  key: unknown,
+  custom: readonly UserCategory[] = [],
+): boolean {
+  return (
+    categoriesFor(type).some((c) => c.key === key) ||
+    custom.some((c) => c.type === type && c.key === key)
+  );
 }
 
 export const SUBCATEGORY_MAX = 40;
@@ -198,17 +275,32 @@ export function categoryLabel(
   type: TransactionType,
   key: string | null,
   subcategory?: string | null,
+  custom: readonly UserCategory[] = [],
 ) {
-  const label = categoryInfo(type, key).label;
+  const label = categoryInfo(type, key, custom).label;
   return subcategory && type !== "transfer" ? `${label} › ${subcategory}` : label;
 }
 
-/** Display info for a stored transaction, including old or unknown keys. */
-export function categoryInfo(type: TransactionType, key: string | null) {
-  if (type === "transfer") return { label: "Transfer", ...TRANSFER_ICON };
+/** Display info for a stored transaction, including yours, old or unknown keys. */
+export function categoryInfo(
+  type: TransactionType,
+  key: string | null,
+  custom: readonly UserCategory[] = [],
+): Category {
+  if (type === "transfer") return { key: "transfer", label: "Transfer", ...TRANSFER_ICON };
   if (key === ADJUSTMENT) return ADJUSTMENT_INFO;
-  const found = categoriesFor(type).find((c) => c.key === key);
+  const found =
+    categoriesFor(type).find((c) => c.key === key) ??
+    custom.find((c) => c.type === type && c.key === key);
   if (found) return found;
   const fallback = categoriesFor(type).at(-1)!;
-  return { ...fallback, label: key ?? (type === "income" ? "Income" : "Expense") };
+  // One of yours where the list wasn't passed: "u_milk_tea" reads "Milk tea".
+  const label =
+    key?.startsWith(CUSTOM_PREFIX) && key.length > CUSTOM_PREFIX.length
+      ? key
+          .slice(CUSTOM_PREFIX.length)
+          .replace(/_/g, " ")
+          .replace(/^./, (c) => c.toUpperCase())
+      : (key ?? (type === "income" ? "Income" : "Expense"));
+  return { ...fallback, label };
 }

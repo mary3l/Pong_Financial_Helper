@@ -8,7 +8,7 @@ import {
   type BnplCap,
   type MoneyHistory,
 } from "@/lib/bnpl";
-import { subcategoryOptions } from "@/lib/categories";
+import { subcategoryOptions, type UserCategory } from "@/lib/categories";
 import {
   addDays,
   dateInMonth,
@@ -637,6 +637,38 @@ async function payrollAmounts(
   const payroll = await getPayroll(today);
   if (!payroll || payroll === "missing") return undefined;
   return paydayAmounts({ ...payroll, salaryLoans }, payday, today, until, today);
+}
+
+/**
+ * The categories you added (Settings › Categories), oldest first, hidden ones
+ * too so old entries still show theirs. Once per request. None before
+ * migration 0027.
+ */
+export const getUserCategories = cache(async (): Promise<UserCategory[]> => {
+  const supabase = await db();
+  return readUserCategories(supabase);
+});
+
+/** getUserCategories with a client you already have, e.g. in a Server Action. */
+export async function readUserCategories(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<UserCategory[]> {
+  const { data, error } = await supabase
+    .from("user_categories")
+    .select("id, type, key, label, icon, tint, hidden")
+    .order("created_at");
+  // 42P01 / PGRST205: the table isn't there until migration 0027 is run.
+  if (error?.code === "42P01" || error?.code === "PGRST205") return [];
+  if (error) throw dbError(error);
+  return data.map((c) => ({
+    id: c.id as string,
+    type: c.type === "income" ? "income" : "expense",
+    key: c.key as string,
+    label: c.label as string,
+    icon: c.icon as string,
+    tint: c.tint as string,
+    hidden: Boolean(c.hidden),
+  }));
 }
 
 export async function getBudgets(): Promise<Budget[]> {

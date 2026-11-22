@@ -2,7 +2,7 @@
 
 import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
-import { isCategoryFor } from "@/lib/categories";
+import { couldBeCategory } from "@/lib/categories";
 import { isValidDate } from "@/lib/dates";
 import { MAX_AMOUNT, roundCents } from "@/lib/money";
 import { isValidSchedule, type Frequency } from "@/lib/schedule";
@@ -47,7 +47,7 @@ function validate(input: ScheduledInput): string | null {
   const amount = roundCents(Number(input.amount));
   if (!(amount > 0 && amount <= MAX_AMOUNT)) return "Enter an amount above ₱0.";
   if (input.flow !== "in" && input.flow !== "out") return "Pick income or expense.";
-  if (!isCategoryFor(input.flow === "in" ? "income" : "expense", input.category))
+  if (!couldBeCategory(input.flow === "in" ? "income" : "expense", input.category))
     return "Pick a category.";
   if (input.repeat === "once") {
     if (!isValidDate(input.date)) return "Pick a date.";

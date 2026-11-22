@@ -4,7 +4,14 @@ import { Suspense } from "react";
 import { ForecastChart } from "@/components/forecast-chart";
 import { Pong, type PongMood } from "@/components/pong";
 import { categoryInfo } from "@/lib/categories";
-import { getCapLines, getCashSpent, getPayroll, getPlanInputs, getTransactions } from "@/lib/data";
+import {
+  getUserCategories,
+  getCapLines,
+  getCashSpent,
+  getPayroll,
+  getPlanInputs,
+  getTransactions,
+} from "@/lib/data";
 import { addDays, formatShortDay, today as getToday } from "@/lib/dates";
 import {
   itemEffect,
@@ -46,6 +53,7 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
   await connection();
   const today = getToday();
   // The whole plan and the pay periods; the chart and list still stop at `days`.
+  const custom = await getUserCategories();
   const [{ accounts, inWallets, payday, items }, payroll, todays] = await Promise.all([
     getPlanInputs(today, Math.max(PLAN_DAYS, PERIOD_DAYS)),
     getPayroll(today),
@@ -228,7 +236,7 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
                       {itemLabel(item)}
                       {item.category &&
                         item.kind !== "payday" &&
-                        ` · ${categoryInfo(item.flow === "in" ? "income" : "expense", item.category).label}`}
+                        ` · ${categoryInfo(item.flow === "in" ? "income" : "expense", item.category, custom).label}`}
                       {item.boughtOn &&
                         ` · bought ${formatShortDay(item.boughtOn, today)} on ${accounts.find((a) => a.id === item.lenderId)?.name ?? "your card"}, paid with its bill`}
                       {" · "}balance after{" "}
