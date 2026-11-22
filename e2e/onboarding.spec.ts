@@ -63,7 +63,9 @@ test("setup asks for wallets, savings and what you owe before Home", async ({
   await expect(page.getByRole("region", { name: "Your next paydays" })).toContainText(
     /payday: ₱15,000 − ₱[\d,.]+ = ₱[\d,.]+/,
   );
-  await (await hydrated(page.getByRole("button", { name: "Next" }))).click();
+  // GSIS from the payslip: ₱3,000 instead of the ₱2,700 estimate.
+  await (await hydrated(page.getByRole("textbox", { name: /GSIS/ }))).fill("3000");
+  await page.getByRole("button", { name: "Next" }).click();
 
   await expect(page).toHaveURL("/setup/credit");
   await expect(page.getByRole("heading", { name: "What you owe" })).toBeVisible();
@@ -95,4 +97,10 @@ test("setup asks for wallets, savings and what you owe before Home", async ({
   // Money › Pay: the next payday's take-home, gross minus what's taken.
   await page.goto("/money");
   await expect(page.getByRole("link", { name: /Pay .*taken/ })).toBeVisible();
+
+  // Pay: the typed GSIS is still GSIS (it can go back to the estimate), and
+  // tax is worked out after it: (₱30,000 − ₱3,000 − ₱750 − ₱200) × 12, 15% over ₱250,000, ÷ 12.
+  await page.goto("/payroll");
+  await expect(page.getByRole("button", { name: "Use estimate" })).toHaveCount(1);
+  await expect(page.getByText("₱782.50")).toBeVisible();
 });
