@@ -26,6 +26,7 @@ import {
   categoryInfo,
   categoryLabel,
   cleanSubcategory,
+  type UserCategory,
 } from "@/lib/categories";
 import type { Account, Template, Transaction } from "@/lib/data";
 import { clockOf, formatRelativeDay, formatShortDay, isValidDate } from "@/lib/dates";
@@ -156,6 +157,7 @@ export function TransactionForm({
   people = [],
   startSplit = false,
   subcategories = {},
+  customCategories = [],
 }: {
   accounts: Account[];
   templates: Template[];
@@ -172,6 +174,8 @@ export function TransactionForm({
   startSplit?: boolean;
   /** Subcategories typed before, by category key, most used first. */
   subcategories?: Record<string, string[]>;
+  /** Your own categories (Settings › Categories), offered beside the built-in ones. */
+  customCategories?: UserCategory[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -255,17 +259,15 @@ export function TransactionForm({
   // Save waits for these; its label names the first one missing.
   const missing = !amount
     ? "Enter an amount"
-    : type !== "transfer" && !note.trim()
-      ? "Add a description"
-      : type !== "transfer" && !category
-        ? "Pick a category"
-        : iPaid && !accountId
-          ? type === "income"
-            ? "Pick where it went"
-            : "Pick a wallet"
-          : type === "transfer" && !toAccountId
-            ? "Pick where it goes"
-            : null;
+    : type !== "transfer" && !category
+      ? "Pick a category"
+      : iPaid && !accountId
+        ? type === "income"
+          ? "Pick where it went"
+          : "Pick a wallet"
+        : type === "transfer" && !toAccountId
+          ? "Pick where it goes"
+          : null;
   const shares = splitting ? splitShares(amount, participants, splitMethod, exact) : null;
   // Exact amounts: what's still to be shared out, counting down to ₱0.
   const leftToSplit =
@@ -395,6 +397,9 @@ export function TransactionForm({
 
   function pickFrom(id: string) {
     setAccountId(id);
+    // A credit card goes on its statement in full; BNPL starts at 3 months.
+    const picked = accounts.find((a) => a.id === id);
+    if (picked?.type === "credit_line") setPlanMonths(picked.creditKind === "card" ? 1 : 3);
     setPlanFirstDue(null);
     setLanded("");
     keepTarget(id);
@@ -500,7 +505,10 @@ export function TransactionForm({
       };
       if (withPlan) {
         const result = await saveBnplPurchase(
-          { ...input, note: note.trim() || sub || categoryInfo("expense", category).label },
+          {
+            ...input,
+            note: note.trim() || sub || categoryInfo("expense", category, customCategories).label,
+          },
           {
             months: planMonths,
             ratePerMonth: rate,
@@ -779,7 +787,16 @@ export function TransactionForm({
           >
             {calc.error ??
               (leftToSplit === null || !amount
-                ? summary({ type, category, subcategory: sub, account, toAccount, date, today })
+                ? summary({
+                    type,
+                    category,
+                    subcategory: sub,
+                    account,
+                    toAccount,
+                    date,
+                    today,
+                    custom: customCategories,
+                  })
                 : splitLeftLabel(leftToSplit))}
           </span>
         </div>
@@ -876,7 +893,7 @@ export function TransactionForm({
                   onClick={() => applyTemplate(t)}
                   className="h-9 shrink-0 rounded-full border-2 border-dashed border-line bg-card px-3 text-[13px] font-bold hover:border-sea"
                 >
-                  {templateLabel(t, accounts)}
+                  {templateLabel(t, accounts, customCategories)}
                 </button>
               ))}
             </div>
@@ -885,8 +902,7 @@ export function TransactionForm({
 
         <div className="order-5 flex flex-col gap-1 lg:order-none">
           <label htmlFor="txn-note" className="text-sm font-extrabold">
-            Description
-            {type === "transfer" && <span className="font-semibold text-muted"> (optional)</span>}
+            Description <span className="font-semibold text-muted">(optional)</span>
           </label>
           <input
             id="txn-note"
@@ -922,7 +938,7 @@ export function TransactionForm({
               aria-label="Category"
               className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 lg:mx-0 lg:grid lg:grid-cols-5 lg:overflow-visible lg:px-0"
             >
-              {categoriesFor(type).map((c) => (
+              {categoriesFor(type, customCategories).map((c) => (
                 <button
                   key={c.key}
                   type="button"
@@ -944,7 +960,8 @@ export function TransactionForm({
             {category && (
               <div className="flex flex-col gap-1.5">
                 <span id="subcategory-label" className="text-[13px] font-extrabold text-muted">
-                  {categoryInfo(type, category).label.toUpperCase()} · SUBCATEGORY (OPTIONAL)
+                  {categoryInfo(type, category, customCategories).label.toUpperCase()} · SUBCATEGORY
+                  (OPTIONAL)
                 </span>
                 {subOptions.length > 0 && (
                   <div
@@ -1210,7 +1227,11 @@ export function TransactionForm({
                   onClick={() => setPlanMonths(m)}
                   className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${planMonths === m ? "bg-ink text-mint" : "bg-mint text-ink hover:bg-sea-tint"}`}
                 >
-                  {m === 1 ? "Pay next month" : `${m} months`}
+                  {m === 1
+                    ? account?.creditKind === "card"
+                      ? "Straight"
+                      : "Pay next month"
+                    : `${m} months`}
                 </button>
               ))}
             </div>
@@ -1538,6 +1559,7 @@ function summary({
   toAccount,
   date,
   today,
+  custom,
 }: {
   type: TransactionType;
   category: string | null;
@@ -1546,21 +1568,22 @@ function summary({
   toAccount?: Account;
   date: string;
   today: string;
+  custom: readonly UserCategory[];
 }) {
   const when = isValidDate(date) ? formatRelativeDay(date, today) : "Pick a date";
   if (type === "transfer") {
     return `${account?.name ?? "?"} → ${toAccount?.name ?? "?"} · ${when}`;
   }
-  return [category && categoryLabel(type, category, subcategory), account?.name, when]
+  return [category && categoryLabel(type, category, subcategory, custom), account?.name, when]
     .filter(Boolean)
     .join(" · ");
 }
 
-function templateLabel(t: Template, accounts: Account[]) {
+function templateLabel(t: Template, accounts: Account[], custom: readonly UserCategory[]) {
   const name = (id: string | null) => accounts.find((a) => a.id === id)?.name ?? "";
   const amount = formatMoney(t.amount, accounts.find((a) => a.id === t.accountId)?.currency);
   if (t.type === "transfer") return `${name(t.accountId)} → ${name(t.toAccountId)} · ${amount}`;
-  const what = t.note || t.subcategory || categoryInfo(t.type, t.category).label;
+  const what = t.note || t.subcategory || categoryInfo(t.type, t.category, custom).label;
   return `${what} · ${amount} · ${name(t.accountId)}`;
 }
 

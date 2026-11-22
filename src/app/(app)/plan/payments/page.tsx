@@ -68,7 +68,10 @@ async function Payments({ searchParams }: Pick<PageProps<"/plan/payments">, "sea
     getCapLines(accounts, today),
   ]);
   const { plan, held, capPerDay, start } = planToday({ inWallets, cash, items, today, lines });
-  const creditLines = new Set(accounts.filter((a) => a.type === "credit_line").map((a) => a.id));
+  // BNPL bills are paid on their due day; a credit card can be paid early.
+  const creditLines = new Set(
+    accounts.filter((a) => a.type === "credit_line" && a.creditKind !== "card").map((a) => a.id),
+  );
   const views = (
     <SegmentLinks
       label="Show payments as"

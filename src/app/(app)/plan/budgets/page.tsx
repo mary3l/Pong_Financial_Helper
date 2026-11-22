@@ -1,7 +1,7 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { categoryInfo } from "@/lib/categories";
-import { getBudgets, getTransactions } from "@/lib/data";
+import { getBudgets, getTransactions, getUserCategories } from "@/lib/data";
 import {
   daysBetween,
   formatPeriod,
@@ -38,9 +38,10 @@ async function Budgets({ searchParams }: Pick<PageProps<"/plan/budgets">, "searc
   const period = view === "month" ? monthContaining(today) : periodContaining(today);
   const times = view === "month" ? 2 : 1;
 
-  const [budgets, transactions] = await Promise.all([
+  const [budgets, transactions, custom] = await Promise.all([
     getBudgets(),
     getTransactions({ from: period.start, to: period.end }),
+    getUserCategories(),
   ]);
   const spent = new Map<string, number>();
   for (const t of transactions) {
@@ -100,13 +101,16 @@ async function Budgets({ searchParams }: Pick<PageProps<"/plan/budgets">, "searc
         </section>
       )}
 
-      <BudgetManager rows={rows} view={view} />
+      <BudgetManager rows={rows} view={view} custom={custom} />
 
       {unbudgeted.length > 0 && (
         <p className="text-sm text-muted">
           <strong className="text-ink">No budget:</strong>{" "}
           {unbudgeted
-            .map(([key, amount]) => `${categoryInfo("expense", key).label} ${formatPeso(amount)}`)
+            .map(
+              ([key, amount]) =>
+                `${categoryInfo("expense", key, custom).label} ${formatPeso(amount)}`,
+            )
             .join(" · ")}
         </p>
       )}

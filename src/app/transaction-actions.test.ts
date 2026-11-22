@@ -55,13 +55,7 @@ describe("saveTransaction", () => {
     ["bad date", { occurredOn: "2026-02-30" }, "Pick a date."],
     ["bad time", { occurredTime: "25:00" }, "Check the time."],
     ["long description", { note: "x".repeat(121) }, "Keep the description to 120 characters."],
-    ["no description", { note: "   " }, "Add a description."],
     ["income with no category", { type: "income", category: null }, "Pick a category."],
-    [
-      "income with no description",
-      { type: "income", category: "salary", note: "" },
-      "Add a description.",
-    ],
   ])("rejects %s without touching the database", async (_, patch, error) => {
     expect(await saveTransaction({ ...expense, ...patch })).toEqual({ error });
     expect(createClient).not.toHaveBeenCalled();
@@ -87,6 +81,21 @@ describe("saveTransaction", () => {
     useDb({}, { user: null });
     expect(await saveTransaction(expense)).toEqual({ error: SIGNED_OUT_ERROR });
     expect(db.writeLog()).toEqual([]);
+  });
+
+  it("takes one of your own categories, but not a made-up one", async () => {
+    useDb({
+      user_categories: [{ id: "c1", type: "expense", key: "u_milk_tea", label: "Milk tea" }],
+    });
+    expect(await saveTransaction({ ...expense, category: "u_milk_tea" })).toEqual({});
+    expect(db.table("transactions")[0]).toMatchObject({ category: "u_milk_tea" });
+    expect(await saveTransaction({ ...expense, category: "u_vape" })).toEqual({
+      error: "Pick a category.",
+    });
+    // Yours are for their own type only.
+    expect(await saveTransaction({ ...expense, type: "income", category: "u_milk_tea" })).toEqual({
+      error: "Pick a category.",
+    });
   });
 
   it("inserts a cleaned-up row and refreshes", async () => {

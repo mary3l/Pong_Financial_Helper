@@ -2,13 +2,13 @@
 
 import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
-import { EXPENSE_CATEGORIES, isCategoryFor } from "@/lib/categories";
+import { couldBeCategory } from "@/lib/categories";
 import { isValidDate, today } from "@/lib/dates";
 import { monthlyDates, recurringCategory, splitAmount } from "@/lib/forecast";
 import { MAX_AMOUNT, roundCents } from "@/lib/money";
 import { payInstallments, undoInstallment } from "@/app/credit-actions";
 import { deleteTransaction } from "@/app/transaction-actions";
-import { FROM_PAY, pickWallet, type Client } from "@/lib/server-writes";
+import { FROM_PAY, knownCategory, pickWallet, type Client } from "@/lib/server-writes";
 
 export type PlanResult = { error?: string };
 
@@ -238,7 +238,7 @@ export async function addPlannedExpense(input: PlannedInput): Promise<PlanResult
   const amount = roundCents(Number(input.amount));
   if (name.length > 50) return { error: "Keep the name to 50 characters." };
   if (!(amount > 0 && amount <= MAX_AMOUNT)) return { error: "Enter an amount above ₱0." };
-  if (!isCategoryFor("expense", input.category)) return { error: "Pick a category." };
+  if (!couldBeCategory("expense", input.category)) return { error: "Pick a category." };
   if (!isValidDate(input.first) || input.first < today())
     return { error: "Pick today or a later date." };
   if (!Number.isInteger(input.months) || input.months < 1 || input.months > 24) {
@@ -269,12 +269,13 @@ export async function addPlannedExpense(input: PlannedInput): Promise<PlanResult
 
 /** Sets the budget per kinsenas for an expense category. */
 export async function saveBudget(category: string, amount: number): Promise<PlanResult> {
-  if (!EXPENSE_CATEGORIES.some((c) => c.key === category)) return { error: "Pick a category." };
+  if (!couldBeCategory("expense", category)) return { error: "Pick a category." };
   const value = roundCents(Number(amount));
   if (!(value > 0 && value <= MAX_AMOUNT)) return { error: "Enter an amount above ₱0." };
 
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
+  if (!(await knownCategory(supabase, "expense", category))) return { error: "Pick a category." };
 
   const { error } = await supabase
     .from("budgets")

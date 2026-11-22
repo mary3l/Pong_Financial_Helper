@@ -112,7 +112,8 @@ describe("TransactionForm", () => {
   it("guesses nothing: Save names what's missing, in order", async () => {
     const user = renderForm();
     await user.keyboard("150");
-    expect(submitButton()).toHaveTextContent("Add a description");
+    // Description is optional.
+    expect(submitButton()).toHaveTextContent("Pick a category");
     expect(submitButton()).toBeDisabled();
     await describeIt(user, "Lunch");
     expect(submitButton()).toHaveTextContent("Pick a category");
@@ -293,6 +294,29 @@ describe("TransactionForm", () => {
     expect(saveBnplPurchase).toHaveBeenCalledWith(
       expect.objectContaining({ accountId: "spl", amount: 3000, note: "Shoes" }),
       expect.objectContaining({ months: 3, ratePerMonth: 0, payFromAccountId: null }),
+    );
+  });
+
+  it("puts a credit card purchase on the statement in full by default", async () => {
+    const bpi = account("bpi", "BPI", {
+      type: "credit_line",
+      creditKind: "card",
+      dueDay: 20,
+      cutoffDay: 5,
+    });
+    const user = renderForm({ accounts: [cash, bpi, spl] });
+    const payWith = within(screen.getByRole("group", { name: "Pay with" }));
+    expect(payWith.getByText("Credit cards")).toBeInTheDocument();
+    await pick(user, "Pay with", "BPI");
+    const plan = within(screen.getByRole("group", { name: "Payment plan" }));
+    expect(plan.getByRole("button", { name: "Straight" })).toHaveAttribute("aria-pressed", "true");
+    await user.keyboard("2500");
+    await describeIt(user, "Groceries run");
+    await pick(user, "Category", /Groceries/);
+    await user.click(submitButton());
+    expect(saveBnplPurchase).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: "bpi", amount: 2500 }),
+      expect.objectContaining({ months: 1, ratePerMonth: 0 }),
     );
   });
 

@@ -105,6 +105,23 @@ describe("addCreditLine", () => {
     expect(refresh).toHaveBeenCalledOnce();
   });
 
+  it("saves a credit card as a card", async () => {
+    const result = await addCreditLine({ ...line, name: "BPI", kind: "card" });
+    expect(result).toEqual({ id: expect.any(String) });
+    expect(db.table("accounts")[0]).toMatchObject({ name: "BPI", credit_kind: "card" });
+  });
+
+  it("asks for step 26 for a card before migration 0026, leaving nothing behind", async () => {
+    db.respond((q) =>
+      q.table === "accounts" && q.op === "update" ? fail("42703", "no credit_kind") : undefined,
+    );
+    expect(await addCreditLine({ ...line, kind: "card" })).toEqual({
+      error:
+        "To add a credit card, run step 26 in supabase/SQL_GUIDE.md first. Or add it as BNPL for now.",
+    });
+    expect(db.table("accounts")).toEqual([]);
+  });
+
   it("won't drop a cutoff day before migration 0019", async () => {
     db.respond((q) =>
       q.table === "accounts" ? fail("PGRST204", "column 'cutoff_day'") : undefined,

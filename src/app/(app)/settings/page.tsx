@@ -6,7 +6,7 @@ import { ChevronIcon } from "@/components/icons";
 import { ThemePicker } from "@/components/theme";
 import { WidgetSetup } from "@/components/widget-setup";
 import { getCurrentUser } from "@/lib/auth";
-import { getBudgets, getRecurringItems, getWidgetKey } from "@/lib/data";
+import { getUserCategories, getBudgets, getRecurringItems, getWidgetKey } from "@/lib/data";
 import { formatShortDay, today } from "@/lib/dates";
 import { formatPeso } from "@/lib/money";
 import { describeSchedule, hasOwnAmounts } from "@/lib/schedule";
@@ -31,6 +31,9 @@ export default function SettingsPage() {
         />
         <Suspense fallback={<Row title="Budgets" href="/plan/budgets" />}>
           <BudgetsRow />
+        </Suspense>
+        <Suspense fallback={<Row title="Categories" href="/settings/categories" />}>
+          <CategoriesRow />
         </Suspense>
         <Row
           title="Can I afford this?"
@@ -166,6 +169,17 @@ async function PaydayRow() {
       title="Payday & bills"
       detail={`${pay} · ${bills.length} ${bills.length === 1 ? "bill" : "bills"}`}
       href="/settings/payday"
+    />
+  );
+}
+
+async function CategoriesRow() {
+  const mine = (await getUserCategories()).filter((c) => !c.hidden);
+  return (
+    <Row
+      title="Categories"
+      detail={mine.length ? `${mine.length} of your own` : "Add your own"}
+      href="/settings/categories"
     />
   );
 }

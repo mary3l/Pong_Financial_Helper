@@ -1,6 +1,6 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { getScheduled } from "@/lib/data";
+import { getScheduled, getUserCategories } from "@/lib/data";
 import { today as getToday } from "@/lib/dates";
 import { PlanTabs } from "../plan-tabs";
 import { ScheduledManager } from "./scheduled-manager";
@@ -30,9 +30,10 @@ async function Scheduled({ searchParams }: Pick<PageProps<"/plan/scheduled">, "s
   // Read the clock only at request time (Cache Components).
   await connection();
   const today = getToday();
-  const [{ edit }, { accounts, recurring, planned, items, payroll }] = await Promise.all([
+  const [{ edit }, { accounts, recurring, planned, items, payroll }, custom] = await Promise.all([
     searchParams,
     getScheduled(today),
+    getUserCategories(),
   ]);
   return (
     <ScheduledManager
@@ -44,6 +45,7 @@ async function Scheduled({ searchParams }: Pick<PageProps<"/plan/scheduled">, "s
       today={today}
       // Edit on Plan's rows: opens that item's form.
       startEditing={typeof edit === "string" ? edit : null}
+      custom={custom}
     />
   );
 }

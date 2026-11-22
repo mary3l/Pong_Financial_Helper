@@ -7,7 +7,7 @@ import {
   SUBCATEGORY_MAX,
   categoryInfo,
   cleanSubcategory,
-  isCategoryFor,
+  couldBeCategory,
 } from "@/lib/categories";
 import { isValidClock, isValidDate, today } from "@/lib/dates";
 import { bnplFee, buildSchedule, catchUpDue } from "@/lib/installments";
@@ -18,7 +18,13 @@ import {
   type AccountType,
   type TransactionType,
 } from "@/lib/money";
-import { billPurchase, creditTerms, savePlan, type Client } from "@/lib/server-writes";
+import {
+  billPurchase,
+  creditTerms,
+  knownCategory,
+  savePlan,
+  type Client,
+} from "@/lib/server-writes";
 
 export type TransactionInput = {
   type: TransactionType;
@@ -44,6 +50,16 @@ export type ActionResult = {
 
 const NOTE_MAX = 120;
 
+/** The row's category is built-in or really one of yours. */
+async function categoryOk(
+  supabase: Client,
+  row: { type: TransactionType; category: string | null },
+): Promise<boolean> {
+  return (
+    row.type === "transfer" || !row.category || knownCategory(supabase, row.type, row.category)
+  );
+}
+
 function validate(input: TransactionInput) {
   const { type, accountId, occurredOn } = input;
   if (type !== "expense" && type !== "income" && type !== "transfer") {
@@ -64,7 +80,7 @@ function validate(input: TransactionInput) {
   if (type === "transfer" && !toAccountId) return { error: "Pick where the money goes." };
   if (toAccountId === accountId) return { error: "Pick two different wallets." };
   const category = type === "transfer" ? null : input.category;
-  if (category !== null && !isCategoryFor(type, category)) return { error: "Pick a category." };
+  if (category !== null && !couldBeCategory(type, category)) return { error: "Pick a category." };
   if (type !== "transfer" && !category) return { error: "Pick a category." };
   const subcategory = category ? cleanSubcategory(input.subcategory) : null;
   if (subcategory && subcategory.length > SUBCATEGORY_MAX) {
@@ -77,8 +93,6 @@ function validate(input: TransactionInput) {
     .replace(/\s+/g, " ")
     .trim();
   if (note.length > NOTE_MAX) return { error: `Keep the description to ${NOTE_MAX} characters.` };
-  // What it was for, so Activity reads "Lunch at Jollibee", not just "Food". Transfers can go without.
-  if (type !== "transfer" && !note) return { error: "Add a description." };
 
   return {
     row: {
@@ -166,6 +180,7 @@ export async function saveTransaction(
 
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
+  if (!(await categoryOk(supabase, checked.row))) return { error: "Pick a category." };
 
   // What it was before an edit, to keep its bill in step.
   const before = id
@@ -379,6 +394,7 @@ export async function saveBnplPurchase(
 
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
+  if (!(await categoryOk(supabase, checked.row))) return { error: "Pick a category." };
 
   const ids = [checked.row.account_id, plan.payFromAccountId].filter((id): id is string =>
     Boolean(id),
