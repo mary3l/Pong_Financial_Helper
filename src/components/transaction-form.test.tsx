@@ -296,6 +296,29 @@ describe("TransactionForm", () => {
     );
   });
 
+  it("puts a credit card purchase on the statement in full by default", async () => {
+    const bpi = account("bpi", "BPI", {
+      type: "credit_line",
+      creditKind: "card",
+      dueDay: 20,
+      cutoffDay: 5,
+    });
+    const user = renderForm({ accounts: [cash, bpi, spl] });
+    const payWith = within(screen.getByRole("group", { name: "Pay with" }));
+    expect(payWith.getByText("Credit cards")).toBeInTheDocument();
+    await pick(user, "Pay with", "BPI");
+    const plan = within(screen.getByRole("group", { name: "Payment plan" }));
+    expect(plan.getByRole("button", { name: "Straight" })).toHaveAttribute("aria-pressed", "true");
+    await user.keyboard("2500");
+    await describeIt(user, "Groceries run");
+    await pick(user, "Category", /Groceries/);
+    await user.click(submitButton());
+    expect(saveBnplPurchase).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: "bpi", amount: 2500 }),
+      expect.objectContaining({ months: 1, ratePerMonth: 0 }),
+    );
+  });
+
   it("logs a scheduled payday's link only for the type it was opened with", async () => {
     const prefill = {
       type: "income" as const,

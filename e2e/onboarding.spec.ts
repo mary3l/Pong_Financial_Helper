@@ -71,7 +71,7 @@ test("setup asks for wallets, savings and what you owe before Home", async ({
   await (await hydrated(page.getByRole("button", { name: "+ Loan" }))).click();
   await expect(page.getByRole("button", { name: "Taken from my salary" })).toBeVisible();
   await page.getByRole("button", { name: "Cancel" }).click();
-  await (await hydrated(page.getByRole("button", { name: "+ BNPL or credit line" }))).click();
+  await (await hydrated(page.getByRole("button", { name: "+ Credit card or BNPL" }))).click();
   await page.getByLabel("You owe on it now").fill("1500");
   await page.getByRole("button", { name: "Add credit line" }).click();
   const owed = page.getByRole("region", { name: "What you owe so far" });

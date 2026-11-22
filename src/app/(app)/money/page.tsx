@@ -66,9 +66,14 @@ async function Wallets() {
   const debts = active.filter((a) => isDebt(a.type));
   const debtGroups = [
     {
+      key: "card",
+      label: "Credit cards",
+      accounts: debts.filter((a) => a.type === "credit_line" && a.creditKind === "card"),
+    },
+    {
       key: "bnpl",
       label: "Buy now, pay later",
-      accounts: debts.filter((a) => a.type === "credit_line"),
+      accounts: debts.filter((a) => a.type === "credit_line" && a.creditKind !== "card"),
     },
     { key: "loan", label: "Loans", accounts: debts.filter((a) => a.type === "loan") },
   ].filter((g) => g.accounts.length > 0);
@@ -258,7 +263,7 @@ async function Wallets() {
               href="/money/credit/new"
               className="flex h-[52px] items-center justify-center rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
             >
-              + BNPL &amp; installments (SPayLater, Atome, MariBank)
+              + Credit card or BNPL
             </Link>
             <Link
               href="/money/loan/new"
@@ -357,7 +362,7 @@ function debtDetail(account: Account, plans: InstallmentPlan[], today: string): 
         )
       : 0;
     return [
-      "BNPL",
+      account.creditKind === "card" ? "Credit card" : "BNPL",
       account.creditLimit ? `${formatPeso(used)} of ${formatPeso(account.creditLimit)} used` : null,
       next ? `${formatPeso(bill)} due ${formatShortDay(next.dueOn, today)}` : null,
     ]

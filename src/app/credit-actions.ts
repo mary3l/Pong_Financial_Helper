@@ -45,7 +45,22 @@ export type CreditLineInput = {
   cutoffDay: number | null;
   /** What you owe on it right now. */
   used: number;
+  /** A credit card or BNPL (migration 0026). Missing: leave it as it is (BNPL when new). */
+  kind?: "bnpl" | "card";
 };
+
+const CARDS_MISSING =
+  "To add a credit card, run step 26 in supabase/SQL_GUIDE.md first. Or add it as BNPL for now.";
+
+/** Sets a credit line's kind, in its own write so the rest saves before migration 0026 too. */
+async function saveKind(supabase: Client, id: string, kind: "bnpl" | "card" | undefined) {
+  if (!kind) return null;
+  const { error } = await supabase.from("accounts").update({ credit_kind: kind }).eq("id", id);
+  if (!error) return null;
+  // Before 0026 every line is BNPL: only asking for a card needs the migration.
+  if (isMissingColumn(error)) return kind === "card" ? CARDS_MISSING : null;
+  return "Couldn't save that. Please try again.";
+}
 
 const isDay = (day: number | null) =>
   day === null || (Number.isInteger(day) && day >= 1 && day <= 31);
@@ -101,6 +116,13 @@ export async function addCreditLine(input: CreditLineInput): Promise<CreditResul
   );
   if (saved.error?.code === "missing") return { error: CUTOFF_MISSING };
   if (saved.error || !("data" in saved) || !saved.data) return FAILED;
+  if (input.kind === "card") {
+    const problem = await saveKind(supabase, saved.data.id, "card");
+    if (problem) {
+      await supabase.from("accounts").delete().eq("id", saved.data.id);
+      return { error: problem };
+    }
+  }
 
   refresh();
   return { id: saved.data.id };
@@ -143,6 +165,8 @@ export async function updateCreditLine(id: string, input: CreditLineInput): Prom
   );
   if (error?.code === "missing") return { error: CUTOFF_MISSING };
   if (error) return FAILED;
+  const kindProblem = await saveKind(supabase, id, input.kind);
+  if (kindProblem) return { error: kindProblem };
 
   // A new cutoff or due day: purchases logged before it move to the bill it puts them on.
   await redatePlans(supabase, id);

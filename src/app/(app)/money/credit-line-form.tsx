@@ -12,7 +12,7 @@ import { bnplFirstDue } from "@/lib/installments";
 import { parseAmount } from "@/lib/money";
 
 // BNPL apps, and banks that turn purchases into installments.
-const PROVIDERS = [
+const BNPL_PROVIDERS = [
   "SPayLater",
   "Atome",
   "MariBank Credit",
@@ -20,10 +20,19 @@ const PROVIDERS = [
   "GGives",
   "Home Credit",
 ];
+// Bank credit cards: revolving, paid by statement.
+const CARD_PROVIDERS = ["BPI", "BDO", "Metrobank", "UnionBank", "Security Bank", "RCBC"];
+
+const KINDS = [
+  { value: "card", label: "Credit card" },
+  { value: "bnpl", label: "BNPL" },
+] as const;
 
 /** Adds a BNPL credit line, or edits `account`. */
 export function CreditLineForm({ account, onDone }: { account?: Account; onDone?: () => void }) {
   const router = useRouter();
+  const [kind, setKind] = useState<"bnpl" | "card">(account?.creditKind ?? "bnpl");
+  const PROVIDERS = kind === "card" ? CARD_PROVIDERS : BNPL_PROVIDERS;
   const [name, setName] = useState(account?.name ?? "SPayLater");
   const [limit, setLimit] = useState(account?.creditLimit ? String(account.creditLimit) : "");
   const [dueDay, setDueDay] = useState(account?.dueDay ? String(account.dueDay) : "5");
@@ -48,6 +57,7 @@ export function CreditLineForm({ account, onDone }: { account?: Account; onDone?
       dueDay: dueDay ? Number(dueDay) : null,
       cutoffDay: cutoffDay ? Number(cutoffDay) : null,
       used: usedValue,
+      kind,
     };
     startTransition(async () => {
       const result = account
@@ -61,6 +71,28 @@ export function CreditLineForm({ account, onDone }: { account?: Account; onDone?
 
   return (
     <form onSubmit={save} className="flex flex-col gap-3">
+      <div
+        role="group"
+        aria-label="Kind"
+        className="grid grid-cols-2 gap-1 rounded-2xl bg-mint p-1"
+      >
+        {KINDS.map((k) => (
+          <button
+            key={k.value}
+            type="button"
+            aria-pressed={kind === k.value}
+            onClick={() => {
+              if (k.value === kind) return;
+              setKind(k.value);
+              // A new line takes the first provider of its kind.
+              if (!account) setName(k.value === "card" ? CARD_PROVIDERS[0] : BNPL_PROVIDERS[0]);
+            }}
+            className={`h-10 rounded-xl text-sm ${kind === k.value ? "bg-sea font-extrabold text-white" : "font-bold text-muted hover:text-ink"}`}
+          >
+            {k.label}
+          </button>
+        ))}
+      </div>
       {!account && (
         <div role="group" aria-label="Provider" className="flex flex-wrap gap-2">
           {[...PROVIDERS, "Other"].map((p) => (
