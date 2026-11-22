@@ -261,7 +261,7 @@ export function PaydayForm({
                   href="/payroll"
                   className="text-sm font-extrabold text-sea-dark hover:underline"
                 >
-                  Change in Payroll calculator ›
+                  Change in Pay ›
                 </Link>
               </div>
             ) : (

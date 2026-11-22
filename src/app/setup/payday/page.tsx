@@ -8,7 +8,7 @@ import { PaydayForm } from "./payday-form";
 
 export const metadata = { title: "Payday and bills · Pong Money" };
 
-// Step 2 of setup. Editing it later is Settings › Payday & bills
+// Step 6 of setup: regular bills, and payday if Your pay was skipped. Editing it later is Settings › Payday & bills
 // (/settings/payday); old ?from=settings links go there.
 export default function SetupPaydayPage({ searchParams }: PageProps<"/setup/payday">) {
   return (
@@ -29,8 +29,8 @@ async function Payday({ searchParams }: Pick<PageProps<"/setup/payday">, "search
   return (
     <>
       <SetupHeader
-        step={2}
-        title="Payday and regular bills"
+        step={6}
+        title={payroll && payroll !== "missing" ? "Regular bills" : "Payday and regular bills"}
         message="These tell me how long your money has to last. You can change them anytime."
         mood="listen"
       />

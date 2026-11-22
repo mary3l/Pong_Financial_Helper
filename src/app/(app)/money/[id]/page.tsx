@@ -131,6 +131,8 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
   const nextTotal = nextDue?.total ?? 0;
   // Pay bill is your part; each person pays theirs. Something you haven't bought yet isn't on it.
   const nextMine = nextBill.filter((p) => !payerOf(p.id) && !p.boughtOn);
+  // A salary loan: your office takes its payments from your pay, so there's nothing to pay here.
+  const fromPay = plans.some((p) => p.kind === "loan" && p.payBy === "salary");
   const nextMineTotal = roundCents(nextMine.reduce((sum, p) => sum + (p.amount ?? 0), 0));
   const nextTheirs = [
     ...new Map(
@@ -350,13 +352,28 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
             <span
               className={`text-[13px] font-bold ${next.dueOn < today ? "text-coral-text" : "text-muted"}`}
             >
-              Next bill · {formatShortDay(next.dueOn, today)} · {dueText(next.dueOn, today)}
-              {nextBill.length > 1 && ` · ${nextBill.length} items`}
+              {fromPay ? (
+                <>Next payment · last payday of {formatMonthYear(next.dueOn)}</>
+              ) : (
+                <>
+                  Next bill · {formatShortDay(next.dueOn, today)} · {dueText(next.dueOn, today)}
+                  {nextBill.length > 1 && ` · ${nextBill.length} items`}
+                </>
+              )}
             </span>
             <span className="font-display text-2xl font-semibold">{formatPeso(nextTotal)}</span>
           </div>
-          {nextMine.length > 0 && (
-            <PayBillButton ids={nextMine.map((p) => p.id)} total={nextMineTotal} />
+          {fromPay ? (
+            <Link
+              href="/payroll"
+              className="flex h-10 items-center rounded-full bg-sea-tint px-4 text-sm font-extrabold text-sea-dark"
+            >
+              Taken from your pay
+            </Link>
+          ) : (
+            nextMine.length > 0 && (
+              <PayBillButton ids={nextMine.map((p) => p.id)} total={nextMineTotal} />
+            )
           )}
           {nextTheirs.map((t) => (
             <div
@@ -371,11 +388,13 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
           ))}
         </section>
       )}
-      <p className="-mt-2 text-xs leading-relaxed text-muted">
-        Pay bill = a transfer from your wallet to {account.name}. It&apos;s not a new expense: the
-        expense was logged when you {credit ? "bought the item" : "spent the money"}. Only the fee
-        or interest part is an expense.
-      </p>
+      {!fromPay && (
+        <p className="-mt-2 text-xs leading-relaxed text-muted">
+          Pay bill = a transfer from your wallet to {account.name}. It&apos;s not a new expense: the
+          expense was logged when you {credit ? "bought the item" : "spent the money"}. Only the fee
+          or interest part is an expense.
+        </p>
+      )}
 
       {credit && !account.archived && (
         <UpcomingPayments
@@ -560,9 +579,11 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
                     {formatShortDay(bill.dueOn, today)}
                   </span>
                   <span
-                    className={`text-[13px] ${bill.dueOn < today ? "font-bold text-coral-text" : "text-muted"}`}
+                    className={`text-[13px] ${bill.dueOn < today && !fromPay ? "font-bold text-coral-text" : "text-muted"}`}
                   >
-                    {dueText(bill.dueOn, today)}
+                    {fromPay
+                      ? `from the last payday of ${formatMonthYear(bill.dueOn)}`
+                      : dueText(bill.dueOn, today)}
                   </span>
                 </span>
                 {bill.items.length > 1 && (
@@ -631,6 +652,11 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
                           </Link>
                         ) : payer ? (
                           <TheyPaidButton ids={[item.id]} label="They paid" />
+                        ) : fromPay ? (
+                          // Paid when you log that payday: Mark paid here would pay it twice.
+                          <span className="shrink-0 text-[13px] font-bold text-muted">
+                            From pay
+                          </span>
                         ) : (
                           <LogButton item={item} accounts={accounts} />
                         )}
@@ -645,7 +671,9 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
           <p className="text-xs text-muted">
             {credit
               ? `A purchase you log with + lands on the bill it's due with, and that bill's total goes up. So does one you plan in Plan › Scheduled with Paid from ${account.name}, by its statement cutoff. All of these are in your forecast and Safe to spend${plans.some((p) => p.personId) ? ", except what someone else pays: their money goes straight to the bill" : ""}.`
-              : "All of these are in your forecast and Safe to spend."}
+              : fromPay
+                ? "Your office takes each one from your pay. Logging that payday pays it."
+                : "All of these are in your forecast and Safe to spend."}
           </p>
         </section>
       )}
@@ -686,4 +714,13 @@ function ordinal(n: number): string {
   const tens = n % 100;
   if (tens >= 11 && tens <= 13) return `${n}th`;
   return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+}
+
+/** "December 2026" for 2026-12-15. */
+function formatMonthYear(date: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${date}T00:00:00Z`));
 }

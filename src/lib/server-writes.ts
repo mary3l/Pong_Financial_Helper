@@ -9,6 +9,9 @@ import { isSpendable, roundCents, type AccountType } from "@/lib/money";
 
 export type Client = NonNullable<Awaited<ReturnType<typeof signedInClient>>>;
 
+/** Ends the note of a salary loan payment taken from a payday ("GSIS MPL 3 of 24 · from pay"). */
+export const FROM_PAY = " · from pay";
+
 /**
  * The wallet money comes from or lands in for a scheduled item: the one
  * saved with it if it's still in use, else your first cash, bank or e-wallet.
@@ -45,6 +48,8 @@ export async function savePlan(
     sourceTxnId: string | null;
     /** Someone else pays it (migration 0019). */
     personId?: string | null;
+    /** Your office takes its payments from your pay (migration 0025). Missing: from a wallet. */
+    payBy?: "wallet" | "salary";
     rows: PaymentRow[];
   },
 ): Promise<string | null> {
@@ -61,6 +66,7 @@ export async function savePlan(
       pay_from_account_id: plan.payFromAccountId,
       source_txn_id: plan.sourceTxnId,
       ...(plan.personId ? { person_id: plan.personId } : {}),
+      ...(plan.payBy === "salary" ? { pay_by: "salary" } : {}),
     })
     .select("id")
     .single();

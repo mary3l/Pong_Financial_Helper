@@ -9,6 +9,7 @@ import { loanSchedule, misdatedPlans, upcomingSchedule } from "@/lib/installment
 import { checkLoan, editLoan, exactRate } from "@/lib/loan-edit";
 import { MAX_AMOUNT, isSpendable, roundCents, type AccountType } from "@/lib/money";
 import {
+  FROM_PAY,
   billPurchase,
   creditTerms,
   isMissingColumn,
@@ -378,6 +379,8 @@ export type LoanInput = {
   payFromAccountId: string | null;
   /** Payments made before you added it here. */
   alreadyPaid: number;
+  /** "salary": your office takes the payments from your pay (GSIS MPL, a Pag-IBIG salary loan). */
+  payBy?: "wallet" | "salary";
 };
 
 /**
@@ -435,8 +438,9 @@ export async function addLoan(input: LoanInput): Promise<CreditResult> {
     name,
     principal: received,
     months: input.months,
-    payFromAccountId: input.payFromAccountId,
+    payFromAccountId: input.payBy === "salary" ? null : input.payFromAccountId,
     sourceTxnId,
+    payBy: input.payBy === "salary" ? "salary" : "wallet",
     rows,
   });
   if (!saved) {
@@ -696,6 +700,8 @@ export async function updateLoan(accountId: string, input: LoanUpdate): Promise<
 export async function payInstallments(
   ids: string[],
   fromAccountId?: string,
+  /** A salary loan's payment, taken from the payday being logged: noted so undoing the payday finds it. */
+  fromPay = false,
 ): Promise<CreditResult> {
   if (!ids.length) return {};
   const supabase = await signedInClient();
@@ -728,7 +734,9 @@ export async function payInstallments(
     const wallet = fromAccountId ?? (await pickWallet(supabase, plan.pay_from_account_id));
     if (!wallet) return { error: "Add a wallet first, so I know where the money comes from." };
 
-    const note = plan.months > 1 ? `${plan.name} ${p.seq} of ${plan.months}` : plan.name;
+    const note =
+      (plan.months > 1 ? `${plan.name} ${p.seq} of ${plan.months}` : plan.name) +
+      (fromPay ? FROM_PAY : "");
     const created: string[] = [];
     let transferId: string | null = null;
     let feeId: string | null = null;

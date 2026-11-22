@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { payInstallments, undoInstallment } from "@/app/credit-actions";
 import { settlePerson } from "@/app/people-actions";
-import { logPlanned, logRecurring } from "@/app/plan-actions";
+import { logPlanned, logRecurring, undoPayday } from "@/app/plan-actions";
 import { deleteTransaction } from "@/app/transaction-actions";
 import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import { CloseIcon } from "@/components/icons";
 import type { Account } from "@/lib/data";
 import type { ForecastItem, PayBreakdown } from "@/lib/forecast";
+import { isContribution } from "@/lib/payroll";
 import {
   accountTypeLabel,
   formatPeso,
@@ -21,6 +22,12 @@ import {
 } from "@/lib/money";
 
 /** Opens Add prefilled for an item, linked so saving logs that occurrence. */
+/** A payday's salary loan payments: logging it pays them from the pay. */
+function salaryLoanIds(item: ForecastItem): string[] {
+  if (item.kind !== "payday") return [];
+  return (item.pay?.deductions ?? []).flatMap((d) => (d.loanPaymentId ? [d.loanPaymentId] : []));
+}
+
 export function prefillHref(item: ForecastItem): string {
   const query = new URLSearchParams({
     type: item.flow === "in" ? "income" : "expense",
@@ -72,10 +79,18 @@ export function LogButton({
             ? undoInstallment(item.id)
             : payInstallments([item.id], walletId)
           : paid
-            ? deleteTransaction(item.transactionId!)
+            ? item.kind === "payday"
+              ? undoPayday(item.transactionId!)
+              : deleteTransaction(item.transactionId!)
             : item.kind === "planned"
               ? logPlanned(item.id, walletId)
-              : logRecurring(item.id, item.dueOn, walletId, amount ?? item.amount ?? undefined));
+              : logRecurring(
+                  item.id,
+                  item.dueOn,
+                  walletId,
+                  amount ?? item.amount ?? undefined,
+                  salaryLoanIds(item),
+                ));
       if (result.error) setError(result.error);
       else setPicking(false);
     });
@@ -474,19 +489,26 @@ function PayLines({
   return (
     <div className="flex flex-col gap-1.5 text-[15px]">
       {field("gross", "Gross pay", texts.gross, (v) => onChange({ ...texts, gross: v }))}
-      {breakdown.deductions.map((d, i) =>
-        field(
-          `d${i}`,
-          d.name,
-          texts.deductions[i],
-          (v) =>
-            onChange({
-              ...texts,
-              deductions: texts.deductions.map((t, j) => (j === i ? v : t)),
-            }),
-          "− ",
-        ),
-      )}
+      {breakdown.deductions.map((d, i) => (
+        <div key={`d${i}`} className="flex flex-col gap-1.5">
+          {/* Contributions come first, right after gross pay. */}
+          {isContribution(d.kind) &&
+            (i === 0 || !isContribution(breakdown.deductions[i - 1].kind)) && (
+              <span className="text-[13px] font-extrabold text-muted">Contributions</span>
+            )}
+          {field(
+            `d${i}`,
+            d.name,
+            texts.deductions[i],
+            (v) =>
+              onChange({
+                ...texts,
+                deductions: texts.deductions.map((t, j) => (j === i ? v : t)),
+              }),
+            "− ",
+          )}
+        </div>
+      ))}
       <div className="flex items-baseline justify-between gap-3 border-t-2 border-line-soft pt-1.5">
         <span className="font-extrabold">= Take-home</span>
         <span className={`font-extrabold ${net > 0 ? "" : "text-coral-text"}`}>

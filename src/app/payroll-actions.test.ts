@@ -8,9 +8,12 @@ import { fail, fakeSupabase, type FakeSupabase } from "@/test/fake-supabase";
 import {
   addDeduction,
   deleteDeduction,
+  estimateDeduction,
   removeCutoffChange,
   removePayChange,
   saveContributionAmounts,
+  setDeductionTaken,
+  setEmployment,
   saveCutoff,
   saveCutoffChange,
   savePayrollSettings,
@@ -371,6 +374,7 @@ describe("savePayrollSettings", () => {
         hours_per_day: 8,
         start_time: "08:00",
         overtime_rate: 1.25,
+        monthly_pay: null,
       });
       expect(upsert.options).toEqual({ onConflict: "user_id,starts_on" });
       const [update] = db.writes("payroll_settings", "update") as Record<string, unknown>[];
@@ -422,9 +426,68 @@ describe("savePayrollSettings", () => {
       expect(
         await savePayrollSettings({ ...settings, monthlyPay: null, dailyRate: 1500 }, "2026-12-01"),
       ).toEqual({});
-      expect(db.table("payroll_pay_changes")[0]).toMatchObject({ daily_rate: 1500 });
-      expect(db.table("payroll_pay_changes")[0]).not.toHaveProperty("monthly_pay");
+      expect(db.table("payroll_pay_changes")[0]).toMatchObject({
+        daily_rate: 1500,
+        monthly_pay: null,
+      });
       expect(db.table("payroll_settings")[0].monthly_pay).toBe(30000);
+    });
+
+    it("clears a monthly rate this cutoff's change had when you go back to pay per day", async () => {
+      useDb({
+        payroll_settings: [savedRow],
+        payroll_pay_changes: [
+          { id: "pc1", starts_on: "2026-12-01", daily_rate: 1364, monthly_pay: 30000 },
+        ],
+      });
+      // The fake doesn't merge upserts on conflict: read the row it was sent.
+      expect(
+        await savePayrollSettings({ ...settings, monthlyPay: null, dailyRate: 900 }, "2026-12-01"),
+      ).toEqual({});
+      const upsert = db.queries.find(
+        (q) => q.table === "payroll_pay_changes" && q.op === "upsert",
+      )!;
+      expect(upsert.payload).toMatchObject({ daily_rate: 900, monthly_pay: null });
+    });
+
+    // Regression: compared with the cutoff before (Nov 16–30, which a Nov 20
+    // change skips), going back to your settings' rate looked like no change,
+    // so nothing was saved and the Nov 20 monthly rate kept paying December.
+    it("saves your settings' rate over a change saved under other cutoff days", async () => {
+      useDb({
+        payroll_settings: [savedRow],
+        payroll_pay_changes: [
+          {
+            id: "old",
+            starts_on: "2026-11-20",
+            daily_rate: 1364,
+            hours_per_day: 8,
+            start_time: "08:00:00",
+            overtime_rate: 1.25,
+            monthly_pay: 30000,
+          },
+        ],
+      });
+      expect(await savePayrollSettings(settings, "2026-12-01")).toEqual({});
+      const upsert = db.queries.find((q) => q.table === "payroll_pay_changes" && q.op === "upsert");
+      expect(upsert?.payload).toMatchObject({
+        starts_on: "2026-12-01",
+        daily_rate: 1000,
+        monthly_pay: null,
+      });
+    });
+
+    it("still saves pay per day before migration 23", async () => {
+      db.respond((q) =>
+        q.table === "payroll_pay_changes" &&
+        q.op === "upsert" &&
+        "monthly_pay" in (q.payload as object)
+          ? fail("42703", "no column monthly_pay")
+          : undefined,
+      );
+      expect(await savePayrollSettings({ ...settings, dailyRate: 1200 }, "2026-12-01")).toEqual({});
+      expect(db.table("payroll_pay_changes")[0]).toMatchObject({ daily_rate: 1200 });
+      expect(db.table("payroll_pay_changes")[0]).not.toHaveProperty("monthly_pay");
     });
   });
 });
@@ -758,16 +821,61 @@ describe("contributions taken from your pay", () => {
   });
 
   it("adds one, trimmed and to the centavo, without touching Money going out", async () => {
-    expect(await addDeduction(" GSIS ", 1800.555)).toEqual({});
-    expect(db.writes("payroll_deductions", "insert")).toEqual([{ name: "GSIS", amount: 1800.56 }]);
+    expect(await addDeduction(" GSIS ", 1800.555, "gsis")).toEqual({});
+    expect(db.writes("payroll_deductions", "insert")).toEqual([
+      { name: "GSIS", amount: 1800.56, kind: "gsis" },
+    ]);
     expect(db.writes("recurring_items", "insert")).toEqual([]);
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("rejects a kind it doesn't know", async () => {
+    expect(await addDeduction("GSIS", 1800, "nope" as never)).toEqual({
+      error: "Pick which one it is.",
+    });
+  });
+
+  it("saves it without its kind before step 25", async () => {
+    db.respond((q) =>
+      q.table === "payroll_deductions" && q.op === "insert" && "kind" in (q.payload as object)
+        ? fail("42703", "no column kind")
+        : undefined,
+    );
+    expect(await addDeduction("GSIS", 1800, "gsis")).toEqual({});
+    expect(db.table("payroll_deductions")).toEqual([
+      expect.objectContaining({ name: "GSIS", amount: 1800 }),
+    ]);
+  });
+
+  it("stops the SSS bill you pay yourself while SSS is taken from your pay, and brings it back", async () => {
+    useDb({
+      payroll_settings: [savedRow],
+      recurring_items: [
+        { id: "sss", kind: "bill", payroll_key: "sss", day1: 30 },
+        { id: "ph", kind: "bill", payroll_key: "philhealth", day1: 15 },
+      ],
+    });
+    expect(await addDeduction("SSS", 750, "sss")).toEqual({});
+    const keys = () =>
+      db
+        .table("recurring_items")
+        .map((r) => r.payroll_key)
+        .filter(Boolean)
+        .sort();
+    // Not counted twice: off the payday, and no longer a bill.
+    expect(keys()).toEqual(["pagibig", "philhealth"]);
+
+    const id = db.table("payroll_deductions")[0].id as string;
+    expect(await deleteDeduction(id)).toEqual({});
+    expect(keys()).toEqual(["pagibig", "philhealth", "sss"]);
   });
 
   it("changes and removes one", async () => {
     useDb({ payroll_deductions: [{ id: "g", name: "GSIS", amount: 1800 }] });
     expect(await updateDeduction("g", "GSIS", 1900)).toEqual({});
-    expect(db.table("payroll_deductions")).toEqual([{ id: "g", name: "GSIS", amount: 1900 }]);
+    expect(db.table("payroll_deductions")).toEqual([
+      { id: "g", name: "GSIS", amount: 1900, kind: "other" },
+    ]);
     expect(await updateDeduction("nope", "GSIS", 1900)).toEqual({
       error: "Couldn't find that contribution.",
     });
@@ -789,5 +897,111 @@ describe("contributions taken from your pay", () => {
     useDb({}, { user: null });
     expect(await addDeduction("GSIS", 1800)).toEqual({ error: SIGNED_OUT_ERROR });
     expect(await deleteDeduction("g")).toEqual({ error: SIGNED_OUT_ERROR });
+  });
+});
+
+describe("how you earn", () => {
+  it("gives an employee their office's usual deductions and stops the bills they paid", async () => {
+    useDb({
+      payroll_settings: [savedRow],
+      payroll_deductions: [{ id: "u", name: "Union", amount: 100, kind: "other", taken: "last" }],
+    });
+    expect(await setEmployment("government")).toEqual({});
+    expect(db.writes("payroll_settings", "update")[0]).toEqual({
+      employment: "government",
+      pay_sss: false,
+      pay_philhealth: false,
+      pay_pagibig: false,
+      pay_tax: false,
+    });
+    expect(db.table("payroll_deductions").map((d) => [d.name, d.kind, d.amount, d.taken])).toEqual([
+      ["Union", "other", 100, "last"],
+      ["GSIS", "gsis", null, "last"],
+      ["PhilHealth", "philhealth", null, "last"],
+      ["Pag-IBIG", "pagibig", null, "last"],
+      ["Withholding tax", "tax", null, "each"],
+    ]);
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("swaps them when you move to a private job, keeping your own", async () => {
+    useDb({
+      payroll_settings: [{ ...savedRow, employment: "government" }],
+      payroll_deductions: [
+        { id: "g", name: "GSIS", amount: null, kind: "gsis", taken: "last" },
+        { id: "u", name: "Union", amount: 100, kind: "other", taken: "last" },
+      ],
+    });
+    expect(await setEmployment("private")).toEqual({});
+    expect(db.table("payroll_deductions").map((d) => d.kind)).toEqual([
+      "other",
+      "sss",
+      "philhealth",
+      "pagibig",
+      "tax",
+    ]);
+  });
+
+  it("drops them for the self-employed, who pay their own", async () => {
+    useDb({
+      payroll_settings: [{ ...savedRow, employment: "private" }],
+      payroll_deductions: [{ id: "s", name: "SSS", amount: null, kind: "sss", taken: "last" }],
+    });
+    expect(await setEmployment("self")).toEqual({});
+    expect(db.writes("payroll_settings", "update")[0]).toEqual({ employment: "self" });
+    expect(db.table("payroll_deductions")).toEqual([]);
+  });
+
+  it("checks the choice, the session and that pay is set up", async () => {
+    expect(await setEmployment("boss" as never)).toEqual({ error: "Pick how you earn." });
+    expect(createClient).not.toHaveBeenCalled();
+    useDb({}, { user: null });
+    expect(await setEmployment("private")).toEqual({ error: SIGNED_OUT_ERROR });
+    useDb();
+    expect(await setEmployment("private")).toEqual({ error: "Set up your pay first." });
+  });
+
+  it("asks for migration 25 when the column is missing", async () => {
+    useDb({ payroll_settings: [savedRow] });
+    db.respond((q) =>
+      q.table === "payroll_settings" && q.op === "update" ? fail("42703") : undefined,
+    );
+    expect(await setEmployment("private")).toEqual({
+      error: "To pick how you earn, run step 25 in supabase/SQL_GUIDE.md first.",
+    });
+  });
+});
+
+describe("a deduction's estimate and payday", () => {
+  const seed = () => ({
+    payroll_deductions: [
+      { id: "g", name: "GSIS", amount: 3000, kind: "gsis", taken: "last" },
+      { id: "u", name: "Union", amount: 100, kind: "other", taken: "last" },
+    ],
+  });
+
+  it("goes back to Pong's estimate for a contribution", async () => {
+    useDb(seed());
+    expect(await estimateDeduction("g")).toEqual({});
+    expect(db.table("payroll_deductions")[0].amount).toBeNull();
+  });
+
+  it("won't estimate one Pong can't work out", async () => {
+    useDb(seed());
+    expect(await estimateDeduction("u")).toEqual({
+      error: "Pong can only estimate contributions and tax.",
+    });
+  });
+
+  it("splits it over each payday, or back to the last", async () => {
+    useDb(seed());
+    expect(await setDeductionTaken("g", "each")).toEqual({});
+    expect(db.table("payroll_deductions")[0].taken).toBe("each");
+    expect(await setDeductionTaken("g", "sometimes" as never)).toEqual({
+      error: "Pick which payday.",
+    });
+    expect(await setDeductionTaken("nope", "last")).toEqual({
+      error: "Couldn't find that contribution.",
+    });
   });
 });

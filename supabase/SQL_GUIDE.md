@@ -596,6 +596,37 @@ select to_regclass('public.payroll_deductions') is not null;
 
 Expect `true`.
 
+## Step 25 · How you earn, estimated contributions, and salary loans
+
+File: `migrations/0025_employment_and_salary_loans.sql`
+
+Run it after step 24: it changes `payroll_deductions`.
+
+- `payroll_settings.employment`: **How you earn** in the payroll calculator. `government` or
+  `private` employees have GSIS or SSS, PhilHealth, Pag-IBIG and tax taken from their pay;
+  `self` (self-employed, the default) pay theirs themselves, as before; `none` is daily-paid
+  with no contributions.
+- `payroll_deductions.kind`: which contribution it is (`gsis`, `sss`, `philhealth`, `pagibig`,
+  `tax` or `other`). `amount` can now be empty: Pong estimates it from your pay until you type
+  the one on your payslip.
+- `payroll_deductions.taken`: the whole monthly amount off the month's last payday (`last`),
+  or split evenly over each payday of the month (`each`).
+- `installment_plans.pay_by`: `salary` for a loan your office takes from your pay (GSIS MPL, a
+  Pag-IBIG or SSS salary loan), chosen with **Taken from my salary** when you add the loan. Its
+  payments come off your payday instead of a wallet, so they're not a bill in the forecast.
+
+Until you run this, every contribution is a monthly amount you type and every loan is paid
+from a wallet.
+
+**Check**
+
+```sql
+select exists (select 1 from information_schema.columns
+               where table_name = 'installment_plans' and column_name = 'pay_by');
+```
+
+Expect `true`.
+
 ---
 
 ## All done?
@@ -639,7 +670,9 @@ select
   exists (select 1 from information_schema.columns
           where table_name = 'recurring_items' and column_name = 'pay_amounts') as step_22,
   to_regclass('public.payroll_cutoff_changes') is not null  as step_23,
-  to_regclass('public.payroll_deductions') is not null      as step_24;
+  to_regclass('public.payroll_deductions') is not null      as step_24,
+  exists (select 1 from information_schema.columns
+          where table_name = 'installment_plans' and column_name = 'pay_by') as step_25;
 ```
 
 The first `false` is the step to run next.

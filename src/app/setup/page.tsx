@@ -23,5 +23,5 @@ export default function SetupWalletsPage() {
 
 async function Wallets() {
   const accounts = await getAccounts();
-  return <WalletsForm existing={accounts} />;
+  return <WalletsForm existing={accounts} next="/setup/savings" />;
 }

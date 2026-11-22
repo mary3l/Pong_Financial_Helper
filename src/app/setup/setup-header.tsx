@@ -1,12 +1,15 @@
 import { Pong, type PongMood } from "@/components/pong";
 
+/** First-run setup: spending, savings, your pay, what's taken, what you owe, bills. */
+export const SETUP_STEPS = 6;
+
 export function SetupHeader({
   step,
   title,
   message,
   mood,
 }: {
-  /** 1 or 2; omit when editing from Settings. */
+  /** 1 to SETUP_STEPS; omit when editing from Settings. */
   step?: number;
   title: string;
   message: string;
@@ -16,9 +19,11 @@ export function SetupHeader({
     <header className="flex flex-col gap-3">
       {step && (
         <>
-          <p className="text-sm font-extrabold text-muted">STEP {step} OF 2</p>
+          <p className="text-sm font-extrabold text-muted">
+            STEP {step} OF {SETUP_STEPS}
+          </p>
           <div className="flex gap-1.5" aria-hidden="true">
-            {[1, 2].map((n) => (
+            {Array.from({ length: SETUP_STEPS }, (_, i) => i + 1).map((n) => (
               <div
                 key={n}
                 className={`h-1.5 flex-1 rounded-full ${n <= step ? "bg-sea" : "bg-line"}`}

@@ -21,6 +21,11 @@ import {
   cutoffPay,
   daysFor,
   deductionsOn,
+  defaultDeductions,
+  employeeShare,
+  resolveDeductions,
+  salaryLoansOf,
+  withholdingTax,
   minutesLate,
   overtimeMinutes,
   pagibigContribution,
@@ -253,6 +258,13 @@ describe("contributions", () => {
     expect(
       contributions({ ...settings, sssAmount: 1125, paySss: false }).map((c) => c.key),
     ).toEqual(["philhealth", "pagibig"]);
+  });
+
+  it("isn't a bill when it's taken from your pay instead", () => {
+    const taken = [{ kind: "sss" as const }, { kind: "other" as const }];
+    expect(contributions(settings, taken).map((c) => c.key)).toEqual(["philhealth", "pagibig"]);
+    // Removed from your pay: a bill again.
+    expect(contributions(settings, []).map((c) => c.key)).toEqual(["sss", "philhealth", "pagibig"]);
   });
 });
 
@@ -688,5 +700,146 @@ describe("paid every work day", () => {
       start: "2026-11-16",
       end: "2026-11-22",
     });
+  });
+});
+
+describe("what an employer takes", () => {
+  const monthly = (pay: number): PayrollSettings => ({ ...settings, monthlyPay: pay });
+  const amounts = (pay: number, employment: "government" | "private") =>
+    resolveDeductions(
+      monthly(pay),
+      defaultDeductions(employment).map((d, i) => ({ ...d, id: String(i) })),
+    ).map((d) => [d.name, d.amount, d.estimated]);
+
+  it("estimates a government employee's GSIS, PhilHealth, Pag-IBIG and tax", () => {
+    // ₱30,000: GSIS 9%, PhilHealth 2.5%, Pag-IBIG capped at ₱200; tax on the ₱26,350 left.
+    expect(amounts(30000, "government")).toEqual([
+      ["GSIS", 2700, true],
+      ["PhilHealth", 750, true],
+      ["Pag-IBIG", 200, true],
+      ["Withholding tax", 827.5, true],
+    ]);
+  });
+
+  it("estimates a private employee's SSS, PhilHealth, Pag-IBIG and tax", () => {
+    expect(amounts(30000, "private")).toEqual([
+      ["SSS", 1500, true],
+      ["PhilHealth", 750, true],
+      ["Pag-IBIG", 200, true],
+      ["Withholding tax", 1007.5, true],
+    ]);
+    // ₱15,000: under ₱250,000 a year after contributions, so no tax.
+    expect(amounts(15000, "private").at(-1)).toEqual(["Withholding tax", 0, true]);
+  });
+
+  it("caps PhilHealth at ₱100,000 and goes up the tax brackets", () => {
+    expect(amounts(120000, "government")).toEqual([
+      ["GSIS", 10800, true],
+      ["PhilHealth", 2500, true],
+      ["Pag-IBIG", 200, true],
+      ["Withholding tax", 18500, true],
+    ]);
+  });
+
+  it("uses the floors for low pay", () => {
+    expect(employeeShare("philhealth", 8000)).toBe(250);
+    expect(employeeShare("pagibig", 1500)).toBe(15);
+    expect(employeeShare("sss", 3000)).toBe(250);
+    expect(withholdingTax(20000, 0)).toBe(0);
+  });
+
+  it("keeps amounts you typed and works tax out from them", () => {
+    const [gsis, tax] = resolveDeductions(monthly(30000), [
+      { id: "g", kind: "gsis", name: "GSIS", amount: 3000 },
+      { id: "t", kind: "tax", name: "Withholding tax", amount: null },
+    ]);
+    expect(gsis).toMatchObject({ amount: 3000 });
+    expect(gsis.estimated).toBeUndefined();
+    // ₱27,000 left × 12 = ₱324,000: 15% of the ₱74,000 over ₱250,000, a month.
+    expect(tax).toMatchObject({ amount: 925, estimated: true });
+  });
+
+  it("has nothing to take for the self-employed or daily-paid", () => {
+    expect(defaultDeductions("self")).toEqual([]);
+    expect(defaultDeductions("none")).toEqual([]);
+  });
+
+  const kinsenas = { frequency: "twice_monthly" as const, day1: 15, day2: 30 };
+
+  it("splits an each-payday deduction over the month, adding up to it", () => {
+    const tax = [{ id: "t", name: "Withholding tax", amount: 100.01, taken: "each" as const }];
+    const first = deductionsOn("2026-11-15", kinsenas, tax);
+    const second = deductionsOn("2026-11-30", kinsenas, tax);
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(1);
+    expect(Math.round((first[0].amount + second[0].amount) * 100)).toBe(10001);
+  });
+
+  it("takes a salary loan's payment off the last payday of its month only", () => {
+    const loan = [{ paymentId: "p3", name: "GSIS MPL · 3 of 24", amount: 2000, month: "2026-11" }];
+    expect(deductionsOn("2026-11-15", kinsenas, [], loan)).toEqual([]);
+    expect(deductionsOn("2026-11-30", kinsenas, [], loan)).toEqual([
+      { id: "loan-p3", name: "GSIS MPL · 3 of 24", amount: 2000, loanPaymentId: "p3" },
+    ]);
+    expect(deductionsOn("2026-12-30", kinsenas, [], loan)).toEqual([]);
+  });
+
+  it("lists contributions first, then tax, then the rest, then salary loans", () => {
+    const saved = [
+      { id: "u", name: "Union dues", amount: 100, kind: "other" as const },
+      { id: "t", name: "Withholding tax", amount: 300, kind: "tax" as const },
+      { id: "s", name: "SSS", amount: 750, kind: "sss" as const },
+      { id: "p", name: "Pag-IBIG", amount: 400, kind: "pagibig" as const },
+    ];
+    const loan = [{ paymentId: "p3", name: "SSS salary loan", amount: 1000, month: "2026-11" }];
+    expect(deductionsOn("2026-11-30", kinsenas, saved, loan).map((d) => d.name)).toEqual([
+      "SSS",
+      "Pag-IBIG",
+      "Withholding tax",
+      "Union dues",
+      "SSS salary loan",
+    ]);
+  });
+});
+
+describe("salary loans", () => {
+  const plan = (payBy: "wallet" | "salary", personId: string | null = null) => ({
+    name: "GSIS MPL",
+    months: 24,
+    personId,
+    payBy,
+    payments: [
+      { id: "p2", seq: 2, dueOn: "2026-10-15", amount: 2000, transactionId: "t2" },
+      { id: "p3", seq: 3, dueOn: "2026-11-15", amount: 2000, transactionId: null },
+      { id: "p4", seq: 4, dueOn: "2026-12-15", amount: 2000, transactionId: null },
+    ],
+  });
+
+  it("lists the unpaid payments of loans taken from your pay, by month", () => {
+    expect(salaryLoansOf([plan("salary")])).toEqual([
+      { paymentId: "p3", name: "GSIS MPL · 3 of 24", amount: 2000, month: "2026-11" },
+      { paymentId: "p4", name: "GSIS MPL · 4 of 24", amount: 2000, month: "2026-12" },
+    ]);
+  });
+
+  it("leaves out loans paid from a wallet and someone else's", () => {
+    expect(salaryLoansOf([plan("wallet"), plan("salary", "tita")])).toEqual([]);
+  });
+
+  it("comes off the payday, so the forecast doesn't count it again", () => {
+    const amounts = paydayAmounts(
+      {
+        settings: { ...settings, monthlyPay: 26000 },
+        days: [],
+        overtime: [],
+        salaryLoans: salaryLoansOf([plan("salary")]),
+      },
+      { frequency: "twice_monthly", day1: 15, day2: 30 },
+      "2026-11-01",
+      "2026-12-01",
+      "2026-11-01",
+    );
+    expect(amounts["2026-11-15"].amount).toBe(13000);
+    expect(amounts["2026-11-30"]).toMatchObject({ amount: 11000, gross: 13000 });
   });
 });

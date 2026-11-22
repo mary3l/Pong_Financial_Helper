@@ -1,5 +1,6 @@
 import { addDays, dateInMonth } from "@/lib/dates";
 import { roundCents } from "@/lib/money";
+import type { DeductionKind } from "@/lib/payroll";
 import { amountOn, nextOccurrence, occurrences, type Schedule } from "@/lib/schedule";
 
 // The forecast (design canvas 3.1): what's scheduled, and what it does to
@@ -50,8 +51,20 @@ export type ForecastItem = {
   pay?: PayBreakdown;
 };
 
-/** A payday's gross pay and the contributions your office takes from it. */
-export type PayBreakdown = { gross: number; deductions: { name: string; amount: number }[] };
+/** A payday's gross pay and what your office takes from it: contributions, tax, salary loan payments. */
+export type PayBreakdown = {
+  gross: number;
+  deductions: {
+    name: string;
+    amount: number;
+    /** Pong's estimate, not your payslip's amount. */
+    estimated?: boolean;
+    /** Which contribution it is: GSIS, SSS, PhilHealth and Pag-IBIG are listed first. */
+    kind?: DeductionKind;
+    /** A salary loan's scheduled payment: logging the payday pays it. */
+    loanPaymentId?: string;
+  }[];
+};
 
 export type ScheduleInputs = {
   recurring: (Schedule & {
@@ -90,7 +103,7 @@ export type ScheduleInputs = {
       estimate: boolean;
       paidOn?: string;
       gross?: number;
-      deductions?: { name: string; amount: number }[];
+      deductions?: PayBreakdown["deductions"];
     }
   >;
   /** BNPL and loan payments (Phase 3). */
@@ -187,7 +200,13 @@ export function scheduledItems(
           ? {
               pay: {
                 gross: payroll.gross!,
-                deductions: payroll.deductions.map((d) => ({ name: d.name, amount: d.amount })),
+                deductions: payroll.deductions.map((d) => ({
+                  name: d.name,
+                  amount: d.amount,
+                  ...(d.estimated ? { estimated: true } : {}),
+                  ...(d.kind ? { kind: d.kind } : {}),
+                  ...(d.loanPaymentId ? { loanPaymentId: d.loanPaymentId } : {}),
+                })),
               },
             }
           : {}),

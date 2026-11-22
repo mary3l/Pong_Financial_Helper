@@ -42,7 +42,17 @@ import {
   type WalletPurpose,
 } from "@/lib/money";
 import { USUAL_DAYS, billCycles, type CapLine } from "@/lib/payment-plan";
-import { paydayAmounts, type PayrollRecords } from "@/lib/payroll";
+import {
+  isEmployment,
+  paydayAmounts,
+  salaryLoansOf,
+  resolveDeductions,
+  type DeductionKind,
+  type DeductionTaken,
+  type PayrollRecords,
+  type SalaryLoan,
+  type SavedDeduction,
+} from "@/lib/payroll";
 import { offBill } from "@/lib/off-bill";
 import { personItems, type EntryKind, type Person } from "@/lib/people";
 import type { Frequency } from "@/lib/schedule";
@@ -177,6 +187,11 @@ export type InstallmentPlan = {
    * (migration 0019). Never in your forecast or Safe to spend.
    */
   personId: string | null;
+  /**
+   * "salary": your office takes its payments from your pay (migration 0025),
+   * so they come off a payday instead of out of a wallet.
+   */
+  payBy: "wallet" | "salary";
   payments: ScheduledPayment[];
 };
 
@@ -505,56 +520,72 @@ export async function readPayroll(
       .select("usual_start, starts_on, ends_on, paid_on")
       .order("usual_start"),
     // PGRST205 until migration 0024 is run: your office takes nothing.
-    supabase.from("payroll_deductions").select("id, name, amount").order("created_at"),
+    supabase.from("payroll_deductions").select("id, name, amount, kind, taken").order("created_at"),
   ]);
+  // 42703 until migration 0025 is run: every deduction is a monthly amount you typed.
+  const deductionRows =
+    dd.error?.code === "42703"
+      ? await supabase.from("payroll_deductions").select("id, name, amount").order("created_at")
+      : dd;
   if (s.error?.code === "PGRST205") return "missing";
   if (s.error) throw dbError(s.error);
   if (d.error) throw dbError(d.error);
   if (o.error) throw dbError(o.error);
   // PGRST205 until migration 0021 is run: one rate for every cutoff.
   if (c.error && c.error.code !== "PGRST205") throw dbError(c.error);
-  if (dd.error && dd.error.code !== "PGRST205") throw dbError(dd.error);
+  if (deductionRows.error && deductionRows.error.code !== "PGRST205")
+    throw dbError(deductionRows.error);
   if (!s.data) return null;
   const row = s.data;
+  const settings: PayrollRecords["settings"] = {
+    dailyRate: Number(row.daily_rate),
+    hoursPerDay: Number(row.hours_per_day),
+    startTime: String(row.start_time).slice(0, 5),
+    overtimeRate: Number(row.overtime_rate),
+    monthlyBase: row.monthly_base === null ? null : Number(row.monthly_base),
+    startedOn: row.started_on,
+    paySss: row.pay_sss,
+    payPhilhealth: row.pay_philhealth,
+    payPagibig: row.pay_pagibig,
+    payTax: row.pay_tax,
+    // Undefined until migration 0018 is run.
+    sssAmount: row.sss_amount == null ? null : Number(row.sss_amount),
+    philhealthAmount: row.philhealth_amount == null ? null : Number(row.philhealth_amount),
+    pagibigAmount: row.pagibig_amount == null ? null : Number(row.pagibig_amount),
+    // Undefined until migration 0021 is run: the 1st and 16th.
+    ...(row.cutoff_day1 != null && row.cutoff_day2 != null
+      ? { cutoffDays: [Number(row.cutoff_day1), Number(row.cutoff_day2)] as const }
+      : {}),
+    // Undefined until migration 0022 is run: Monday, and the 1st.
+    ...(row.cutoff_weekday != null ? { cutoffWeekday: Number(row.cutoff_weekday) } : {}),
+    ...(row.cutoff_month_day != null ? { cutoffMonthDay: Number(row.cutoff_month_day) } : {}),
+    ...(p.data?.frequency ? { frequency: p.data.frequency as Frequency } : {}),
+    // Undefined until migration 0023 is run: pay per day, weekends off, no moved cutoffs.
+    ...(row.monthly_pay != null ? { monthlyPay: Number(row.monthly_pay) } : {}),
+    ...(row.saturday ? { saturday: row.saturday } : {}),
+    ...(row.sunday ? { sunday: row.sunday } : {}),
+    ...(cc.data?.length
+      ? {
+          cutoffChanges: cc.data.map((ch) => ({
+            usual: ch.usual_start,
+            start: ch.starts_on,
+            end: ch.ends_on,
+            paidOn: ch.paid_on,
+          })),
+        }
+      : {}),
+    // Missing until migration 0025 is run: self-employed, as before.
+    ...(isEmployment(row.employment) ? { employment: row.employment } : {}),
+  };
+  const saved: SavedDeduction[] = ((deductionRows.data ?? []) as DeductionRow[]).map((x) => ({
+    id: x.id,
+    name: x.name,
+    amount: x.amount == null ? null : Number(x.amount),
+    ...(x.kind ? { kind: x.kind } : {}),
+    ...(x.taken ? { taken: x.taken } : {}),
+  }));
   return {
-    settings: {
-      dailyRate: Number(row.daily_rate),
-      hoursPerDay: Number(row.hours_per_day),
-      startTime: String(row.start_time).slice(0, 5),
-      overtimeRate: Number(row.overtime_rate),
-      monthlyBase: row.monthly_base === null ? null : Number(row.monthly_base),
-      startedOn: row.started_on,
-      paySss: row.pay_sss,
-      payPhilhealth: row.pay_philhealth,
-      payPagibig: row.pay_pagibig,
-      payTax: row.pay_tax,
-      // Undefined until migration 0018 is run.
-      sssAmount: row.sss_amount == null ? null : Number(row.sss_amount),
-      philhealthAmount: row.philhealth_amount == null ? null : Number(row.philhealth_amount),
-      pagibigAmount: row.pagibig_amount == null ? null : Number(row.pagibig_amount),
-      // Undefined until migration 0021 is run: the 1st and 16th.
-      ...(row.cutoff_day1 != null && row.cutoff_day2 != null
-        ? { cutoffDays: [Number(row.cutoff_day1), Number(row.cutoff_day2)] as const }
-        : {}),
-      // Undefined until migration 0022 is run: Monday, and the 1st.
-      ...(row.cutoff_weekday != null ? { cutoffWeekday: Number(row.cutoff_weekday) } : {}),
-      ...(row.cutoff_month_day != null ? { cutoffMonthDay: Number(row.cutoff_month_day) } : {}),
-      ...(p.data?.frequency ? { frequency: p.data.frequency as Frequency } : {}),
-      // Undefined until migration 0023 is run: pay per day, weekends off, no moved cutoffs.
-      ...(row.monthly_pay != null ? { monthlyPay: Number(row.monthly_pay) } : {}),
-      ...(row.saturday ? { saturday: row.saturday } : {}),
-      ...(row.sunday ? { sunday: row.sunday } : {}),
-      ...(cc.data?.length
-        ? {
-            cutoffChanges: cc.data.map((ch) => ({
-              usual: ch.usual_start,
-              start: ch.starts_on,
-              end: ch.ends_on,
-              paidOn: ch.paid_on,
-            })),
-          }
-        : {}),
-    },
+    settings,
     days: d.data.map((day) => ({
       date: day.work_date,
       status: day.status,
@@ -575,24 +606,33 @@ export async function readPayroll(
       overtimeRate: Number(ch.overtime_rate),
       monthlyPay: ch.monthly_pay == null ? null : Number(ch.monthly_pay),
     })),
-    deductions: (dd.data ?? []).map((x) => ({
-      id: x.id as string,
-      name: x.name as string,
-      amount: Number(x.amount),
-    })),
+    deductions: resolveDeductions(settings, saved),
   };
 }
+
+type DeductionRow = {
+  id: string;
+  name: string;
+  amount: number | string | null;
+  kind?: DeductionKind;
+  taken?: DeductionTaken;
+};
 
 /**
  * Each payday's own amount when the payroll calculator is set up: the pay
  * for the cutoffs it pays, weekly, monthly or twice a month.
  */
-async function payrollAmounts(recurring: RecurringItem[], today: string, until: string) {
+async function payrollAmounts(
+  recurring: RecurringItem[],
+  today: string,
+  until: string,
+  salaryLoans: SalaryLoan[] = [],
+) {
   const payday = recurring.find((r) => r.kind === "payday");
   if (!payday) return undefined;
   const payroll = await getPayroll(today);
   if (!payroll || payroll === "missing") return undefined;
-  return paydayAmounts(payroll, payday, today, until, today);
+  return paydayAmounts({ ...payroll, salaryLoans }, payday, today, until, today);
 }
 
 export async function getBudgets(): Promise<Budget[]> {
@@ -618,7 +658,7 @@ export async function getInstallmentPlans(accountId?: string): Promise<Installme
     return accountId ? query.eq("account_id", accountId) : query;
   };
   const [first, s] = await Promise.all([
-    select(`${columns}, person_id`),
+    select(`${columns}, person_id, pay_by`),
     supabase
       .from("scheduled_payments")
       .select(
@@ -626,8 +666,11 @@ export async function getInstallmentPlans(accountId?: string): Promise<Installme
       )
       .order("due_on"),
   ]);
-  // 42703: migration 0019 hasn't been run yet, so every plan is yours.
-  const p = first.error?.code === "42703" ? await select(columns) : first;
+  // 42703: migration 0025 (pay_by) or 0019 (person_id) hasn't been run yet:
+  // every plan is paid from a wallet, and yours.
+  let p = first;
+  if (p.error?.code === "42703") p = await select(`${columns}, person_id`);
+  if (p.error?.code === "42703") p = await select(columns);
   if (p.error) throw dbError(p.error);
   if (s.error) throw dbError(s.error);
 
@@ -642,6 +685,7 @@ export async function getInstallmentPlans(accountId?: string): Promise<Installme
     payFromAccountId: plan.pay_from_account_id,
     sourceTxnId: plan.source_txn_id,
     personId: plan.person_id ?? null,
+    payBy: plan.pay_by === "salary" ? "salary" : "wallet",
     payments: s.data
       .filter((row) => row.plan_id === plan.id)
       .map((row) => ({
@@ -668,6 +712,7 @@ type PlanRow = {
   pay_from_account_id: string | null;
   source_txn_id: string | null;
   person_id?: string | null;
+  pay_by?: string | null;
 };
 
 /**
@@ -939,10 +984,11 @@ export async function getPlanInputs(today: string, days: number): Promise<PlanIn
     getInstallmentPlans(),
     getPeople(),
   ]);
-  // Someone else's plan on your credit line never touches your wallets.
-  const installments = installmentInputs(plans.filter((p) => !p.personId));
+  // Someone else's plan on your credit line never touches your wallets, and a
+  // salary loan comes off your payday instead (it's already lower).
+  const installments = installmentInputs(plans.filter((p) => !p.personId && p.payBy !== "salary"));
   const until = addDays(today, days);
-  const paydayAmounts = await payrollAmounts(recurring, today, until);
+  const paydayAmounts = await payrollAmounts(recurring, today, until, salaryLoansOf(plans));
   // Bought on Atome: due when its bill is, not the day you buy.
   const lines = accounts.filter((a) => a.type === "credit_line");
   const items = sortItems([
@@ -1093,15 +1139,16 @@ async function withPaidDates(items: ForecastItem[]): Promise<ForecastItem[]> {
 
 /** Plan › Scheduled: every recurring and planned item, and what's coming. */
 export async function getScheduled(today: string) {
-  const [accounts, recurring, billPayments, planned] = await Promise.all([
+  const [accounts, recurring, billPayments, planned, plans] = await Promise.all([
     getAccounts(),
     getRecurringItems(),
     getBillPayments(addDays(today, -LATE_BILL_DAYS)),
     getPlannedExpenses(today),
+    getInstallmentPlans(),
   ]);
   // 45 days covers the next occurrence of every schedule.
   const until = addDays(today, 45);
-  const paydayAmounts = await payrollAmounts(recurring, today, until);
+  const paydayAmounts = await payrollAmounts(recurring, today, until, salaryLoansOf(plans));
   const items = scheduledItems({ recurring, billPayments, planned, paydayAmounts }, today, until);
   return { accounts, recurring, planned, items, payroll: paydayAmounts !== undefined };
 }

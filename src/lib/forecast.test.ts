@@ -93,7 +93,7 @@ describe("scheduled items", () => {
             amount: 6200,
             estimate: true,
             gross: 8000,
-            deductions: [{ name: "GSIS", amount: 1800 }],
+            deductions: [{ name: "GSIS", amount: 1800, kind: "gsis" }],
           },
         },
       }),
@@ -101,7 +101,11 @@ describe("scheduled items", () => {
       "2026-12-02",
     ).filter((i) => i.kind === "payday" && i.dueOn === "2026-11-30");
     expect(pay.amount).toBe(6200);
-    expect(pay.pay).toEqual({ gross: 8000, deductions: [{ name: "GSIS", amount: 1800 }] });
+    // Its kind too, so the payday can list it under Contributions.
+    expect(pay.pay).toEqual({
+      gross: 8000,
+      deductions: [{ name: "GSIS", amount: 1800, kind: "gsis" }],
+    });
     // Not a bill: nothing else is added.
     expect(itemEffect(pay)).toBe(6200);
   });
