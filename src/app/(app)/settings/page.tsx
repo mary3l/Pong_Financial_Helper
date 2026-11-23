@@ -37,8 +37,8 @@ export default function SettingsPage() {
         </Suspense>
         <Row
           title="Can I afford this?"
-          detail="Test a purchase against your forecast, on Home"
-          href="/#afford"
+          detail="Test a purchase against your forecast"
+          href="/afford"
         />
         <Row
           title="Goals (sinking funds)"
