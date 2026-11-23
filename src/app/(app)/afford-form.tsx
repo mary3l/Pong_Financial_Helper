@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { addPlannedExpense } from "@/app/plan-actions";
 import { AmountInput } from "@/components/amount-input";
 import { FIELD_CLASS } from "@/components/choice-chip";
@@ -24,6 +23,27 @@ const MOODS: Record<Verdict["tone"], PongMood> = {
   wait: "listen",
   no: "shocked",
 };
+
+/**
+ * Opens Home's Can I afford this? section when the link asks for it (/#afford,
+ * from Settings or the old /plan/afford page).
+ */
+export function OpenAffordFromHash() {
+  useEffect(() => {
+    function open() {
+      if (window.location.hash !== "#afford") return;
+      const details = document.getElementById("afford");
+      if (details instanceof HTMLDetailsElement) {
+        details.open = true;
+        details.scrollIntoView({ block: "start" });
+      }
+    }
+    open();
+    window.addEventListener("hashchange", open);
+    return () => window.removeEventListener("hashchange", open);
+  }, []);
+  return null;
+}
 
 export function AffordForm({
   start,
@@ -99,13 +119,23 @@ export function AffordForm({
     });
   }
 
+  function discard() {
+    setName("");
+    setAmountText("");
+    setWhen(today);
+    setCategory("shopping");
+    setMonths(1);
+    setWalletId("");
+    setError(null);
+  }
+
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
         save();
       }}
-      className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6"
+      className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-3 rounded-[20px] bg-card p-4">
         <div className="flex flex-col gap-1">
@@ -287,12 +317,17 @@ export function AffordForm({
           >
             {pending ? "Saving…" : "Add as planned expense"}
           </button>
-          <Link
-            href="/plan"
+          <button
+            type="button"
+            onClick={(e) => {
+              discard();
+              // Fold the section on Home back up.
+              e.currentTarget.closest("details")?.removeAttribute("open");
+            }}
             className="flex h-11 items-center justify-center font-extrabold text-sea-dark"
           >
             Just checking, discard
-          </Link>
+          </button>
           <p className="text-center text-[13px] text-muted">
             Got it wrong later? Change or remove it any time in Plan › Scheduled.
           </p>

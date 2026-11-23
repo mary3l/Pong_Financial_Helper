@@ -22,6 +22,10 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  async redirects() {
+    // Can I afford this? moved from its own page into Home.
+    return [{ source: "/plan/afford", destination: "/#afford", permanent: false }];
+  },
   async headers() {
     return [
       {

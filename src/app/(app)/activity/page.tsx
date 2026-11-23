@@ -2,26 +2,29 @@ import Form from "next/form";
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { ChevronIcon } from "@/components/icons";
+import { PeriodNav } from "@/components/period-nav";
 import { Pong } from "@/components/pong";
 import { ListPages, TransactionList } from "@/components/transaction-list";
-import { getAccounts, getBillTags, getTransactions, withoutArchived } from "@/lib/data";
+import { categoryInfo, cleanSubcategory, subcategoryOptions } from "@/lib/categories";
 import {
-  formatPeriod,
-  isValidDate,
-  nextPeriod,
-  periodContaining,
-  previousPeriod,
-  today as getToday,
-} from "@/lib/dates";
+  getAccounts,
+  getBillTags,
+  getTransactions,
+  getUserCategories,
+  withoutArchived,
+} from "@/lib/data";
+import { isValidDate, today as getToday } from "@/lib/dates";
 import { cashflow, formatPeso, inPesos } from "@/lib/money";
 import { groupSplits, pageOfItems, readPage } from "@/lib/splits";
+import { periodOf, readSpan, type Span } from "@/lib/trend";
+import { ActivityFilters, type CategoryOption } from "./activity-filters";
 
 export const metadata = { title: "Activity · Pong Money" };
 
-// Design canvas 2.3: everything logged, one kinsenas at a time, in pages of
-// about 30 rows (?page=, days kept whole where they fit). In, Out and Net are
-// always for the whole kinsenas.
+// Design canvas 2.3: everything logged, one kinsenas (or with ?span=month, one
+// month) at a time, in pages of about 30 rows (?page=, days kept whole where
+// they fit). ?c= and ?sub= show one category and subcategory. In, Out and Net
+// are for the whole period, of what's shown.
 export default function ActivityPage({ searchParams }: PageProps<"/activity">) {
   return (
     <div className="flex flex-col gap-4 lg:max-w-3xl">
@@ -40,13 +43,43 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
   const today = getToday();
   const p = typeof params.p === "string" && isValidDate(params.p) ? params.p : today;
   const q = typeof params.q === "string" ? params.q.trim().slice(0, 60) : "";
-  const period = periodContaining(p);
-  const isCurrent = period.start === periodContaining(today).start;
+  const span = readSpan(params.span);
+  const c = typeof params.c === "string" ? params.c.slice(0, 60) : "";
+  const sub = c && typeof params.sub === "string" ? (cleanSubcategory(params.sub) ?? "") : "";
+  const period = periodOf(span, p);
+  const isCurrent = period.start === periodOf(span, today).start;
+  const unit = span === "month" ? "month" : "kinsenas";
 
-  const [accounts, transactions] = await Promise.all([
+  const [accounts, all, custom] = await Promise.all([
     getAccounts({ includeArchived: true, includePeople: true }),
     getTransactions({ from: period.start, to: period.end, search: q }).then(withoutArchived),
+    getUserCategories(),
   ]);
+
+  // The categories logged this period, to pick from (and the picked one, even if gone).
+  const seen = new Map<string, CategoryOption>();
+  for (const t of all) {
+    if (t.type === "transfer" || !t.category || seen.has(t.category)) continue;
+    seen.set(t.category, {
+      key: t.category,
+      label: categoryInfo(t.type, t.category, custom).label,
+      group: t.type === "income" ? "Income" : "Expense",
+    });
+  }
+  const categories = [...seen.values()].sort((a, b) => a.label.localeCompare(b.label));
+  const subcategories = c ? (subcategoryOptions(all)[c] ?? []) : [];
+  if (sub && !subcategories.some((s) => s.toLowerCase() === sub.toLowerCase()))
+    subcategories.unshift(sub);
+  const transactions = all.filter(
+    (t) =>
+      (!c || (t.type !== "transfer" && t.category === c)) &&
+      (!sub || cleanSubcategory(t.subcategory)?.toLowerCase() === sub.toLowerCase()),
+  );
+  const filtered = Boolean(c);
+  const filterName = c
+    ? `${seen.get(c)?.label ?? categoryInfo("expense", c, custom).label}${sub ? ` › ${sub}` : ""}`
+    : "";
+
   // Interest on a dollar wallet counts in pesos.
   const totals = cashflow(inPesos(transactions, accounts));
   const shown = pageOfItems(groupSplits(transactions), readPage(params.page));
@@ -56,46 +89,46 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
     today,
   );
 
-  // Another kinsenas starts on its first page.
-  const href = (start: string, page = 1) => {
-    const query = new URLSearchParams({ p: start });
+  // What the URL keeps besides the period and page.
+  const keep = (opts: { span?: Span; filter?: boolean } = {}) => {
+    const query = new URLSearchParams();
+    const s = opts.span ?? span;
+    if (s === "month") query.set("span", "month");
     if (q) query.set("q", q);
+    if (opts.filter !== false && c) {
+      query.set("c", c);
+      if (sub) query.set("sub", sub);
+    }
+    return query;
+  };
+  // Another period starts on its first page.
+  const href = (start: string, page = 1, opts?: { span?: Span; filter?: boolean }) => {
+    const query = keep(opts);
+    query.set("p", start);
     if (page > 1) query.set("page", String(page));
     return `/activity?${query}`;
   };
-  const next = nextPeriod(period);
 
   return (
     <>
-      <nav
-        aria-label="Kinsenas"
-        className="flex items-center justify-between rounded-[20px] bg-card px-2 py-2"
-      >
-        <Link
-          href={href(previousPeriod(period).start)}
-          aria-label="Previous kinsenas"
-          className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-mint"
-        >
-          <ChevronIcon direction="left" size={22} />
-        </Link>
-        <div className="flex flex-col items-center">
-          <span className="font-display text-lg font-semibold">{formatPeriod(period, today)}</span>
-          <span className="text-xs font-bold text-muted">
-            {isCurrent ? "This kinsenas" : "Kinsenas"}
-          </span>
-        </div>
-        {next.start <= today ? (
-          <Link
-            href={href(next.start)}
-            aria-label="Next kinsenas"
-            className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-mint"
-          >
-            <ChevronIcon size={22} />
-          </Link>
-        ) : (
-          <span className="h-11 w-11" aria-hidden="true" />
-        )}
-      </nav>
+      <PeriodNav
+        span={span}
+        period={period}
+        today={today}
+        href={(start, s) => href(start, 1, { span: s })}
+      />
+
+      <ActivityFilters
+        categories={
+          c && !seen.has(c)
+            ? [...categories, { key: c, label: filterName.split(" › ")[0], group: "Expense" }]
+            : categories
+        }
+        subcategories={subcategories}
+        category={c}
+        subcategory={sub}
+        query={{ ...Object.fromEntries(keep({ filter: false })), p: period.start }}
+      />
 
       <dl className="grid grid-cols-3 gap-2">
         {[
@@ -110,11 +143,32 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
         ))}
       </dl>
       <p className="-mt-2 text-xs text-muted">
-        Transfers between your wallets aren&apos;t counted as in or out.
+        {filtered ? (
+          <>
+            Only {filterName}.{" "}
+            <Link
+              href={href(period.start, 1, { filter: false })}
+              className="font-extrabold text-sea-dark underline"
+            >
+              Show all
+            </Link>
+          </>
+        ) : (
+          "Transfers between your wallets aren’t counted as in or out."
+        )}{" "}
+        <Link
+          href={`/insights?${new URLSearchParams({ p: period.start, ...(span === "month" ? { span } : {}) })}`}
+          className="font-extrabold text-sea-dark underline"
+        >
+          See trends
+        </Link>
       </p>
 
       <Form action="/activity" className="flex gap-2" role="search">
         <input type="hidden" name="p" value={period.start} />
+        {span === "month" && <input type="hidden" name="span" value="month" />}
+        {c && <input type="hidden" name="c" value={c} />}
+        {sub && <input type="hidden" name="sub" value={sub} />}
         <label htmlFor="activity-search" className="sr-only">
           Search notes and categories
         </label>
@@ -155,17 +209,19 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
           <Pong mood="sleepy" size={100} decorative />
           <p className="max-w-xs text-[15px] text-muted">
             {q
-              ? `Nothing matches "${q}" in this kinsenas.`
-              : isCurrent
-                ? "Nothing logged yet this kinsenas. Tap + to add an expense."
-                : "Nothing logged in this kinsenas."}
+              ? `Nothing matches "${q}"${filtered ? ` in ${filterName}` : ""} this ${unit}.`
+              : filtered
+                ? `Nothing in ${filterName} this ${unit}.`
+                : isCurrent
+                  ? `Nothing logged yet this ${unit}. Tap + to add an expense.`
+                  : `Nothing logged in this ${unit}.`}
           </p>
-          {q && (
+          {(q || filtered) && (
             <Link
-              href={`/activity?p=${period.start}`}
+              href={`/activity?${new URLSearchParams({ p: period.start, ...(span === "month" ? { span } : {}) })}`}
               className="font-extrabold text-sea-dark underline"
             >
-              Clear search
+              {q ? "Clear search" : "Show all"}
             </Link>
           )}
         </div>

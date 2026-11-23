@@ -66,7 +66,7 @@ const OPTIONS: { value: ThemeChoice; label: string }[] = [
 ];
 
 /**
- * One tap between light and dark, beside the avatar on Home. The moon shows
+ * One tap between light and dark, beside the avatar at the top of every page. The moon shows
  * in light mode and the sun in dark, by CSS, so it's right before hydration.
  */
 export function ThemeToggle() {

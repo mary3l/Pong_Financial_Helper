@@ -4,13 +4,13 @@ import { Suspense } from "react";
 import { DisplayNameForm } from "@/components/display-name-form";
 import { ForecastChart } from "@/components/forecast-chart";
 import { LogButton } from "@/components/log-button";
-import { ThemeToggle } from "@/components/theme";
 import { TransactionList } from "@/components/transaction-list";
 import { getCurrentUser } from "@/lib/auth";
 import { creditRoom } from "@/lib/bnpl";
 import { categoryInfo } from "@/lib/categories";
 import {
   getBillTags,
+  getBnplCap,
   getBudgets,
   getUserCategories,
   getCapLines,
@@ -33,12 +33,14 @@ import { itemLabel, lowestBetween, nextUnreceivedPayday, type ForecastItem } fro
 import { getUsdRate } from "@/lib/fx";
 import {
   accountTypeLabel,
+  countsAsSpending,
   formatBalance,
   formatMoney,
   formatPeso,
   fxGain,
   isDebt,
   isSpendable,
+  paysInPesos,
   pesoTotal,
   pesoValue,
   purposeLabel,
@@ -48,6 +50,7 @@ import { PLAN_DAYS, PLAN_FLOOR, planToday, weekStartOf } from "@/lib/payment-pla
 import { isContribution } from "@/lib/payroll";
 import { dueDate, isOverdue } from "@/lib/people";
 import { saveWidgetSnapshot } from "@/lib/widget-snapshot";
+import { AffordForm, OpenAffordFromHash } from "./afford-form";
 import { SafeToSpendCard, pongSays } from "./safe-to-spend-card";
 
 // Design canvas 2.1: Safe to spend (with its breakdown), Coming up (bills and
@@ -70,23 +73,11 @@ async function Header() {
   const user = await getCurrentUser();
   return (
     <>
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-sm font-semibold text-muted">{formatLongDay(getToday())}</span>
-          <h1 className="font-display text-2xl font-semibold lg:text-3xl">
-            {user.name ? `Kumusta, ${user.name}!` : "Kumusta!"}
-          </h1>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <ThemeToggle />
-          <Link
-            href="/settings"
-            aria-label="Settings and tools"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sun font-display text-lg font-semibold text-ink"
-          >
-            {user.name ? user.name.charAt(0).toUpperCase() : <PersonIcon />}
-          </Link>
-        </div>
+      <div className="flex flex-col gap-0.5">
+        <span className="text-sm font-semibold text-muted">{formatLongDay(getToday())}</span>
+        <h1 className="font-display text-2xl font-semibold lg:text-3xl">
+          {user.name ? `Kumusta, ${user.name}!` : "Kumusta!"}
+        </h1>
       </div>
 
       {!user.name && (
@@ -157,6 +148,24 @@ async function Dashboard() {
           limitLeft={limitLeft}
           today={today}
         />
+
+        <details id="afford" className="group scroll-mt-4">
+          <summary className="flex h-[52px] cursor-pointer list-none items-center justify-center rounded-[18px] bg-sun font-extrabold text-ink [&::-webkit-details-marker]:hidden">
+            <span className="group-open:hidden">Can I afford this?</span>
+            <span className="hidden group-open:inline">Close · Can I afford this?</span>
+          </summary>
+          <div className="flex flex-col gap-3 pt-3">
+            <p className="text-[15px] text-muted">
+              Test a purchase against your forecast before you spend.
+            </p>
+            <Suspense
+              fallback={<div className="h-96 rounded-[20px] bg-line-soft" aria-hidden="true" />}
+            >
+              <Afford />
+            </Suspense>
+          </div>
+        </details>
+        <OpenAffordFromHash />
 
         {overdue.length > 0 && (
           <section
@@ -548,31 +557,38 @@ async function DollarsCard({ wallets, today }: { wallets: Account[]; today: stri
   );
 }
 
-function PersonIcon() {
+// Installments can run up to a year past the purchase date.
+const AFFORD_DAYS = 420;
+
+/** Can I afford this? (design canvas 3.2): test a purchase against the forecast. */
+async function Afford() {
+  // Read the clock only at request time (Cache Components).
+  await connection();
+  const today = getToday();
+  const plan = await getPlanInputs(today, AFFORD_DAYS);
+  const { accounts, inWallets, payday, items } = plan;
+  const credit = creditRoom(accounts);
+  const cap = credit.length ? await getBnplCap(today, plan) : null;
   return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="8" r="4" />
-      <path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" />
-    </svg>
+    <AffordForm
+      start={inWallets}
+      items={items}
+      today={today}
+      nextPayday={payday ? nextUnreceivedPayday(payday, items, today) : null}
+      payKnown={Boolean(payday?.amount)}
+      payday={payday ? { frequency: payday.frequency, day1: payday.day1, day2: payday.day2 } : null}
+      credit={credit}
+      cap={cap}
+      // Your spending money: what the forecast counts.
+      wallets={accounts
+        .filter((a) => countsAsSpending(a) && paysInPesos(a) && !a.archived)
+        .map((a) => ({ id: a.id, name: a.name, balance: a.balance }))}
+    />
   );
 }
 
 function HeaderSkeleton() {
-  return (
-    <div className="flex items-center justify-between gap-3" aria-hidden="true">
-      <div className="h-8 w-48 rounded-lg bg-line-soft" />
-      <div className="h-11 w-11 rounded-full bg-line-soft" />
-    </div>
-  );
+  return <div className="h-12 w-48 rounded-lg bg-line-soft" aria-hidden="true" />;
 }
 
 function DashboardSkeleton() {

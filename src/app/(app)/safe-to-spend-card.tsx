@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { Pong, type PongMood } from "@/components/pong";
 import { addDays, formatShortDay } from "@/lib/dates";
-import { formatPeso } from "@/lib/money";
+import { formatPeso, roundCents } from "@/lib/money";
 import { PLAN_DAYS, PLAN_FLOOR, type PlanToday } from "@/lib/payment-plan";
 
 // Home's Safe to spend card (design canvas 2.1), with Pong in the corner
-// saying how it's going. The amount is this week's pool from the payment
-// plan (weekPlan): spend it over the week however you like. Cash only; BNPL
-// has its own cap on each bill.
+// saying how it's going. The amount is what's left of today's share of this
+// week's pool from the payment plan (weekPlan). Cash only; BNPL has its own
+// cap on each bill.
 
 export type PongLine = { mood: PongMood; message: string; link?: { href: string; label: string } };
 
@@ -27,7 +27,12 @@ export function SafeToSpendCard({
   today: string;
 }) {
   const { week } = day;
-  const { left, spent } = week;
+  const { left: weekLeft, spent: weekSpent } = week;
+  // Today's share of the week: this morning's pace, less what you spent today
+  // (the same amount the widget shows).
+  const allowance = week.morningPace;
+  const spent = day.cash;
+  const left = roundCents(allowance - spent);
   // Each line's cap on the bill today's buys land on.
   const current = day.caps.filter((c) => c.from <= today && today < c.until);
   const amount = formatPeso(left);
@@ -38,7 +43,6 @@ export function SafeToSpendCard({
       : amount.length <= 8
         ? "text-[2.25rem] sm:text-[2.6rem]"
         : "text-[1.6rem] sm:text-[2rem]";
-  const scale = Math.max(week.pool, spent) || 1;
   // What this week has to spend: the pool, less anything bills ahead need back.
   const budget = week.pool - week.heldForBills;
   return (
@@ -49,47 +53,25 @@ export function SafeToSpendCard({
       />
       <div className="relative flex items-start gap-2">
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <h2 className="text-sm font-bold text-sea-text">LEFT THIS WEEK</h2>
+          <h2 className="text-sm font-bold text-sea-text">LEFT TODAY</h2>
           <p
             className={`font-display leading-none font-semibold whitespace-nowrap ${amountSize} ${left < 0 ? "text-sun" : ""}`}
           >
             {amount}
           </p>
-          {/* Over: nothing left to spread, and the Over by tag says it. */}
-          {left >= 0 && (
-            <p className="text-[15px] leading-snug font-extrabold">
-              {formatPeso(week.pace)}/day ·{" "}
-              {week.daysLeft === 1 ? "last day" : `${week.daysLeft} days`}
+          {spent > 0 && (
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] leading-snug text-sea-text">
+              <span>Spent today {formatPeso(spent)}</span>
+              {left < 0 && (
+                <span className="rounded-full bg-sun px-2 py-0.5 text-xs font-extrabold text-ink">
+                  Over by {formatPeso(-left)}
+                </span>
+              )}
             </p>
           )}
-          {/* The week's budget: its daily amount when every day gets the same one. */}
           <p className="text-[15px] leading-snug text-sea-text">
-            Budget{" "}
-            {week.budgetPerDay !== null && week.heldForBills === 0
-              ? `${formatPeso(week.budgetPerDay)}/day · ${formatPeso(budget)} this week`
-              : `${formatPeso(budget)} this week`}
+            Budget {formatPeso(budget)} this week
           </p>
-          {spent > 0 && (
-            <>
-              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] leading-snug text-sea-text">
-                <span>Spent {formatPeso(spent)}</span>
-                {left < 0 && (
-                  <span className="rounded-full bg-sun px-2 py-0.5 text-xs font-extrabold text-ink">
-                    Over by {formatPeso(-left)}
-                  </span>
-                )}
-              </p>
-              <span
-                aria-hidden="true"
-                className="mt-0.5 flex h-2.5 overflow-hidden rounded-full bg-sea-deep"
-              >
-                <span
-                  className={`block h-full ${left < 0 ? "bg-sun" : "bg-sea-text"}`}
-                  style={{ width: `${(spent / scale) * 100}%` }}
-                />
-              </span>
-            </>
-          )}
         </div>
         <Pong
           mood={pong.mood}
@@ -147,13 +129,19 @@ export function SafeToSpendCard({
           {week.heldForBills > 0 && (
             <BreakdownLine label="− Held for bills" value={formatPeso(week.heldForBills)} />
           )}
-          <BreakdownLine label="− Spent this week" value={formatPeso(spent)} />
-          <BreakdownLine label="= Left" value={formatPeso(left)} strong divider />
           <BreakdownLine
-            label={`÷ ${week.daysLeft} ${week.daysLeft === 1 ? "day" : "days"}`}
-            value={`${formatPeso(week.pace)}/day`}
+            label="− Spent before today"
+            value={formatPeso(roundCents(weekSpent - spent))}
           />
-          <BreakdownLine label="Always keep" value={formatPeso(PLAN_FLOOR)} divider />
+          <BreakdownLine
+            label={`÷ ${week.daysLeft} ${week.daysLeft === 1 ? "day" : "days"} left`}
+            value={`${formatPeso(allowance)} today`}
+            divider
+          />
+          <BreakdownLine label="− Spent today" value={formatPeso(spent)} />
+          <BreakdownLine label="= Left today" value={formatPeso(left)} strong divider />
+          <BreakdownLine label="Left this week" value={formatPeso(weekLeft)} divider />
+          <BreakdownLine label="Always keep" value={formatPeso(PLAN_FLOOR)} />
         </dl>
         <p className="pt-2 text-[13px] leading-snug text-sea-text">
           Every bill, loan, BNPL bill and payday in the next {PLAN_DAYS} days counts, and what you
