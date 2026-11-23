@@ -23,8 +23,8 @@ const nextConfig: NextConfig = {
     },
   },
   async redirects() {
-    // Can I afford this? moved from its own page into Home.
-    return [{ source: "/plan/afford", destination: "/#afford", permanent: false }];
+    // Can I afford this? moved out of Plan: a dialog from Home, or /afford.
+    return [{ source: "/plan/afford", destination: "/afford", permanent: false }];
   },
   async headers() {
     return [

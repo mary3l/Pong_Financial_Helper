@@ -3,14 +3,15 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { DisplayNameForm } from "@/components/display-name-form";
 import { ForecastChart } from "@/components/forecast-chart";
+import { ChevronIcon } from "@/components/icons";
 import { LogButton } from "@/components/log-button";
+import { Pong } from "@/components/pong";
 import { TransactionList } from "@/components/transaction-list";
 import { getCurrentUser } from "@/lib/auth";
 import { creditRoom } from "@/lib/bnpl";
 import { categoryInfo } from "@/lib/categories";
 import {
   getBillTags,
-  getBnplCap,
   getBudgets,
   getUserCategories,
   getCapLines,
@@ -33,14 +34,12 @@ import { itemLabel, lowestBetween, nextUnreceivedPayday, type ForecastItem } fro
 import { getUsdRate } from "@/lib/fx";
 import {
   accountTypeLabel,
-  countsAsSpending,
   formatBalance,
   formatMoney,
   formatPeso,
   fxGain,
   isDebt,
   isSpendable,
-  paysInPesos,
   pesoTotal,
   pesoValue,
   purposeLabel,
@@ -50,7 +49,6 @@ import { PLAN_DAYS, PLAN_FLOOR, planToday, weekStartOf } from "@/lib/payment-pla
 import { isContribution } from "@/lib/payroll";
 import { dueDate, isOverdue } from "@/lib/people";
 import { saveWidgetSnapshot } from "@/lib/widget-snapshot";
-import { AffordForm, OpenAffordFromHash } from "./afford-form";
 import { SafeToSpendCard, pongSays } from "./safe-to-spend-card";
 
 // Design canvas 2.1: Safe to spend (with its breakdown), Coming up (bills and
@@ -149,23 +147,32 @@ async function Dashboard() {
           today={today}
         />
 
-        <details id="afford" className="group scroll-mt-4">
-          <summary className="flex h-[52px] cursor-pointer list-none items-center justify-center rounded-[18px] bg-sun font-extrabold text-ink [&::-webkit-details-marker]:hidden">
-            <span className="group-open:hidden">Can I afford this?</span>
-            <span className="hidden group-open:inline">Close · Can I afford this?</span>
-          </summary>
-          <div className="flex flex-col gap-3 pt-3">
-            <p className="text-[15px] text-muted">
-              Test a purchase against your forecast before you spend.
-            </p>
-            <Suspense
-              fallback={<div className="h-96 rounded-[20px] bg-line-soft" aria-hidden="true" />}
-            >
-              <Afford />
-            </Suspense>
-          </div>
-        </details>
-        <OpenAffordFromHash />
+        {/* Pong peeks over the top of the card: the card, drawn after him, hides his lower half. */}
+        <div className="relative pt-10">
+          <Pong
+            mood="peek"
+            size={72}
+            decorative
+            className="pong-peek pointer-events-none absolute top-0 right-16"
+          />
+          {/* Opens as a dialog over Home: see @modal/(.)afford. */}
+          <Link
+            href="/afford"
+            className="relative flex min-h-[76px] items-center gap-3 rounded-[22px] bg-sun-tint py-3.5 pr-3.5 pl-5 text-ink transition-transform active:scale-[0.99]"
+          >
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="font-display text-lg leading-tight font-semibold">
+                Can I afford this?
+              </span>
+              <span className="text-[13px] leading-snug text-muted">
+                Check a purchase before you buy it
+              </span>
+            </span>
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sun text-ink shadow-[0_3px_0_rgba(0,0,0,0.12)]">
+              <ChevronIcon size={22} />
+            </span>
+          </Link>
+        </div>
 
         {overdue.length > 0 && (
           <section
@@ -554,36 +561,6 @@ async function DollarsCard({ wallets, today }: { wallets: Account[]; today: stri
         )}
       </div>
     </section>
-  );
-}
-
-// Installments can run up to a year past the purchase date.
-const AFFORD_DAYS = 420;
-
-/** Can I afford this? (design canvas 3.2): test a purchase against the forecast. */
-async function Afford() {
-  // Read the clock only at request time (Cache Components).
-  await connection();
-  const today = getToday();
-  const plan = await getPlanInputs(today, AFFORD_DAYS);
-  const { accounts, inWallets, payday, items } = plan;
-  const credit = creditRoom(accounts);
-  const cap = credit.length ? await getBnplCap(today, plan) : null;
-  return (
-    <AffordForm
-      start={inWallets}
-      items={items}
-      today={today}
-      nextPayday={payday ? nextUnreceivedPayday(payday, items, today) : null}
-      payKnown={Boolean(payday?.amount)}
-      payday={payday ? { frequency: payday.frequency, day1: payday.day1, day2: payday.day2 } : null}
-      credit={credit}
-      cap={cap}
-      // Your spending money: what the forecast counts.
-      wallets={accounts
-        .filter((a) => countsAsSpending(a) && paysInPesos(a) && !a.archived)
-        .map((a) => ({ id: a.id, name: a.name, balance: a.balance }))}
-    />
   );
 }
 

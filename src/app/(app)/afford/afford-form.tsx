@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { addPlannedExpense } from "@/app/plan-actions";
 import { AmountInput } from "@/components/amount-input";
 import { FIELD_CLASS } from "@/components/choice-chip";
+import { CloseIcon } from "@/components/icons";
 import { ForecastChart } from "@/components/forecast-chart";
 import { Pong, type PongMood } from "@/components/pong";
 import { affordWithCredit, type BnplCap, type CreditOption, type CreditRoom } from "@/lib/bnpl";
@@ -24,28 +25,8 @@ const MOODS: Record<Verdict["tone"], PongMood> = {
   no: "shocked",
 };
 
-/**
- * Opens Home's Can I afford this? section when the link asks for it (/#afford,
- * from Settings or the old /plan/afford page).
- */
-export function OpenAffordFromHash() {
-  useEffect(() => {
-    function open() {
-      if (window.location.hash !== "#afford") return;
-      const details = document.getElementById("afford");
-      if (details instanceof HTMLDetailsElement) {
-        details.open = true;
-        details.scrollIntoView({ block: "start" });
-      }
-    }
-    open();
-    window.addEventListener("hashchange", open);
-    return () => window.removeEventListener("hashchange", open);
-  }, []);
-  return null;
-}
-
 export function AffordForm({
+  mode,
   start,
   items,
   today,
@@ -56,6 +37,8 @@ export function AffordForm({
   cap,
   wallets,
 }: {
+  /** "modal": over the page you were on, closing with back. "page": /afford opened directly. */
+  mode: "modal" | "page";
   /** Money in cash, bank and e-wallets now. */
   start: number;
   items: ForecastItem[];
@@ -119,14 +102,9 @@ export function AffordForm({
     });
   }
 
-  function discard() {
-    setName("");
-    setAmountText("");
-    setWhen(today);
-    setCategory("shopping");
-    setMonths(1);
-    setWalletId("");
-    setError(null);
+  function close() {
+    if (mode === "modal") router.back();
+    else router.push("/");
   }
 
   return (
@@ -135,8 +113,28 @@ export function AffordForm({
         e.preventDefault();
         save();
       }}
-      className="flex flex-col gap-4"
+      className={`flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 ${
+        mode === "modal" ? "px-5 pt-3 pb-6 lg:p-7" : ""
+      }`}
     >
+      {mode === "modal" && (
+        <div className="flex items-start justify-between gap-3 lg:col-span-2">
+          <div className="flex flex-col gap-0.5">
+            <h1 className="font-display text-2xl font-semibold">Can I afford this?</h1>
+            <p className="text-[15px] text-muted">
+              Test a purchase against your forecast before you spend.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={close}
+            aria-label="Close"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-card"
+          >
+            <CloseIcon size={18} />
+          </button>
+        </div>
+      )}
       <div className="flex flex-col gap-3 rounded-[20px] bg-card p-4">
         <div className="flex flex-col gap-1">
           <label htmlFor="afford-what" className="text-sm font-bold">
@@ -319,11 +317,7 @@ export function AffordForm({
           </button>
           <button
             type="button"
-            onClick={(e) => {
-              discard();
-              // Fold the section on Home back up.
-              e.currentTarget.closest("details")?.removeAttribute("open");
-            }}
+            onClick={close}
             className="flex h-11 items-center justify-center font-extrabold text-sea-dark"
           >
             Just checking, discard
