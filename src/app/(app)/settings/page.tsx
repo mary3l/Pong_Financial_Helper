@@ -37,8 +37,8 @@ export default function SettingsPage() {
         </Suspense>
         <Row
           title="Can I afford this?"
-          detail="Test a purchase against your forecast"
-          href="/plan/afford"
+          detail="Test a purchase against your forecast, on Home"
+          href="/#afford"
         />
         <Row
           title="Goals (sinking funds)"
@@ -64,6 +64,7 @@ export default function SettingsPage() {
           href="/money"
         />
         <Row title="Grocery mode" detail="Scan as you shop and stay in budget" href="/grocery" />
+        <Row title="Insights" detail="Is your spending going up or down?" href="/insights" />
         <Row
           title="Pay"
           detail="Days worked, late, overtime, SSS, PhilHealth, Pag-IBIG, tax"

@@ -59,6 +59,11 @@ function format(date: string, options: Intl.DateTimeFormatOptions): string {
   return new Intl.DateTimeFormat("en-US", { timeZone: "UTC", ...options }).format(toMs(date));
 }
 
+/** "November 2026" */
+export function formatMonth(date: string): string {
+  return format(date, { month: "long", year: "numeric" });
+}
+
 /** "Mon, Nov 2" */
 export function formatLongDay(date: string): string {
   return format(date, { weekday: "short", month: "short", day: "numeric" });

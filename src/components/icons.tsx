@@ -92,6 +92,14 @@ export function CalculatorIcon(props: IconProps) {
   );
 }
 
+export function TrendIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 20V10M10 20V5M16 20v-7M22 20H2" />
+    </Icon>
+  );
+}
+
 export function ChevronIcon({
   direction = "right",
   ...props

@@ -176,13 +176,6 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
           </div>
         </section>
 
-        <Link
-          href="/plan/afford"
-          className="flex h-[52px] items-center justify-center rounded-[18px] bg-sun font-extrabold text-ink"
-        >
-          Can I afford this?
-        </Link>
-
         {byPayday.some((p) => p.bills.length || p.paidEarly.length) && (
           <BillsByPayday periods={byPayday} accounts={accounts} today={today} />
         )}

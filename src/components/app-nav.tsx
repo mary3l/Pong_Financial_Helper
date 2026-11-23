@@ -12,6 +12,7 @@ import {
   MoneyIcon,
   PlanIcon,
   PlusIcon,
+  TrendIcon,
 } from "@/components/icons";
 
 const TABS = [
@@ -154,6 +155,18 @@ function SidebarPanel({ isActive }: { isActive: IsActive }) {
         >
           <CalculatorIcon size={22} />
           Pay
+        </Link>
+        <Link
+          href="/insights"
+          aria-current={isActive("/insights") ? "page" : undefined}
+          className={`flex h-[46px] items-center gap-3 rounded-[14px] px-3.5 text-[15px] ${
+            isActive("/insights")
+              ? "bg-sea-tint font-extrabold text-sea-dark"
+              : "font-bold text-ink hover:bg-mint"
+          }`}
+        >
+          <TrendIcon size={22} />
+          Insights
         </Link>
       </nav>
     </aside>
