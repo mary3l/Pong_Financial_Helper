@@ -16,8 +16,9 @@ Built with Next.js 16 (App Router, Cache Components) and Supabase.
 - **Pay**: gross pay, cutoffs and paydays. Pong estimates GSIS or SSS, PhilHealth, Pag-IBIG and
   withholding tax, and takes salary loans off the payday.
 - **Can I afford this?**: on Home, test a purchase (one-off or installments) against the forecast.
-- **Insights**: is spending in each category and subcategory going up or down? The last 6
-  kinsenas or months, growing categories first.
+- **Insights**: this kinsenas or month against your usual and what drove it, SMART spending
+  goals, suggestions with peso savings, budgets on pace, habits (payday splurges, weekends, small
+  buys that add up), and each category and subcategory's trend.
 - **Plan**: 90-day forecast, scheduled bills and income, bills by payday, and budgets per kinsenas.
 - **Utang & pautang**: lend, borrow and split bills, with a shareable breakdown.
 - **Grocery mode**: scan barcodes while you shop and check out as one expense.
