@@ -237,6 +237,71 @@ export function isCategoryFor(
 
 export const SUBCATEGORY_MAX = 40;
 
+/**
+ * A few common subcategories for each built-in category, offered in Add
+ * before you've typed any of your own, so a category isn't one big bucket
+ * from day one. Up to 6 each. Other, Other income and your own categories
+ * have none.
+ *
+ * Gov't & tax leaves out SSS, PhilHealth, Pag-IBIG and income tax on
+ * purpose: the Pay tab already makes those monthly bills and planned
+ * payments (marking them paid logs them), and ones your office takes come
+ * off your payday, so they aren't expenses at all. A chip for them would
+ * invite logging the same payment twice.
+ */
+export const STARTER_SUBCATEGORIES: Readonly<Record<string, readonly string[]>> = {
+  food: ["Merienda", "Lunch", "Coffee & milk tea", "Fast food", "Food delivery", "Dining out"],
+  groceries: ["Supermarket", "Palengke", "Sari-sari store", "Rice", "Water refill"],
+  transport: ["Jeep", "Tricycle", "Grab or taxi", "Bus", "MRT/LRT", "Gas"],
+  bills: ["Electricity", "Water", "Internet", "Rent", "Postpaid plan", "Association dues"],
+  load: ["Prepaid load", "Data promo"],
+  shopping: ["Clothes", "Shoes", "Gadgets", "Home items", "Online shopping"],
+  health: ["Medicine", "Check-up", "Dental", "Vitamins", "Lab tests", "HMO"],
+  family: ["Padala", "Allowance", "Baon", "Tuition", "Household help"],
+  fun: ["Movies", "Streaming", "Games", "Hobbies", "Gimik", "Travel"],
+  gifts: ["Birthday", "Wedding", "Christmas", "Pasalubong", "Ninong or ninang"],
+  fees: ["Bank fees", "Transfer fees", "Late fees", "Interest", "Annual fee"],
+  gov: [
+    "Passport",
+    "NBI & police clearance",
+    "Driver's license & LTO",
+    "Cedula & barangay",
+    "Real property tax",
+    "Business permit",
+  ],
+  salary: ["13th month", "Bonus", "Overtime", "Allowance"],
+  side_income: ["Freelance", "Online selling", "Commission", "Tutoring"],
+  gift: ["Pamasko", "Birthday"],
+  refund: ["Cashback", "Returned item"],
+  interest: ["Savings", "Time deposit"],
+};
+
+/**
+ * The subcategories to offer in `category`: the ones you've used (in the
+ * order given, most used first), then its starters you haven't, so
+ * "jeep" you typed hides the "Jeep" starter. `starter` marks the ones you
+ * haven't used yet.
+ */
+export function subcategoriesWithStarters(
+  category: string,
+  used: readonly string[] = [],
+): { name: string; starter: boolean }[] {
+  const seen = new Set<string>();
+  const list: { name: string; starter: boolean }[] = [];
+  for (const [names, starter] of [
+    [used, false],
+    [STARTER_SUBCATEGORIES[category] ?? [], true],
+  ] as const) {
+    for (const name of names) {
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      list.push({ name, starter });
+    }
+  }
+  return list;
+}
+
 /** A typed subcategory with its spaces tidied; null when there's nothing left. */
 export function cleanSubcategory(value: unknown): string | null {
   if (typeof value !== "string") return null;

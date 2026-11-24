@@ -22,11 +22,13 @@ import {
   type Key,
 } from "@/lib/calculator";
 import {
+  STARTER_SUBCATEGORIES,
   SUBCATEGORY_MAX,
   categoriesFor,
   categoryInfo,
   categoryLabel,
   cleanSubcategory,
+  subcategoriesWithStarters,
   type UserCategory,
 } from "@/lib/categories";
 import type { Account, Template, Transaction } from "@/lib/data";
@@ -66,23 +68,6 @@ type Direction = "lend" | "borrow";
 
 /** Someone in a split: a saved person, or a new name. */
 type Participant = { key: string; personId: string | null; name: string };
-
-/** A hint in the subcategory box, per category. */
-const SUBCATEGORY_EXAMPLES: Record<string, string> = {
-  food: "Merienda",
-  groceries: "Puregold",
-  transport: "Jeep",
-  bills: "Electricity",
-  load: "Globe",
-  shopping: "Clothes",
-  health: "Medicine",
-  family: "Allowance",
-  fun: "Movies",
-  gifts: "Birthday",
-  gov: "SSS",
-  salary: "13th month",
-  side_income: "Freelance",
-};
 
 /** BNPL plan lengths offered in Add; 1 is "pay next month". */
 const PLAN_MONTHS = [1, 3, 6, 12];
@@ -712,7 +697,7 @@ export function TransactionForm({
   function addSubcategory() {
     const name = cleanSubcategory(newSub)?.slice(0, SUBCATEGORY_MAX);
     if (!name || !category) return;
-    const existing = subOptions.find((o) => o.toLowerCase() === name.toLowerCase());
+    const existing = subOptions.find((o) => o.name.toLowerCase() === name.toLowerCase())?.name;
     if (!existing) setAddedSubs((a) => ({ ...a, [category]: [...(a[category] ?? []), name] }));
     setSubcategory(existing ?? name);
     setNewSub("");
@@ -1115,14 +1100,19 @@ export function TransactionForm({
                     aria-labelledby="subcategory-label"
                     className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 lg:mx-0 lg:flex-wrap lg:px-0"
                   >
-                    {subOptions.map((name) => (
+                    {subOptions.map(({ name, starter }) => (
                       <button
                         key={name}
                         type="button"
                         aria-pressed={sub === name}
                         onClick={() => setSubcategory(sub === name ? null : name)}
+                        // A starter you haven't used yet looks like a suggestion: dashed, like Recent.
                         className={`h-8 shrink-0 rounded-full px-3 text-[13px] font-extrabold ${
-                          sub === name ? "bg-ink text-mint" : "bg-card text-ink hover:bg-sea-tint"
+                          sub === name
+                            ? "bg-ink text-mint"
+                            : starter
+                              ? "border-2 border-dashed border-line bg-card text-ink hover:border-sea"
+                              : "bg-card text-ink hover:bg-sea-tint"
                         }`}
                       >
                         {name}
@@ -1145,7 +1135,7 @@ export function TransactionForm({
                       }
                     }}
                     maxLength={SUBCATEGORY_MAX}
-                    placeholder={`New subcategory${SUBCATEGORY_EXAMPLES[category] ? `, like ${SUBCATEGORY_EXAMPLES[category]}` : ""}`}
+                    placeholder={`New subcategory${STARTER_SUBCATEGORIES[category]?.[0] ? `, like ${STARTER_SUBCATEGORIES[category][0]}` : ""}`}
                     className="h-10 min-w-0 flex-1 rounded-[14px] bg-card px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
                   />
                   <button
@@ -1719,22 +1709,21 @@ function splitPong(
   };
 }
 
-/** Saved subcategories for `category`, then ones typed here, then the picked one if it's in neither. */
+/**
+ * Saved subcategories for `category`, then ones typed here, then the picked
+ * one if it's in neither, then the category's starters you haven't used.
+ */
 function subcategoryChoices(
   category: string,
   saved: Record<string, string[]>,
   added: Record<string, string[]>,
   picked: string | null,
-): string[] {
-  const list: string[] = [];
-  for (const name of [
+): { name: string; starter: boolean }[] {
+  return subcategoriesWithStarters(category, [
     ...(saved[category] ?? []),
     ...(added[category] ?? []),
     ...(picked ? [picked] : []),
-  ]) {
-    if (!list.some((n) => n.toLowerCase() === name.toLowerCase())) list.push(name);
-  }
-  return list;
+  ]);
 }
 
 /** "Lent to Ana · from GCash · Today" under the amount. */

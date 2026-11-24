@@ -2,7 +2,12 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { PeriodNav } from "@/components/period-nav";
 import { Pong } from "@/components/pong";
-import { categoriesFor, categoryLabel, subcategoryOptions } from "@/lib/categories";
+import {
+  categoriesFor,
+  categoryLabel,
+  subcategoriesWithStarters,
+  subcategoryOptions,
+} from "@/lib/categories";
 import {
   getAccounts,
   getBudgets,
@@ -160,6 +165,15 @@ async function Insights({ searchParams }: Pick<PageProps<"/insights">, "searchPa
     return `/insights?${query}#goals`;
   };
   const prefill = readPrefill(params, today);
+  // The goal form's suggestions: yours first, then each category's starters,
+  // so a goal can be on "Food › Coffee & milk tea" before you've logged one.
+  const used = subcategoryOptions(raw);
+  const goalSubcategories = Object.fromEntries(
+    categoriesFor("expense", custom).map((c) => [
+      c.key,
+      subcategoriesWithStarters(c.key, used[c.key]).map((s) => s.name),
+    ]),
+  );
 
   const name = (x: Period) =>
     span === "month" ? formatMonth(x.start).split(" ")[0] : formatPeriod(x, today);
@@ -211,7 +225,7 @@ async function Insights({ searchParams }: Pick<PageProps<"/insights">, "searchPa
                 key: c.key,
                 label: c.label,
               }))}
-              subcategories={subcategoryOptions(raw)}
+              subcategories={goalSubcategories}
               usual={Object.fromEntries(kinsenasUsual)}
               ends={ends}
               today={today}
