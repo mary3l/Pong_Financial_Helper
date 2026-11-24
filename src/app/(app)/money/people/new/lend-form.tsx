@@ -4,12 +4,14 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { lendFromCreditLine, lendOrBorrow } from "@/app/people-actions";
 import { AmountInput } from "@/components/amount-input";
-import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
+import { FIELD_CLASS } from "@/components/choice-chip";
+import { PersonPicker } from "@/components/person-picker";
 import { EXPENSE_CATEGORIES } from "@/lib/categories";
 import type { Account } from "@/lib/data";
 import { addDays } from "@/lib/dates";
 import { upcomingSchedule } from "@/lib/installments";
 import { formatPeso, parseAmount, roundCents } from "@/lib/money";
+import { resolveWho } from "@/lib/people";
 import { nextOccurrence } from "@/lib/schedule";
 
 export type LendCreditLine = {
@@ -87,10 +89,6 @@ export function LendForm({
   // Already in "You owe on it now" when what no plan covers yet is at least this much.
   const alreadyOwed = owedChoice ?? (line ? left > 0 && left <= line.unscheduled : false);
 
-  // Typing a name that matches someone picks them.
-  const typed = name.trim().toLowerCase();
-  const matches = typed ? people.filter((p) => p.name.toLowerCase().includes(typed)) : people;
-
   function save(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -99,9 +97,8 @@ export function LendForm({
       setError("Enter an amount above ₱0.");
       return;
     }
-    const exact = people.find((p) => p.name.toLowerCase() === typed);
-    const who = personId ? { personId } : exact ? { personId: exact.id } : { name };
-    if (!personId && !exact && !typed) {
+    const who = resolveWho(people, personId, name);
+    if (!who) {
       setError("Who is it? Pick someone or type a name.");
       return;
     }
@@ -169,42 +166,21 @@ export function LendForm({
         ))}
       </div>
 
-      <div className="flex flex-col gap-2">
-        <label htmlFor="lend-who" className="text-sm font-bold">
-          Who?
-        </label>
-        <input
-          id="lend-who"
-          value={personId ? (people.find((p) => p.id === personId)?.name ?? "") : name}
-          onChange={(e) => {
-            setPersonId(null);
-            setName(e.target.value);
-          }}
-          maxLength={60}
-          placeholder="Search or add a person"
-          className={FIELD_CLASS}
-        />
-        {matches.length > 0 && (
-          <div role="group" aria-label="People" className="flex flex-wrap gap-2">
-            {matches.slice(0, 8).map((p) => (
-              <ChoiceChip
-                key={p.id}
-                selected={personId === p.id}
-                onClick={() => {
-                  setPersonId(p.id);
-                  setName("");
-                }}
-                className={personId === p.id ? "" : "bg-card"}
-              >
-                {p.name}
-              </ChoiceChip>
-            ))}
-          </div>
-        )}
-        {!personId && typed && !people.some((p) => p.name.toLowerCase() === typed) && (
-          <span className="text-xs text-muted">I&apos;ll add {name.trim()} as someone new.</span>
-        )}
-      </div>
+      <PersonPicker
+        id="lend-who"
+        people={people}
+        personId={personId}
+        name={name}
+        onPick={(id) => {
+          setPersonId(id);
+          setName("");
+        }}
+        onType={(text) => {
+          setPersonId(null);
+          setName(text);
+        }}
+        inputClassName={FIELD_CLASS}
+      />
 
       <div className="flex flex-col items-center gap-1">
         <label htmlFor="lend-amount" className="text-[13px] font-bold text-muted">

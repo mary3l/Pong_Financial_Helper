@@ -84,6 +84,23 @@ function item(p: Person, kind: "utang" | "pautang", dueOn: string): ForecastItem
   };
 }
 
+/**
+ * Who a lend or borrow is with: the person picked, else someone whose name
+ * was typed exactly (any case), else someone new by that name. Null when
+ * nobody is picked or typed.
+ */
+export function resolveWho(
+  people: { id: string; name: string }[],
+  personId: string | null,
+  name: string,
+): { personId: string } | { name: string } | null {
+  if (personId) return { personId };
+  const typed = name.replace(/\s+/g, " ").trim();
+  if (!typed) return null;
+  const exact = people.find((p) => p.name.toLowerCase() === typed.toLowerCase());
+  return exact ? { personId: exact.id } : { name: typed };
+}
+
 export type Share = {
   /** Null for you. */
   personId: string | null;

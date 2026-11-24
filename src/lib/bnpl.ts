@@ -1,6 +1,6 @@
 import { addDays, daysBetween, formatShortDay } from "@/lib/dates";
-import { isOwed, project, splitAmount, type ForecastItem, type Purchase } from "@/lib/forecast";
-import { bnplFirstDue } from "@/lib/installments";
+import { isOwed, project, type ForecastItem, type Purchase } from "@/lib/forecast";
+import { bnplFee, bnplFirstDue, buildSchedule, type PaymentRow } from "@/lib/installments";
 import { formatPeso, roundCents, type AccountType } from "@/lib/money";
 import { affordVerdict, type Verdict } from "@/lib/payment-plan";
 import { MAX_GAP_DAYS, occurrences, nextOccurrence, type Schedule } from "@/lib/schedule";
@@ -14,6 +14,8 @@ import { MAX_GAP_DAYS, occurrences, nextOccurrence, type Schedule } from "@/lib/
 export type CreditRoom = {
   id: string;
   name: string;
+  /** A credit card, or a BNPL line (SPayLater, Atome). */
+  kind: "card" | "bnpl";
   /** Null when no limit is saved on the line. */
   limit: number | null;
   /** What you owe on it now. */
@@ -34,6 +36,7 @@ type CreditAccount = {
   creditLimit: number | null;
   dueDay: number | null;
   cutoffDay?: number | null;
+  creditKind?: "bnpl" | "card";
 };
 
 /** Every BNPL line and how much of its limit is left. */
@@ -46,6 +49,7 @@ export function creditRoom(accounts: CreditAccount[]): CreditRoom[] {
       return {
         id: a.id,
         name: a.name,
+        kind: a.creditKind === "card" ? ("card" as const) : ("bnpl" as const),
         limit,
         owed,
         creditLeft: limit === null ? null : roundCents(Math.max(0, limit - owed)),
@@ -273,19 +277,34 @@ export function payCycle(payday: Schedule, date: string): { from: string; until:
   return { from, until: nextOccurrence(payday, date) };
 }
 
+/**
+ * Whether Pong's monthly cap holds a purchase back. A card paid straight is
+ * one bill you clear in full, so only its limit does; a card installment and
+ * BNPL are borrowing you pay over months, so the cap does too.
+ */
+export function usesCap(line: Pick<CreditRoom, "kind">, months: number): boolean {
+  return line.kind !== "card" || months > 1;
+}
+
 export type CreditOption = {
   line: CreditRoom;
-  /** What you could put on it the day you'd buy. */
-  room: number;
+  /** What you could put on it the day you'd buy. Null: no limit saved and no cap, so unknown. */
+  room: number | null;
   /** True when Pong's cap, not the limit, is what holds it back. */
   capped: boolean;
   /** False when the price is over `room`. */
   fits: boolean;
   /** The first bill this purchase lands on. */
   firstDue: string;
-  /** The first monthly payment, before any fee or interest. */
+  /** The first monthly payment, its fee included. */
   payment: number;
   months: number;
+  /** Every bill this purchase adds, fees included. */
+  payments: PaymentRow[];
+  /** Fees or interest across all of them. */
+  fees: number;
+  /** False for a card paid straight: Pong's cap doesn't hold it back. */
+  counted: boolean;
   /** The forecast with the payments on this line's due days. */
   verdict: Verdict | null;
   /**
@@ -297,11 +316,13 @@ export type CreditOption = {
 };
 
 /**
- * "Can I afford this?" if you used BNPL: the purchase goes on each line the
- * day you pick, and you pay it back on that line's due days. Paying back
- * still comes from your own money, so it's tested against the same forecast.
+ * "Can I afford this?" on a card or BNPL: the purchase goes on each line the
+ * day you pick, and you pay it back on that line's due days, with any fee
+ * (`ratePerMonth`, % a month, like Add's payment plan). Paying back still
+ * comes from your own money, so it's tested against the same forecast.
  * There's no "wait until payday" here: the due day is fixed. A purchase in a
- * later month is held to that month's cap, which starts over.
+ * later month is held to that month's cap, which starts over; a card paid
+ * straight only to its limit.
  */
 export function affordWithCredit({
   start,
@@ -311,6 +332,7 @@ export function affordWithCredit({
   payday,
   lines,
   cap,
+  ratePerMonth = 0,
 }: {
   start: number;
   items: ForecastItem[];
@@ -318,40 +340,53 @@ export function affordWithCredit({
   today: string;
   payday: Schedule | null;
   lines: CreditRoom[];
-  cap: BnplCap;
+  /** Null before there's a cap at all. */
+  cap: BnplCap | null;
+  ratePerMonth?: number;
 }): CreditOption[] {
   const sameMonth = purchase.first.slice(0, 7) === today.slice(0, 7);
-  const capRoom = sameMonth ? cap.left : cap.cap;
-  return lines
-    .filter((l) => usableOn(l, capRoom) !== null)
-    .map((line) => {
-      const room = usableOn(line, capRoom)!;
-      const capped = capRoom !== null && (line.creditLeft === null || capRoom < line.creditLeft);
-      const firstDue = bnplFirstDue(purchase.first, line.dueDay, line.cutoffDay ?? null);
-      const payment = splitAmount(purchase.amount, purchase.months)[0];
-      const fits = purchase.amount <= room;
-      const verdict = fits
-        ? affordVerdict({
-            start,
-            items,
-            purchase: { ...purchase, first: firstDue },
-            today,
-            nextPayday: null,
-          })
-        : null;
-      const cycle = payday ? payCycle(payday, firstDue) : null;
-      const perDay = cycle ? Math.ceil(payment / daysBetween(cycle.from, cycle.until)) : null;
-      return {
-        line,
-        room,
-        capped,
-        fits,
-        firstDue,
-        payment,
-        months: purchase.months,
-        verdict,
-        perDay,
-        cycle,
-      };
+  const monthCap = cap ? (sameMonth ? cap.left : cap.cap) : null;
+  return lines.map((line) => {
+    const counted = usesCap(line, purchase.months);
+    const capRoom = counted ? monthCap : null;
+    const room = usableOn(line, capRoom);
+    const capped = capRoom !== null && (line.creditLeft === null || capRoom < line.creditLeft);
+    const firstDue = bnplFirstDue(purchase.first, line.dueDay, line.cutoffDay ?? null);
+    const payments = buildSchedule({
+      principal: purchase.amount,
+      feeTotal: bnplFee(purchase.amount, ratePerMonth, purchase.months),
+      months: purchase.months,
+      firstDue,
     });
+    const payment = payments[0].amount;
+    const fees = roundCents(payments.reduce((sum, p) => sum + p.feePart, 0));
+    const fits = room === null || purchase.amount <= room;
+    const verdict = fits
+      ? affordVerdict({
+          start,
+          items,
+          purchase: { ...purchase, first: firstDue },
+          today,
+          nextPayday: null,
+          payments,
+        })
+      : null;
+    const cycle = payday ? payCycle(payday, firstDue) : null;
+    const perDay = cycle ? Math.ceil(payment / daysBetween(cycle.from, cycle.until)) : null;
+    return {
+      line,
+      room,
+      capped,
+      fits,
+      firstDue,
+      payment,
+      months: purchase.months,
+      payments,
+      fees,
+      counted,
+      verdict,
+      perDay,
+      cycle,
+    };
+  });
 }

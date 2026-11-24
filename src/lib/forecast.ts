@@ -415,14 +415,25 @@ export type Purchase = { name: string; amount: number; first: string; months: nu
 /** The purchase as planned expenses: one, or one per installment. */
 export function purchaseItems(p: Purchase): ForecastItem[] {
   const amounts = splitAmount(p.amount, p.months);
-  return monthlyDates(p.first, p.months).map((date, i) => ({
+  return paymentItems(
+    p.name,
+    monthlyDates(p.first, p.months).map((dueOn, i) => ({ dueOn, amount: amounts[i] })),
+  );
+}
+
+/** Payments as planned expenses, "Shoes (2 of 3)" when there's more than one: a purchase, or its card or BNPL bills. */
+export function paymentItems(
+  name: string,
+  payments: { dueOn: string; amount: number }[],
+): ForecastItem[] {
+  return payments.map((p, i) => ({
     key: `purchase|${i}`,
     kind: "planned",
     flow: "out",
     id: `purchase-${i}`,
-    name: p.months > 1 ? `${p.name} (${i + 1} of ${p.months})` : p.name,
-    amount: amounts[i],
-    dueOn: date,
+    name: payments.length > 1 ? `${name} (${i + 1} of ${payments.length})` : name,
+    amount: p.amount,
+    dueOn: p.dueOn,
     accountId: null,
     category: null,
     estimate: false,

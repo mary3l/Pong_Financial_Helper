@@ -13,6 +13,15 @@ import { parseAmount } from "@/lib/money";
 
 type Params = Record<string, string | string[] | undefined>;
 
+/** Reads `?type=lend&direction=borrow&person=<id>`, which opens Add on Lend/Borrow. */
+function startLendFrom(params: Params) {
+  if (params.type !== "lend") return undefined;
+  return {
+    direction: params.direction === "borrow" ? ("borrow" as const) : ("lend" as const),
+    personId: typeof params.person === "string" ? params.person : null,
+  };
+}
+
 /**
  * Reads `?type=income&amount=…&category=…&account=…&note=…&link=…`, which
  * scheduled items use to open Add filled in. `?account=…` alone (a wallet's
@@ -77,6 +86,7 @@ export async function AddTransaction({
       prefill={prefillFrom(params, customCategories)}
       people={people.map((p) => ({ id: p.id, name: p.name, balance: p.balance }))}
       startSplit={params.split === "1"}
+      startLend={startLendFrom(params)}
       subcategories={subcategories}
       customCategories={customCategories}
     />

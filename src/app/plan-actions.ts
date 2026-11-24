@@ -5,6 +5,7 @@ import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
 import { couldBeCategory } from "@/lib/categories";
 import { isValidDate, today } from "@/lib/dates";
 import { monthlyDates, recurringCategory, splitAmount } from "@/lib/forecast";
+import { bnplFee, bnplFirstDue, buildSchedule } from "@/lib/installments";
 import { MAX_AMOUNT, roundCents } from "@/lib/money";
 import { payInstallments, undoInstallment } from "@/app/credit-actions";
 import { deleteTransaction } from "@/app/transaction-actions";
@@ -227,7 +228,19 @@ export type PlannedInput = {
   months: number;
   /** The wallet it'll be paid from; null or missing for any. Mark paid starts on it. */
   accountId?: string | null;
+  /**
+   * Bought on a card or BNPL: the line, and its fee in % a month. Then what's
+   * planned is its bills, on the line's due days with the fee in each, paid
+   * from any wallet; `first` is the day you buy it.
+   */
+  credit?: { lineId: string; ratePerMonth: number } | null;
 };
+
+/** Planned names are up to 60 characters: "Shoes · SPayLater (2 of 3)", the name cut to fit. */
+function plannedName(name: string, i: number, months: number): string {
+  const suffix = months > 1 ? ` (${i + 1} of ${months})` : "";
+  return name.slice(0, 60 - suffix.length).trim() + suffix;
+}
 
 /** "Add as planned expense" from Can I afford this?. */
 export async function addPlannedExpense(input: PlannedInput): Promise<PlanResult> {
@@ -244,9 +257,45 @@ export async function addPlannedExpense(input: PlannedInput): Promise<PlanResult
   if (!Number.isInteger(input.months) || input.months < 1 || input.months > 24) {
     return { error: "Pick how many months." };
   }
+  const credit = input.credit ?? null;
+  if (credit) {
+    const rate = Number(credit.ratePerMonth);
+    if (!(rate >= 0 && rate <= 10)) return { error: "Check the monthly fee (0 to 10%)." };
+  }
 
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
+
+  if (credit) {
+    // "*": cutoff_day is a later migration.
+    const { data: line } = await supabase
+      .from("accounts")
+      .select("*")
+      .eq("id", credit.lineId)
+      .eq("type", "credit_line")
+      .eq("archived", false)
+      .maybeSingle();
+    if (!line) return { error: "Pick one of your cards or BNPL lines." };
+    const schedule = buildSchedule({
+      principal: amount,
+      feeTotal: bnplFee(amount, Number(credit.ratePerMonth), input.months),
+      months: input.months,
+      firstDue: bnplFirstDue(input.first, line.due_day ?? null, line.cutoff_day ?? null),
+    });
+    const { error } = await supabase.from("planned_expenses").insert(
+      schedule.map((p, i) => ({
+        name: plannedName(`${name} · ${line.name}`, i, input.months),
+        amount: p.amount,
+        category: input.category,
+        due_on: p.dueOn,
+        // Its bills are paid from whichever wallet you like.
+        account_id: null,
+      })),
+    );
+    if (error) return FAILED;
+    refresh();
+    return {};
+  }
 
   // Only a peso wallet of yours: pickWallet says null for anything else.
   const accountId = input.accountId ? await pickWallet(supabase, null, input.accountId) : null;
