@@ -1,10 +1,8 @@
-import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { ChevronIcon, PathIcon } from "@/components/icons";
 import { PeriodNav } from "@/components/period-nav";
 import { Pong } from "@/components/pong";
-import { categoriesFor, categoryInfo, categoryLabel, subcategoryOptions } from "@/lib/categories";
+import { categoriesFor, categoryLabel, subcategoryOptions } from "@/lib/categories";
 import {
   getAccounts,
   getBudgets,
@@ -36,26 +34,19 @@ import {
   weekendSplit,
   type Suggestion,
 } from "@/lib/insights";
-import { formatPeso, inPesos } from "@/lib/money";
+import { inPesos } from "@/lib/money";
 import { occurrences } from "@/lib/schedule";
-import {
-  categoryTrends,
-  periodOf,
-  readSpan,
-  trendPeriods,
-  type Span,
-  type Trend,
-} from "@/lib/trend";
-import { GoalForm, type GoalPrefill } from "./goal-controls";
+import { categoryTrends, periodOf, readSpan, trendPeriods, type Span } from "@/lib/trend";
+import { GoalComposer, type GoalPrefill } from "./goal-controls";
 import {
   AdjustSection,
   BudgetSection,
+  CategorySection,
   GoalsSection,
   HabitsSection,
   SummaryCard,
   type Labeler,
 } from "./sections";
-import { TrendBars } from "./trend-bars";
 
 export const metadata = { title: "Insights · Pong Money" };
 
@@ -63,15 +54,16 @@ const PERIODS = 6;
 /** Small buys that add up are counted over the last 30 days. */
 const FREQUENT_DAYS = 30;
 
-// Your spending habits, top to bottom: this period against your usual, your
-// SMART goals, what you could change, budgets on pace, habits (payday,
-// weekends, small buys), then each category and subcategory over the last 6
-// kinsenas (or months, ?span=month) up to the one you're looking at (?p=).
+// Your spending habits: this period against your usual, your SMART goals,
+// what you could change, budgets on pace and habits (payday, weekends, small
+// buys) down the left; each category and subcategory over the last 6
+// kinsenas (or months, ?span=month) up to the one you're looking at (?p=) on
+// the right from lg up, under the rest on a phone.
 // Goals, suggestions and budgets are about now, so they show on the current
 // period only. The work is in lib/insights.ts and lib/trend.ts.
 export default function InsightsPage({ searchParams }: PageProps<"/insights">) {
   return (
-    <div className="flex flex-col gap-4 lg:max-w-3xl">
+    <div className="flex flex-col gap-4 lg:max-w-6xl">
       <div className="flex flex-col gap-1">
         <h1 className="font-display text-3xl font-semibold">Insights</h1>
         <p className="text-[15px] text-muted">
@@ -198,24 +190,23 @@ async function Insights({ searchParams }: Pick<PageProps<"/insights">, "searchPa
   }
 
   return (
-    <>
-      <PeriodNav span={span} period={period} today={today} href={href} />
+    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:items-start lg:gap-6">
+      <div className="flex min-w-0 flex-col gap-5">
+        <PeriodNav span={span} period={period} today={today} href={href} />
 
-      <SummaryCard summary={summary} label={label} unit={unit} isCurrent={isCurrent} />
+        <SummaryCard summary={summary} label={label} unit={unit} isCurrent={isCurrent} />
 
-      {isCurrent && (
-        <GoalsSection
-          goals={progress}
-          label={label}
-          today={today}
-          missing={savedGoals === "missing"}
-        >
-          <details open={Boolean(prefill)} className="group rounded-[20px] bg-card px-4 py-1">
-            <summary className="flex h-12 cursor-pointer list-none items-center gap-2 font-extrabold text-sea-dark [&::-webkit-details-marker]:hidden">
-              <span aria-hidden="true">+</span>
-              {progress.length ? "New goal" : "Set your first goal"}
-            </summary>
-            <GoalForm
+        {isCurrent && (
+          <GoalsSection
+            goals={progress}
+            label={label}
+            today={today}
+            missing={savedGoals === "missing"}
+          >
+            <GoalComposer
+              // A new Make it a goal opens it afresh, filled in.
+              key={prefill ? JSON.stringify(prefill) : "new"}
+              hasGoals={progress.length > 0}
               categories={categoriesFor("expense", custom).map((c) => ({
                 key: c.key,
                 label: c.label,
@@ -226,112 +217,40 @@ async function Insights({ searchParams }: Pick<PageProps<"/insights">, "searchPa
               today={today}
               prefill={prefill}
             />
-          </details>
-        </GoalsSection>
-      )}
+          </GoalsSection>
+        )}
 
-      {isCurrent && <AdjustSection items={advice} label={label} unit={unit} goalHref={goalHref} />}
+        {isCurrent && (
+          <AdjustSection items={advice} label={label} unit={unit} goalHref={goalHref} />
+        )}
 
-      {isCurrent && budgets.length > 0 && (
-        <BudgetSection items={budgetPace(budgets, trends, span, share)} label={label} />
-      )}
+        {isCurrent && budgets.length > 0 && (
+          <BudgetSection items={budgetPace(budgets, trends, span, share)} label={label} />
+        )}
 
-      <HabitsSection
-        payday={paydayEffect(txns, paydays, from, until)}
-        weekend={weekendSplit(txns, from, until)}
-        frequent={frequent}
-        label={label}
-        activityHref={(key, sub) => activity(key, sub)}
-        windowNote={`the last ${PERIODS} ${span === "month" ? "months" : "kinsenas"}`}
-      />
+        <HabitsSection
+          payday={paydayEffect(txns, paydays, from, until)}
+          weekend={weekendSplit(txns, from, until)}
+          frequent={frequent}
+          label={label}
+          activityHref={(key, sub) => activity(key, sub)}
+          windowNote={`the last ${PERIODS} ${span === "month" ? "months" : "kinsenas"}`}
+        />
+      </div>
 
       {trends.length > 0 && (
-        <section aria-labelledby="categories-heading" className="flex flex-col gap-2.5">
-          <div className="flex flex-col gap-0.5">
-            <h2 id="categories-heading" className="font-display text-xl font-semibold">
-              By category
-            </h2>
-            <p className="text-[13px] text-muted">Growing first. Tap one for its subcategories.</p>
-          </div>
-          <ul className="flex flex-col gap-2">
-            {trends.map((t) => {
-              const info = categoryInfo("expense", t.key, custom);
-              return (
-                <li key={t.key}>
-                  <details className="group rounded-[20px] bg-card">
-                    <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
-                      <span
-                        className={`flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] ${info.tint}`}
-                      >
-                        <PathIcon d={info.icon} size={21} />
-                      </span>
-                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <span className="flex items-baseline justify-between gap-2">
-                          <span className="flex min-w-0 items-center gap-1.5">
-                            <span className="truncate font-bold">{info.label}</span>
-                            {unusual.has(t.key) && (
-                              <span className="shrink-0 rounded-full bg-sun-tint px-2 py-0.5 text-[11px] font-extrabold text-sun-text">
-                                Unusual
-                              </span>
-                            )}
-                          </span>
-                          <Amount trend={t} soFar={isCurrent} />
-                        </span>
-                        <span className="flex items-center justify-between gap-2">
-                          <Change trend={t} vs={vs} unit={unit} />
-                          <TrendBars totals={t.totals} labels={labels} />
-                        </span>
-                      </span>
-                      <ChevronIcon
-                        size={20}
-                        className="shrink-0 text-muted transition-transform group-open:rotate-90"
-                      />
-                    </summary>
-                    <ul className="mx-4 flex flex-col border-t border-line-soft pb-1.5">
-                      {t.subs.map((s) => (
-                        <li key={s.name ?? ""} className="border-b border-line-soft last:border-0">
-                          <Link
-                            href={activity(t.key, s.name)}
-                            className="flex min-h-14 flex-col justify-center gap-0.5 py-2 pl-[54px] text-ink"
-                          >
-                            <span className="flex items-baseline justify-between gap-2">
-                              <span
-                                className={`truncate text-[15px] font-bold ${s.name ? "" : "text-muted"}`}
-                              >
-                                {s.name ?? "No subcategory"}
-                              </span>
-                              <Amount trend={s} soFar={false} />
-                            </span>
-                            <span className="flex items-center justify-between gap-2">
-                              <Change trend={s} vs={vs} unit={unit} />
-                              <TrendBars totals={s.totals} labels={labels} height={22} />
-                            </span>
-                          </Link>
-                        </li>
-                      ))}
-                      <li>
-                        <Link
-                          href={activity(t.key)}
-                          className="flex h-11 items-center pl-[54px] text-[15px] font-extrabold text-sea-dark"
-                        >
-                          See all {info.label} in Activity
-                        </Link>
-                      </li>
-                    </ul>
-                  </details>
-                </li>
-              );
-            })}
-          </ul>
-          <p className="text-[13px] text-muted">
-            Each bar is what you spent in one {unit}; the last is{" "}
-            {isCurrent ? `this ${unit} so far` : "the one shown"}. Bars are scaled to each row, so
-            compare categories by their amounts. Transfers and balance adjustments aren&apos;t
-            counted.
-          </p>
-        </section>
+        <CategorySection
+          trends={trends}
+          custom={custom}
+          unusual={unusual}
+          isCurrent={isCurrent}
+          unit={unit}
+          vs={vs}
+          labels={labels}
+          activityHref={activity}
+        />
       )}
-    </>
+    </div>
   );
 }
 
@@ -353,39 +272,6 @@ function readPrefill(
     limit,
     endsOn,
   };
-}
-
-function Amount({ trend, soFar }: { trend: Trend; soFar: boolean }) {
-  return (
-    <span className="shrink-0 font-display text-[17px] font-semibold">
-      {formatPeso(trend.current)}
-      {soFar && <span className="ml-1 font-sans text-xs font-bold text-muted">so far</span>}
-    </span>
-  );
-}
-
-/** "↑ ₱420 (+18%) vs Nov 1 – 15", in amber when it's more and green when it's less. */
-function Change({ trend, vs, unit }: { trend: Trend; vs: string; unit: string }) {
-  const { change, percent, current } = trend;
-  if (change === 0) {
-    return (
-      <span className="text-[13px] text-muted">
-        {current === 0 ? `None this ${unit}` : `No change vs ${vs}`}
-      </span>
-    );
-  }
-  if (percent === null) {
-    return <span className="text-[13px] font-bold text-sun-text">New · ₱0 last {unit}</span>;
-  }
-  const up = change > 0;
-  return (
-    <span className={`text-[13px] font-bold ${up ? "text-sun-text" : "text-sea-dark"}`}>
-      <span aria-hidden="true">{up ? "↑" : "↓"}</span>
-      <span className="sr-only">{up ? "Up" : "Down"}</span> {formatPeso(Math.abs(change))} (
-      {up ? "+" : "−"}
-      {Math.abs(percent)}%) <span className="font-normal text-muted">vs {vs}</span>
-    </span>
-  );
 }
 
 function InsightsSkeleton() {

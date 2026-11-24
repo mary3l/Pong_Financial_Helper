@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { ChevronIcon, PathIcon } from "@/components/icons";
 import { Pong, type PongMood } from "@/components/pong";
+import { categoryInfo, type UserCategory } from "@/lib/categories";
 import { formatShortDay } from "@/lib/dates";
 import {
   elapsedShare,
@@ -13,10 +15,12 @@ import {
   type WeekendSplit,
 } from "@/lib/insights";
 import { formatPeso } from "@/lib/money";
+import type { CategoryTrend, Trend } from "@/lib/trend";
 import { RemoveGoalButton, SetBudgetButton } from "./goal-controls";
+import { TrendBars } from "./trend-bars";
 
-// The sections of Insights, top to bottom: the summary, your goals, what you
-// can adjust, budgets, and habits. Server components, given everything
+// The sections of Insights: the summary, your goals, what you can adjust,
+// budgets and habits, then each category. Server components, given everything
 // already worked out (lib/insights.ts).
 
 /** "Transpo › Grab", or "Transpo". */
@@ -130,8 +134,7 @@ export function SummaryCard({
         </ul>
       )}
       <p className="relative text-[13px] text-sea-text">
-        Usual is your average over the {unit === "month" ? "months" : "kinsenas"} before this one
-        {isCurrent ? `, scaled to how far into the ${unit} you are` : ""}.
+        Usual: your average {unit} before this one{isCurrent ? ", up to this point" : ""}.
       </p>
     </section>
   );
@@ -182,7 +185,7 @@ export function GoalsSection({
     <Section
       id="goals"
       title="Your goals"
-      note="Specific, measurable, with an end date: spend under an amount on one category until a day you pick."
+      note="Spend under an amount on one category until a day you pick."
     >
       {missing ? (
         <p className="rounded-[20px] bg-card px-4 py-3 text-[15px] text-muted">
@@ -255,6 +258,9 @@ export function GoalsSection({
 
 // ── What you can adjust ─────────────────────────────────────────────────
 
+/** Ideas shown before "Show more": the rest fold away so the page stays calm. */
+const ADJUST_SHOWN = 2;
+
 export function AdjustSection({
   items,
   label,
@@ -267,57 +273,63 @@ export function AdjustSection({
   /** Opens the new goal form filled in from a suggestion. */
   goalHref: (s: Extract<Suggestion, { goal: unknown }>) => string;
 }) {
+  const row = (s: Suggestion) => (
+    <li
+      key={`${s.kind}-${s.key}-${"sub" in s ? s.sub : ""}`}
+      className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-[20px] bg-card px-4 py-3"
+    >
+      <p className="min-w-0 flex-1 basis-56 text-[15px] leading-snug">
+        {s.kind === "fewer" && (
+          <>
+            <b>{label(s.key, s.sub)}</b> 2 fewer times a week saves about{" "}
+            <b className="text-sea-dark">{formatPeso(s.saves)} a month</b>
+            <span className="text-muted"> · now about {s.perWeek}× a week</span>
+          </>
+        )}
+        {s.kind === "usual" && (
+          <>
+            <b>{label(s.key, s.sub)}</b> is <b className="text-sea-dark">{formatPeso(s.over)}</b>{" "}
+            over your usual {formatPeso(s.usual)} a {unit}
+          </>
+        )}
+        {s.kind === "budget" && (
+          <>
+            <b>{label(s.key)}</b> has no budget. You usually spend {formatPeso(s.usual)} a kinsenas;
+            a {formatPeso(s.amount)} budget lets me warn you before it runs over.
+          </>
+        )}
+      </p>
+      {s.kind === "budget" ? (
+        <SetBudgetButton category={s.key} amount={s.amount} label={label(s.key)} />
+      ) : (
+        <Link
+          href={goalHref(s)}
+          className="flex h-10 shrink-0 items-center rounded-full border-2 border-line px-3.5 text-sm font-extrabold text-ink hover:bg-sea-tint"
+        >
+          Make it a goal
+        </Link>
+      )}
+    </li>
+  );
+  const rest = items.slice(ADJUST_SHOWN);
   return (
-    <Section title="What you can adjust" note="Small changes, worked out from your own spending.">
+    <Section title="What you can adjust" note="Small changes, from your own spending.">
       {items.length ? (
         <ul className="flex flex-col gap-2">
-          {items.map((s) => (
-            <li
-              key={`${s.kind}-${s.key}-${"sub" in s ? s.sub : ""}`}
-              className="flex flex-col gap-2.5 rounded-[20px] bg-card px-4 py-3.5"
-            >
-              {s.kind === "fewer" && (
-                <>
-                  <p className="text-[15px] leading-snug">
-                    <b>{label(s.key, s.sub)} 2 fewer times a week</b> saves about{" "}
-                    <b className="text-sea-dark">{formatPeso(s.saves)} a month</b>. You have it
-                    about {s.perWeek} times a week now.
-                  </p>
-                  <Link
-                    href={goalHref(s)}
-                    className="flex h-10 w-fit items-center rounded-full bg-sun px-4 text-sm font-extrabold text-ink"
-                  >
-                    Make it a goal
-                  </Link>
-                </>
-              )}
-              {s.kind === "usual" && (
-                <>
-                  <p className="text-[15px] leading-snug">
-                    <b>{label(s.key, s.sub)}</b> is {formatPeso(s.over)} over your usual. Back to
-                    your usual {formatPeso(s.usual)} a {unit} keeps{" "}
-                    <b className="text-sea-dark">{formatPeso(s.over)}</b> in your pocket.
-                  </p>
-                  <Link
-                    href={goalHref(s)}
-                    className="flex h-10 w-fit items-center rounded-full bg-sun px-4 text-sm font-extrabold text-ink"
-                  >
-                    Make it a goal
-                  </Link>
-                </>
-              )}
-              {s.kind === "budget" && (
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="min-w-0 flex-1 text-[15px] leading-snug">
-                    <b>{label(s.key)}</b> has no budget, and you usually spend {formatPeso(s.usual)}{" "}
-                    a kinsenas on it. A {formatPeso(s.amount)} budget lets Pong warn you before it
-                    runs over.
-                  </p>
-                  <SetBudgetButton category={s.key} amount={s.amount} label={label(s.key)} />
-                </div>
-              )}
+          {items.slice(0, ADJUST_SHOWN).map(row)}
+          {rest.length > 0 && (
+            <li>
+              <details className="group">
+                <summary className="flex h-10 cursor-pointer list-none items-center gap-1.5 px-1 text-sm font-extrabold text-sea-dark [&::-webkit-details-marker]:hidden">
+                  <span className="group-open:hidden">
+                    Show {rest.length} more {rest.length === 1 ? "idea" : "ideas"}
+                  </span>
+                  <span className="hidden group-open:inline">Show fewer</span>
+                </summary>
+                <ul className="flex flex-col gap-2">{rest.map(row)}</ul>
+              </details>
             </li>
-          ))}
+          )}
         </ul>
       ) : (
         <p className="rounded-[20px] bg-card px-4 py-3 text-[15px] text-muted">
@@ -502,5 +514,149 @@ export function HabitsSection({
         </p>
       )}
     </Section>
+  );
+}
+
+// ── By category ─────────────────────────────────────────────────────────
+
+/** Each category over the periods shown, growing first; tap one for its subcategories. */
+export function CategorySection({
+  trends,
+  custom,
+  unusual,
+  isCurrent,
+  unit,
+  vs,
+  labels,
+  activityHref,
+}: {
+  trends: CategoryTrend[];
+  custom: UserCategory[];
+  /** Categories well over their usual. */
+  unusual: Set<string>;
+  isCurrent: boolean;
+  unit: string;
+  /** The period before, to compare with: "Oct" or "Nov 1 – 15". */
+  vs: string;
+  /** Each bar's period, oldest first. */
+  labels: string[];
+  activityHref: (key: string, sub?: string | null) => string;
+}) {
+  return (
+    <section aria-labelledby="categories-heading" className="flex flex-col gap-2.5">
+      <div className="flex flex-col gap-0.5">
+        <h2 id="categories-heading" className="font-display text-xl font-semibold">
+          By category
+        </h2>
+        <p className="text-[13px] text-muted">Growing first. Tap one for its subcategories.</p>
+      </div>
+      <ul className="flex flex-col gap-2">
+        {trends.map((t) => {
+          const info = categoryInfo("expense", t.key, custom);
+          return (
+            <li key={t.key}>
+              <details className="group rounded-[20px] bg-card">
+                <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+                  <span
+                    className={`flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] ${info.tint}`}
+                  >
+                    <PathIcon d={info.icon} size={21} />
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="flex items-baseline justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate font-bold">{info.label}</span>
+                        {unusual.has(t.key) && (
+                          <span className="shrink-0 rounded-full bg-sun-tint px-2 py-0.5 text-[11px] font-extrabold text-sun-text">
+                            Unusual
+                          </span>
+                        )}
+                      </span>
+                      <Amount trend={t} soFar={isCurrent} />
+                    </span>
+                    <span className="flex items-center justify-between gap-2">
+                      <Change trend={t} vs={vs} unit={unit} />
+                      <TrendBars totals={t.totals} labels={labels} />
+                    </span>
+                  </span>
+                  <ChevronIcon
+                    size={20}
+                    className="shrink-0 text-muted transition-transform group-open:rotate-90"
+                  />
+                </summary>
+                <ul className="mx-4 flex flex-col border-t border-line-soft pb-1.5">
+                  {t.subs.map((s) => (
+                    <li key={s.name ?? ""} className="border-b border-line-soft last:border-0">
+                      <Link
+                        href={activityHref(t.key, s.name)}
+                        className="flex min-h-14 flex-col justify-center gap-0.5 py-2 pl-[54px] text-ink"
+                      >
+                        <span className="flex items-baseline justify-between gap-2">
+                          <span
+                            className={`truncate text-[15px] font-bold ${s.name ? "" : "text-muted"}`}
+                          >
+                            {s.name ?? "No subcategory"}
+                          </span>
+                          <Amount trend={s} soFar={false} />
+                        </span>
+                        <span className="flex items-center justify-between gap-2">
+                          <Change trend={s} vs={vs} unit={unit} />
+                          <TrendBars totals={s.totals} labels={labels} height={22} />
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                  <li>
+                    <Link
+                      href={activityHref(t.key)}
+                      className="flex h-11 items-center pl-[54px] text-[15px] font-extrabold text-sea-dark"
+                    >
+                      See all {info.label} in Activity
+                    </Link>
+                  </li>
+                </ul>
+              </details>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="text-[13px] text-muted">
+        Each bar is one {unit}, the last {isCurrent ? "so far" : "the one shown"}. Transfers and
+        balance adjustments aren&apos;t counted.
+      </p>
+    </section>
+  );
+}
+
+function Amount({ trend, soFar }: { trend: Trend; soFar: boolean }) {
+  return (
+    <span className="shrink-0 font-display text-[17px] font-semibold">
+      {formatPeso(trend.current)}
+      {soFar && <span className="ml-1 font-sans text-xs font-bold text-muted">so far</span>}
+    </span>
+  );
+}
+
+/** "↑ ₱420 (+18%) vs Nov 1 – 15", in amber when it's more and green when it's less. */
+function Change({ trend, vs, unit }: { trend: Trend; vs: string; unit: string }) {
+  const { change, percent, current } = trend;
+  if (change === 0) {
+    return (
+      <span className="text-[13px] text-muted">
+        {current === 0 ? `None this ${unit}` : `No change vs ${vs}`}
+      </span>
+    );
+  }
+  if (percent === null) {
+    return <span className="text-[13px] font-bold text-sun-text">New · ₱0 last {unit}</span>;
+  }
+  const up = change > 0;
+  return (
+    <span className={`text-[13px] font-bold ${up ? "text-sun-text" : "text-sea-dark"}`}>
+      <span aria-hidden="true">{up ? "↑" : "↓"}</span>
+      <span className="sr-only">{up ? "Up" : "Down"}</span> {formatPeso(Math.abs(change))} (
+      {up ? "+" : "−"}
+      {Math.abs(percent)}%) <span className="font-normal text-muted">vs {vs}</span>
+    </span>
   );
 }
