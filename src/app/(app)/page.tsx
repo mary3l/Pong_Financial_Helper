@@ -147,13 +147,18 @@ async function Dashboard() {
           today={today}
         />
 
-        {/* Pong peeks over the top of the card: the card, drawn after him, hides his lower half. */}
-        <div className="relative pt-10">
+        {/* A big Pong stands behind the card, peeking over its top edge: the
+            card, drawn after him, hides all of him below his eyes. At 240px
+            his sprout starts ~55px down the drawing and his eyes end ~131px
+            down, so he sits 52px up (the top of the drawing is empty, so
+            nothing shows over the card above) and the card starts 80px down,
+            just under his eyes. */}
+        <div className="relative pt-20">
           <Pong
             mood="peek"
-            size={72}
+            size={240}
             decorative
-            className="pong-peek pointer-events-none absolute top-0 right-16"
+            className="pong-peek pointer-events-none absolute -top-[52px] left-[14%]"
           />
           {/* Opens as a dialog over Home: see @modal/(.)afford. */}
           <Link
