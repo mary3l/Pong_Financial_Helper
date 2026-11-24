@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useRef, useState, useTransition } from "react";
-import { saveSplit } from "@/app/people-actions";
+import { lendOrBorrow, saveSplit } from "@/app/people-actions";
 import { deleteTransaction, saveBnplPurchase, saveTransaction } from "@/app/transaction-actions";
 import { AmountInput } from "@/components/amount-input";
 import { CloseIcon, PathIcon } from "@/components/icons";
 import { Keypad } from "@/components/keypad";
+import { PersonPicker } from "@/components/person-picker";
 import { Pong, type PongMood } from "@/components/pong";
 import { showToast } from "@/components/toast";
 import {
@@ -44,16 +45,24 @@ import {
   type Currency,
   type TransactionType,
 } from "@/lib/money";
-import { equalShares } from "@/lib/people";
+import { equalShares, resolveWho } from "@/lib/people";
 
 // Design canvas 2.2 (phone) and "Web · Add expense modal" (desktop).
-// One form for adding and editing expenses, income and transfers.
+// One form for adding and editing expenses, income and transfers, and for
+// logging a lend or borrow (utang / pautang) with the keypad.
 
-const TYPES: { value: TransactionType; label: string }[] = [
+/** What Add is logging: a transaction type, or a lend or borrow with someone. */
+type FormKind = TransactionType | "lend";
+
+const KINDS: { value: FormKind; label: string }[] = [
   { value: "expense", label: "Expense" },
   { value: "income", label: "Income" },
   { value: "transfer", label: "Transfer" },
+  { value: "lend", label: "Lend/Borrow" },
 ];
+
+/** Lend or borrow: which way the money went. */
+type Direction = "lend" | "borrow";
 
 /** Someone in a split: a saved person, or a new name. */
 type Participant = { key: string; personId: string | null; name: string };
@@ -129,10 +138,11 @@ function converted(
   return roundCents(from.currency === "USD" ? amount * usd.fxRate : amount / usd.fxRate);
 }
 
-const TITLES: Record<TransactionType, string> = {
+const TITLES: Record<FormKind, string> = {
   expense: "Add expense",
   income: "Add income",
   transfer: "Move money",
+  lend: "Lend or borrow",
 };
 
 /** Values to start Add with, e.g. from "Add income" on a scheduled payday. */
@@ -158,6 +168,7 @@ export function TransactionForm({
   startSplit = false,
   subcategories = {},
   customCategories = [],
+  startLend,
 }: {
   accounts: Account[];
   templates: Template[];
@@ -176,6 +187,8 @@ export function TransactionForm({
   subcategories?: Record<string, string[]>;
   /** Your own categories (Settings › Categories), offered beside the built-in ones. */
   customCategories?: UserCategory[];
+  /** Open on Lend/Borrow (from `?type=lend`), maybe with someone picked. */
+  startLend?: { direction: Direction; personId: string | null };
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -187,7 +200,12 @@ export function TransactionForm({
   // A dollar wallet's + Add moves money: dollars aren't spent.
   const startType =
     prefillAccount?.currency === "USD" && prefill?.type === "expense" ? "transfer" : prefill?.type;
-  const [type, setType] = useState<TransactionType>(transaction?.type ?? startType ?? "expense");
+  const [kind, setKind] = useState<FormKind>(
+    startLend && !transaction ? "lend" : (transaction?.type ?? startType ?? "expense"),
+  );
+  const lending = kind === "lend";
+  // A borrow they paid for is your spending, so lending uses the expense categories.
+  const type: TransactionType = lending ? "expense" : kind;
   const startAmount = transaction?.amount ?? prefill?.amount;
   const [calc, setCalc] = useState<{ expr: string; error: string | null }>({
     expr: startAmount ? amountToExpression(startAmount) : "",
@@ -231,6 +249,16 @@ export function TransactionForm({
   const [paidBy, setPaidBy] = useState<string | null>(null);
   const [splitMethod, setSplitMethod] = useState<"equal" | "exact">("equal");
   const [exact, setExact] = useState<Record<string, string>>({});
+  // Lend or borrow.
+  const [direction, setDirection] = useState<Direction>(startLend?.direction ?? "lend");
+  const [lendPersonId, setLendPersonId] = useState<string | null>(
+    people.some((p) => p.id === startLend?.personId) ? startLend!.personId : null,
+  );
+  const [lendName, setLendName] = useState("");
+  const [dueOn, setDueOn] = useState("");
+  const [countIn, setCountIn] = useState(false);
+  // Borrowing: off when they paid for something of yours directly (a flight).
+  const [toWallet, setToWallet] = useState(true);
   // Phones: the keypad sheet over the bottom of the form.
   const [padOpen, setPadOpen] = useState(false);
   const amountButtonRef = useRef<HTMLButtonElement>(null);
@@ -251,23 +279,42 @@ export function TransactionForm({
     type === "transfer" && !!account && !!toAccount && account.currency !== toAccount.currency;
   const suggestedLanded = crossing ? converted(amount, account, toAccount) : null;
   const toAmount = !crossing ? null : landed.trim() ? parseAmount(landed) : suggestedLanded;
-  const splitting = splitOn && type === "expense" && !editing;
-  const fromList = usableFor(type, accounts, keep);
+  const splitting = splitOn && type === "expense" && !editing && !lending;
+  // Lending and borrowing go through your own peso cash, banks and e-wallets.
+  const fromList = lending
+    ? accounts.filter((a) => paysInPesos(a))
+    : usableFor(type, accounts, keep);
+  const paidForMe = lending && direction === "borrow" && !toWallet;
+  const who = lending ? resolveWho(people, lendPersonId, lendName) : null;
+  const whoName = lendPersonId
+    ? (people.find((p) => p.id === lendPersonId)?.name ?? "")
+    : lendName.replace(/\s+/g, " ").trim();
   // A split you paid with a credit line goes on its bill too, for the whole amount.
   const iPaid = !splitting || paidBy === "me";
-  const withPlan = !editing && iPaid && type === "expense" && account?.type === "credit_line";
+  const withPlan =
+    !editing && !lending && iPaid && type === "expense" && account?.type === "credit_line";
   // Save waits for these; its label names the first one missing.
   const missing = !amount
     ? "Enter an amount"
-    : type !== "transfer" && !category
-      ? "Pick a category"
-      : iPaid && !accountId
-        ? type === "income"
-          ? "Pick where it went"
-          : "Pick a wallet"
-        : type === "transfer" && !toAccountId
-          ? "Pick where it goes"
-          : null;
+    : lending
+      ? !who
+        ? "Pick who"
+        : paidForMe
+          ? !category
+            ? "Pick what it was for"
+            : null
+          : !accountId
+            ? "Pick a wallet"
+            : null
+      : type !== "transfer" && !category
+        ? "Pick a category"
+        : iPaid && !accountId
+          ? type === "income"
+            ? "Pick where it went"
+            : "Pick a wallet"
+          : type === "transfer" && !toAccountId
+            ? "Pick where it goes"
+            : null;
   const shares = splitting ? splitShares(amount, participants, splitMethod, exact) : null;
   // Exact amounts: what's still to be shared out, counting down to ₱0.
   const leftToSplit =
@@ -370,11 +417,12 @@ export function TransactionForm({
     closePad();
   }
 
-  function pickType(next: TransactionType) {
-    setType(next);
+  function pickKind(next: FormKind) {
+    setKind(next);
     setSubcategory(null);
     setSaveError(null);
-    const list = usableFor(next, accounts, keep);
+    const list =
+      next === "lend" ? accounts.filter((a) => paysInPesos(a)) : usableFor(next, accounts, keep);
     const from = list.some((a) => a.id === accountId) ? accountId : "";
     setAccountId(from);
     if (next === "transfer") keepTarget(from);
@@ -406,7 +454,7 @@ export function TransactionForm({
   }
 
   function applyTemplate(t: Template) {
-    setType(t.type);
+    setKind(t.type);
     setCalc({ expr: amountToExpression(t.amount), error: null });
     if (t.type !== "transfer" && t.category) {
       setCategories((c) => ({ ...c, [t.type]: t.category }));
@@ -440,6 +488,24 @@ export function TransactionForm({
       setSaveError(
         `Type how much landed in ${toAccount!.name}, in ${toAccount!.currency === "USD" ? "dollars" : "pesos"}.`,
       );
+      return;
+    }
+    if (lending && who) {
+      startTransition(async () => {
+        const result = await lendOrBorrow({
+          direction,
+          who,
+          amount,
+          walletId: accountId,
+          occurredOn: date,
+          dueOn: dueOn || null,
+          countInForecast: direction === "lend" && countIn && Boolean(dueOn),
+          note,
+          paidForMe: paidForMe ? { category: category ?? "other" } : null,
+        });
+        if (result.error) setSaveError(result.error);
+        else done("Saved", formatPeso(amount));
+      });
       return;
     }
     if (splitting) {
@@ -610,18 +676,20 @@ export function TransactionForm({
   const payerOwes = payer?.personId
     ? Math.max(0, people.find((x) => x.id === payer.personId)?.balance ?? 0)
     : 0;
-  const pong = splitting
-    ? splitPong(amount, shares, participants, paidBy, payerOwes)
-    : pongSays({
-        type,
-        amount,
-        error: calc.error,
-        account,
-        toAccount,
-        toAmount,
-        transaction,
-        planRows,
-      });
+  const pong = lending
+    ? lendPong({ direction, amount, error: calc.error, whoName, account, paidForMe })
+    : splitting
+      ? splitPong(amount, shares, participants, paidBy, payerOwes)
+      : pongSays({
+          type,
+          amount,
+          error: calc.error,
+          account,
+          toAccount,
+          toAmount,
+          transaction,
+          planRows,
+        });
 
   function toggleSplit(on: boolean) {
     setSplitOn(on);
@@ -661,7 +729,7 @@ export function TransactionForm({
     if (!participants.some((x) => x.key === p.key)) setParticipants((list) => [...list, p]);
     setNewName("");
   }
-  const title = editing ? "Edit transaction" : TITLES[type];
+  const title = editing ? "Edit transaction" : TITLES[kind];
   const saveLabel = pending
     ? splitting
       ? "Splitting…"
@@ -670,21 +738,33 @@ export function TransactionForm({
         : "Saving…"
     : missing
       ? missing
-      : splitting
-        ? `Split ${formatPeso(amount)}`
-        : `${editing ? "Update" : "Enter"} ${money(amount)}`;
+      : lending
+        ? `${direction === "lend" ? "Lend" : "Borrow"} ${formatPeso(amount)}`
+        : splitting
+          ? `Split ${formatPeso(amount)}`
+          : `${editing ? "Update" : "Enter"} ${money(amount)}`;
   const transferWallets = transferTargets(account, accounts, keep);
+  const walletLabel = lending
+    ? direction === "lend"
+      ? "Sent from"
+      : "Received in"
+    : type === "expense"
+      ? "Pay with"
+      : type === "income"
+        ? "Received in"
+        : "From";
 
   const typePicker = (className: string) => (
     <div role="group" aria-label="Type" className={`gap-1 rounded-2xl bg-card p-1 ${className}`}>
-      {TYPES.map((t) => (
+      {/* Editing a lend or borrow stays on its person's page. */}
+      {KINDS.filter((t) => !editing || t.value !== "lend").map((t) => (
         <button
           key={t.value}
           type="button"
-          aria-pressed={type === t.value}
-          onClick={() => pickType(t.value)}
-          className={`h-[34px] rounded-xl px-3 text-sm ${
-            type === t.value
+          aria-pressed={kind === t.value}
+          onClick={() => pickKind(t.value)}
+          className={`h-[34px] flex-auto rounded-xl px-2 text-sm whitespace-nowrap lg:flex-none lg:px-3 ${
+            kind === t.value
               ? "bg-sea font-extrabold text-white"
               : "font-bold text-muted hover:text-ink"
           }`}
@@ -786,18 +866,20 @@ export function TransactionForm({
             }`}
           >
             {calc.error ??
-              (leftToSplit === null || !amount
-                ? summary({
-                    type,
-                    category,
-                    subcategory: sub,
-                    account,
-                    toAccount,
-                    date,
-                    today,
-                    custom: customCategories,
-                  })
-                : splitLeftLabel(leftToSplit))}
+              (lending
+                ? lendSummary({ direction, whoName, account, paidForMe, date, today })
+                : leftToSplit === null || !amount
+                  ? summary({
+                      type,
+                      category,
+                      subcategory: sub,
+                      account,
+                      toAccount,
+                      date,
+                      today,
+                      custom: customCategories,
+                    })
+                  : splitLeftLabel(leftToSplit))}
           </span>
         </div>
 
@@ -861,13 +943,13 @@ export function TransactionForm({
 
       {/* Right column from lg up: what it was for and where it came from. */}
       <div className="contents lg:flex lg:min-w-0 lg:flex-1 lg:flex-col lg:gap-4">
-        <div className="order-0 flex h-11 items-center justify-between lg:hidden">
+        {/* Phones: four kinds don't fit beside Cancel, so they get their own row. */}
+        <div className="order-0 flex h-11 items-center lg:hidden">
           <button type="button" onClick={close} className="w-16 text-left font-bold text-sea">
             Cancel
           </button>
-          {typePicker("flex")}
-          <span className="w-16" aria-hidden="true" />
         </div>
+        {typePicker("order-0 flex lg:hidden")}
         <h2 className="sr-only lg:hidden">{title}</h2>
         {typePicker("hidden self-start lg:flex")}
 
@@ -876,7 +958,66 @@ export function TransactionForm({
           <p className="text-sm leading-snug lg:text-[15px]">{pong.line}</p>
         </div>
 
-        {!editing && templates.length > 0 && (
+        {lending && (
+          <div className="order-4 flex flex-col gap-3 lg:order-none">
+            <div
+              role="group"
+              aria-label="Lent or borrowed"
+              className="grid grid-cols-2 gap-1 rounded-2xl bg-card p-1"
+            >
+              {(["lend", "borrow"] as const).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  aria-pressed={direction === d}
+                  onClick={() => {
+                    setDirection(d);
+                    setSaveError(null);
+                  }}
+                  className={`h-10 rounded-xl text-sm ${direction === d ? "bg-sea font-extrabold text-white" : "font-bold text-muted hover:text-ink"}`}
+                >
+                  {d === "lend" ? "I lent (pautang)" : "I borrowed (utang)"}
+                </button>
+              ))}
+            </div>
+            <PersonPicker
+              id="lend-who"
+              people={people}
+              personId={lendPersonId}
+              name={lendName}
+              onPick={(id) => {
+                setLendPersonId(id);
+                setLendName("");
+                setSaveError(null);
+              }}
+              onType={(text) => {
+                setLendPersonId(null);
+                setLendName(text);
+              }}
+              labelClassName="text-sm font-extrabold"
+              inputClassName="h-11 min-w-0 rounded-[14px] bg-card px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
+            />
+            {direction === "borrow" && (
+              <label className="flex items-start justify-between gap-3 rounded-[18px] bg-card p-3.5 text-sm font-extrabold">
+                <span className="flex flex-col gap-0.5">
+                  The money came to one of my wallets
+                  <span className="text-xs font-semibold text-muted">
+                    Untick if they paid for something of yours directly, like a flight they booked
+                    for you.
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={toWallet}
+                  onChange={(e) => setToWallet(e.target.checked)}
+                  className="h-6 w-6 shrink-0 accent-sea"
+                />
+              </label>
+            )}
+          </div>
+        )}
+
+        {!editing && !lending && templates.length > 0 && (
           <div className="order-4 flex flex-col gap-1.5 lg:order-none">
             <span id="recent-label" className="text-xs font-extrabold text-muted">
               RECENT · TAP TO REUSE
@@ -911,11 +1052,13 @@ export function TransactionForm({
             maxLength={120}
             list="txn-note-suggestions"
             placeholder={
-              type === "income"
-                ? "Salary, refund…"
-                : type === "transfer"
-                  ? ""
-                  : "Lunch, jeep, Meralco…"
+              lending
+                ? "e.g. tuition"
+                : type === "income"
+                  ? "Salary, refund…"
+                  : type === "transfer"
+                    ? ""
+                    : "Lunch, jeep, Meralco…"
             }
             className="h-11 min-w-0 rounded-[14px] bg-card px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
           />
@@ -928,10 +1071,13 @@ export function TransactionForm({
           </datalist>
         </div>
 
-        {type !== "transfer" && (
+        {type !== "transfer" && (!lending || paidForMe) && (
           <div className="order-5 flex flex-col gap-1.5 lg:order-none">
-            <span id="category-label" className="hidden text-sm font-extrabold lg:block">
-              Category
+            <span
+              id="category-label"
+              className={`text-sm font-extrabold ${lending ? "" : "hidden lg:block"}`}
+            >
+              {lending ? "What it was for" : "Category"}
             </span>
             <div
               role="group"
@@ -957,7 +1103,7 @@ export function TransactionForm({
                 </button>
               ))}
             </div>
-            {category && (
+            {category && !lending && (
               <div className="flex flex-col gap-1.5">
                 <span id="subcategory-label" className="text-[13px] font-extrabold text-muted">
                   {categoryInfo(type, category, customCategories).label.toUpperCase()} · SUBCATEGORY
@@ -1013,7 +1159,7 @@ export function TransactionForm({
                 </div>
               </div>
             )}
-            {category === "groceries" && !editing && (
+            {category === "groceries" && !editing && !lending && (
               <Link href="/grocery" className="text-[13px] font-extrabold text-sea-dark underline">
                 At the store now? Scan as you shop in Grocery mode
               </Link>
@@ -1021,7 +1167,7 @@ export function TransactionForm({
           </div>
         )}
 
-        {type === "expense" && !editing && (
+        {type === "expense" && !editing && !lending && (
           <div className="order-6 flex flex-col gap-2.5 rounded-[18px] bg-card p-3.5 lg:order-none">
             <label className="flex items-center justify-between gap-3 text-sm font-extrabold">
               Split this bill
@@ -1199,17 +1345,10 @@ export function TransactionForm({
           </div>
         )}
 
-        {iPaid && (
+        {iPaid && !paidForMe && (
           <div className="order-6 flex flex-col gap-1.5 lg:order-none">
-            <span className="text-sm font-extrabold">
-              {type === "expense" ? "Pay with" : type === "income" ? "Received in" : "From"}
-            </span>
-            {walletChips(
-              accountId,
-              pickFrom,
-              fromList,
-              type === "expense" ? "Pay with" : type === "income" ? "Received in" : "From",
-            )}
+            <span className="text-sm font-extrabold">{walletLabel}</span>
+            {walletChips(accountId, pickFrom, fromList, walletLabel)}
           </div>
         )}
 
@@ -1351,7 +1490,9 @@ export function TransactionForm({
           </div>
         )}
 
-        <div className="order-8 grid grid-cols-2 gap-2.5 lg:order-none lg:grid-cols-[minmax(0,1fr)_minmax(0,8.5rem)]">
+        <div
+          className={`order-8 grid grid-cols-2 gap-2.5 lg:order-none ${lending ? "" : "lg:grid-cols-[minmax(0,1fr)_minmax(0,8.5rem)]"}`}
+        >
           <div className={`flex flex-col gap-1 ${splitting ? "col-span-2" : ""}`}>
             <label htmlFor="txn-date" className="text-[13px] font-extrabold">
               Date
@@ -1365,8 +1506,24 @@ export function TransactionForm({
               className="h-11 min-w-0 rounded-[14px] bg-card px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
             />
           </div>
-          {/* A split saves several records through its own flow, which keeps just the date. */}
-          {!splitting && (
+          {lending && (
+            <div className="flex flex-col gap-1">
+              <label htmlFor="lend-due" className="text-[13px] font-extrabold">
+                {direction === "lend" ? "Promised to pay on" : "I'll pay back on"}{" "}
+                <span className="font-semibold text-muted">(optional)</span>
+              </label>
+              <input
+                id="lend-due"
+                type="date"
+                value={dueOn}
+                min={isValidDate(date) ? date : undefined}
+                onChange={(e) => setDueOn(e.target.value)}
+                className="h-11 min-w-0 rounded-[14px] bg-card px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
+              />
+            </div>
+          )}
+          {/* A split saves several records through its own flow, which keeps just the date. So does a lend or borrow. */}
+          {!splitting && !lending && (
             <div className="flex flex-col gap-1">
               <label htmlFor="txn-time" className="text-[13px] font-extrabold">
                 Time
@@ -1383,6 +1540,35 @@ export function TransactionForm({
             </div>
           )}
         </div>
+
+        {lending && (
+          <div className="order-9 flex flex-col gap-2 lg:order-none">
+            {direction === "lend" ? (
+              <label className="flex items-center justify-between gap-3 text-sm font-extrabold">
+                Count it in my forecast on the due date
+                <input
+                  type="checkbox"
+                  checked={countIn && Boolean(dueOn)}
+                  disabled={!dueOn}
+                  onChange={(e) => setCountIn(e.target.checked)}
+                  className="h-6 w-6 shrink-0 accent-sea"
+                />
+              </label>
+            ) : (
+              <p className="text-xs text-muted">
+                With a pay-back date, it shows in Coming up and your forecast like a bill.
+              </p>
+            )}
+            {direction === "lend" && (
+              <Link
+                href={`/money/people/new?direction=lend${lendPersonId ? `&who=${lendPersonId}` : ""}`}
+                className="text-[13px] font-extrabold text-sea-dark underline"
+              >
+                Someone used your credit line? Lend on it
+              </Link>
+            )}
+          </div>
+        )}
 
         <div className="hidden flex-1 lg:block" />
 
@@ -1549,6 +1735,94 @@ function subcategoryChoices(
     if (!list.some((n) => n.toLowerCase() === name.toLowerCase())) list.push(name);
   }
   return list;
+}
+
+/** "Lent to Ana · from GCash · Today" under the amount. */
+function lendSummary({
+  direction,
+  whoName,
+  account,
+  paidForMe,
+  date,
+  today,
+}: {
+  direction: Direction;
+  whoName: string;
+  account?: Account;
+  paidForMe: boolean;
+  date: string;
+  today: string;
+}) {
+  const when = isValidDate(date) ? formatRelativeDay(date, today) : "Pick a date";
+  const lent = direction === "lend";
+  const where = paidForMe
+    ? "they paid"
+    : account
+      ? `${lent ? "from" : "into"} ${account.name}`
+      : null;
+  return [`${lent ? "Lent to" : "Borrowed from"} ${whoName || "?"}`, where, when]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** What Pong says while you log a lend or borrow. */
+function lendPong({
+  direction,
+  amount,
+  error,
+  whoName,
+  account,
+  paidForMe,
+}: {
+  direction: Direction;
+  amount: number;
+  error: string | null;
+  whoName: string;
+  account?: Account;
+  paidForMe: boolean;
+}): { mood: PongMood; line: string } {
+  if (error) return { mood: "worried", line: `${error}. Check the numbers?` };
+  const lent = direction === "lend";
+  if (!amount) {
+    return lent
+      ? {
+          mood: "ask",
+          line: "How much did you lend? Lending isn't spending, it's still your money.",
+        }
+      : { mood: "ask", line: "How much did you borrow? Borrowed money isn't income." };
+  }
+  if (!whoName) {
+    return { mood: "ask", line: lent ? "Who did you lend it to?" : "Who did you borrow from?" };
+  }
+  if (paidForMe) {
+    return {
+      mood: "listen",
+      line: `None of your wallets go up. It's your spending, paid by ${whoName}, and you'll owe them for it.`,
+    };
+  }
+  if (!account) {
+    return {
+      mood: "ask",
+      line: lent ? "Which wallet did it come from?" : "Which wallet did it go to?",
+    };
+  }
+  if (lent) {
+    const left = account.balance - amount;
+    if (left < 0) {
+      return {
+        mood: "shocked",
+        line: `That's ${formatPeso(-left)} more than ${account.name} has right now!`,
+      };
+    }
+    return {
+      mood: "happy",
+      line: `${account.name} will have ${formatPeso(left)}. Lending isn't spending, it's still your money.`,
+    };
+  }
+  return {
+    mood: "listen",
+    line: `${account.name} goes up to ${formatPeso(account.balance + amount)}. Borrowed money isn't income, so your budget stays honest.`,
+  };
 }
 
 function summary({

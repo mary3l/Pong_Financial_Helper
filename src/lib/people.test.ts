@@ -4,6 +4,7 @@ import {
   equalShares,
   isOverdue,
   personItems,
+  resolveWho,
   splitEffects,
   type Person,
 } from "@/lib/people";
@@ -88,5 +89,25 @@ describe("forecast ignores pautang until it's paid back", () => {
       "2026-11-15",
     );
     expect(dueDate(person(0, [{ dueOn: "2026-11-15" }]))).toBeNull();
+  });
+});
+
+describe("resolveWho", () => {
+  const people = [
+    { id: "ana", name: "Ana" },
+    { id: "tf", name: "Tita Flora" },
+  ];
+
+  it("takes the person picked", () => {
+    expect(resolveWho(people, "ana", "whatever")).toEqual({ personId: "ana" });
+  });
+
+  it("matches a typed name exactly, any case and spacing", () => {
+    expect(resolveWho(people, null, "  tita   flora ")).toEqual({ personId: "tf" });
+  });
+
+  it("adds someone new, and needs someone", () => {
+    expect(resolveWho(people, null, "An")).toEqual({ name: "An" });
+    expect(resolveWho(people, null, "   ")).toBeNull();
   });
 });

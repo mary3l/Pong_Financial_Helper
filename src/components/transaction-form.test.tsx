@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { lendOrBorrow } from "@/app/people-actions";
 import { deleteTransaction, saveBnplPurchase, saveTransaction } from "@/app/transaction-actions";
 import type { Account, Template, Transaction } from "@/lib/data";
 import { TransactionForm } from "./transaction-form";
@@ -12,7 +13,10 @@ vi.mock("@/app/transaction-actions", () => ({
   saveBnplPurchase: vi.fn(async () => ({})),
   deleteTransaction: vi.fn(async () => ({})),
 }));
-vi.mock("@/app/people-actions", () => ({ saveSplit: vi.fn(async () => ({})) }));
+vi.mock("@/app/people-actions", () => ({
+  saveSplit: vi.fn(async () => ({})),
+  lendOrBorrow: vi.fn(async () => ({ personId: "ana" })),
+}));
 const router = { back: vi.fn(), push: vi.fn() };
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 vi.mock("next/link", () => ({
@@ -356,6 +360,11 @@ describe("TransactionForm", () => {
       splitId: null,
     };
 
+    it("doesn't offer Lend/Borrow: a lend or borrow is changed on its person's page", () => {
+      renderForm({ transaction: txn });
+      expect(screen.queryByRole("button", { name: "Lend/Borrow" })).not.toBeInTheDocument();
+    });
+
     it("starts from the saved transaction and updates it", async () => {
       const user = renderForm({ transaction: txn, mode: "modal" });
       expect(submitButton()).toHaveTextContent("Update ₱85");
@@ -409,5 +418,86 @@ describe("TransactionForm", () => {
       undefined,
       undefined,
     );
+  });
+
+  describe("lend / borrow", () => {
+    const people = [
+      { id: "ana", name: "Ana", balance: 0 },
+      { id: "ben", name: "Ben", balance: -200 },
+    ];
+
+    it("lends a keypad sum to someone from a peso wallet", async () => {
+      const user = renderForm({ people });
+      await user.click(first("Lend/Borrow"));
+      await user.keyboard("500+250");
+      expect(submitButton()).toHaveTextContent("Pick who");
+      await pick(user, "People", "Ana");
+      expect(submitButton()).toHaveTextContent("Pick a wallet");
+      // Only your own peso cash, banks and e-wallets.
+      const sentFrom = within(screen.getByRole("group", { name: "Sent from" }));
+      expect(sentFrom.queryByRole("button", { name: /SPayLater/ })).not.toBeInTheDocument();
+      expect(sentFrom.queryByRole("button", { name: /Dollars/ })).not.toBeInTheDocument();
+      await pick(user, "Sent from", /GCash/);
+      expect(submitButton()).toHaveTextContent("Lend ₱750");
+      await user.click(submitButton());
+
+      expect(lendOrBorrow).toHaveBeenCalledWith({
+        direction: "lend",
+        who: { personId: "ana" },
+        amount: 750,
+        walletId: "gcash",
+        occurredOn: TODAY,
+        dueOn: null,
+        countInForecast: false,
+        note: "",
+        paidForMe: null,
+      });
+      expect(router.push).toHaveBeenCalledWith("/activity");
+    });
+
+    it("borrows from someone new who paid for something of yours", async () => {
+      const user = renderForm({ people });
+      await user.click(first("Lend/Borrow"));
+      await user.keyboard("4500");
+      await user.click(screen.getByRole("button", { name: "I borrowed (utang)" }));
+      await user.type(screen.getByLabelText("Who?"), "Carla");
+      expect(screen.getByText(/add Carla as someone new/)).toBeInTheDocument();
+      await user.click(screen.getByRole("checkbox", { name: /came to one of my wallets/ }));
+      expect(screen.queryByRole("group", { name: "Received in" })).not.toBeInTheDocument();
+      expect(submitButton()).toHaveTextContent("Pick what it was for");
+      await pick(user, "Category", /Transpo/);
+      await user.click(submitButton());
+
+      expect(lendOrBorrow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          direction: "borrow",
+          who: { name: "Carla" },
+          amount: 4500,
+          paidForMe: { category: "transport" },
+        }),
+      );
+    });
+
+    it("picks someone whose name you type exactly", async () => {
+      const user = renderForm({ people });
+      await user.click(first("Lend/Borrow"));
+      await user.keyboard("100");
+      await user.type(screen.getByLabelText("Who?"), "ben");
+      await pick(user, "Sent from", "Cash");
+      await user.click(submitButton());
+      expect(lendOrBorrow).toHaveBeenCalledWith(
+        expect.objectContaining({ who: { personId: "ben" }, walletId: "cash" }),
+      );
+    });
+
+    it("opens on Lend/Borrow from a link, with the person picked", () => {
+      renderForm({ people, startLend: { direction: "borrow", personId: "ben" } });
+      expect(first("Lend/Borrow")).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("button", { name: "I borrowed (utang)" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(screen.getByLabelText("Who?")).toHaveValue("Ben");
+    });
   });
 });

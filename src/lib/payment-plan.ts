@@ -2,6 +2,7 @@ import { addDays, daysBetween, weekdayOf } from "@/lib/dates";
 import {
   itemEffect,
   monthlyDates,
+  paymentItems,
   purchaseItems,
   type DayBalance,
   type ForecastItem,
@@ -619,20 +620,25 @@ export function affordVerdict({
   purchase,
   today,
   nextPayday,
+  payments,
 }: {
   start: number;
   items: ForecastItem[];
   purchase: Purchase;
   today: string;
   nextPayday: string | null;
+  /** Paid on a card or BNPL: its bills, fees included, instead of the purchase's own dates. */
+  payments?: { dueOn: string; amount: number }[];
 }): Verdict {
-  const last = monthlyDates(purchase.first, purchase.months).at(-1)!;
+  const last = payments?.length
+    ? payments[payments.length - 1].dueOn
+    : monthlyDates(purchase.first, purchase.months).at(-1)!;
   const days = Math.min(400, Math.max(60, daysBetween(today, last) + 31));
   const plan = (extra: ForecastItem[]) =>
     buildPaymentPlan({ start, items: [...items, ...extra], today, days });
   const now = plan([]);
   const amounts = dailyAmounts(now, today, days);
-  const bought = purchaseItems(purchase);
+  const bought = payments?.length ? paymentItems(purchase.name, payments) : purchaseItems(purchase);
   const withIt = plan(bought);
 
   // The day it cuts the most, by share of that day's amount.

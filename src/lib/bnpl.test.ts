@@ -343,3 +343,73 @@ describe("can I afford this with BNPL", () => {
     expect(options.every((o) => !o.fits && o.room === 0)).toBe(true);
   });
 });
+
+describe("can I afford this on a credit card", () => {
+  const items = itemsWith();
+  const [card] = creditRoom([
+    {
+      id: "bdo",
+      name: "BDO card",
+      type: "credit_line",
+      balance: 0,
+      creditLimit: 20000,
+      dueDay: 20,
+      creditKind: "card",
+    },
+  ]);
+  const paused = bnplCap({ history, items, start: 4000, today: TODAY, used: 0 });
+  const onCard = (months: number) =>
+    affordWithCredit({
+      start: 4000,
+      items,
+      purchase: { name: "Bag", amount: 500, first: TODAY, months },
+      today: TODAY,
+      payday: null,
+      lines: [card],
+      cap: paused,
+    })[0];
+
+  it("knows a card from BNPL", () => {
+    expect(card.kind).toBe("card");
+    expect(creditRoom(accounts).every((l) => l.kind === "bnpl")).toBe(true);
+  });
+
+  it("paid straight, only its limit holds it back, even while BNPL is paused", () => {
+    expect(paused.status).toBe("paused");
+    const straight = onCard(1);
+    expect(straight).toMatchObject({ counted: false, room: 20000, capped: false, fits: true });
+    expect(straight.verdict).not.toBeNull();
+  });
+
+  it("in installments, it's borrowing over months: the cap holds it back like BNPL", () => {
+    expect(onCard(3)).toMatchObject({ counted: true, room: 0, fits: false, verdict: null });
+  });
+});
+
+describe("fees on a card or BNPL", () => {
+  it("are in each payment, and in the forecast", () => {
+    const items = itemsWith();
+    const cap = bnplCap({ history, items, start: 7000, today: TODAY, used: 0 });
+    const [spay] = affordWithCredit({
+      start: 7000,
+      items,
+      purchase: { name: "Phone", amount: 3000, first: TODAY, months: 3 },
+      today: TODAY,
+      payday: null,
+      lines: creditRoom(accounts).slice(0, 1),
+      cap,
+      ratePerMonth: 2,
+    });
+    // 2% a month × 3 months of ₱3,000.
+    expect(spay.fees).toBe(180);
+    expect(spay.payment).toBe(1060);
+    expect(spay.payments.map((p) => [p.dueOn, p.amount])).toEqual([
+      ["2026-12-05", 1060],
+      ["2027-01-05", 1060],
+      ["2027-02-05", 1060],
+    ]);
+    // Before and after spend the same each day, so the gap at the end is every payment.
+    const v = spay.verdict!;
+    expect(v.before.days.at(-1)!.balance - v.after.days.at(-1)!.balance).toBeCloseTo(3180, 2);
+  });
+});

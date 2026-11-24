@@ -204,6 +204,53 @@ describe("addPlannedExpense", () => {
     ]);
   });
 
+  describe("on a card or BNPL", () => {
+    const spay = {
+      id: "spay",
+      name: "SPayLater",
+      type: "credit_line",
+      archived: false,
+      currency: "PHP",
+      due_day: 5,
+      cutoff_day: 25,
+      created_at: "4",
+    };
+
+    it("plans its bills, fee in each, on the line's due days, from any wallet", async () => {
+      useDb({ accounts: [...wallets, spay] });
+      expect(
+        await addPlannedExpense({
+          ...input,
+          amount: 3000,
+          credit: { lineId: "spay", ratePerMonth: 2 },
+        }),
+      ).toEqual({});
+      const [rows] = db.writes("planned_expenses", "insert") as { [k: string]: unknown }[][];
+      expect(rows.map((r) => [r.name, r.amount, r.account_id])).toEqual([
+        ["Laptop · SPayLater (1 of 3)", 1060, null],
+        ["Laptop · SPayLater (2 of 3)", 1060, null],
+        ["Laptop · SPayLater (3 of 3)", 1060, null],
+      ]);
+      // Bought Dec 1, after the Nov 25 cutoff: on the Dec 25 statement, due Jan 5.
+      expect(rows.map((r) => r.due_on)).toEqual(["2027-01-05", "2027-02-05", "2027-03-05"]);
+    });
+
+    it("only takes one of your credit lines, and a fee of 0 to 10% a month", async () => {
+      useDb({ accounts: [...wallets, spay] });
+      expect(
+        await addPlannedExpense({ ...input, credit: { lineId: "cash", ratePerMonth: 0 } }),
+      ).toEqual({
+        error: "Pick one of your cards or BNPL lines.",
+      });
+      expect(
+        await addPlannedExpense({ ...input, credit: { lineId: "spay", ratePerMonth: 12 } }),
+      ).toEqual({
+        error: "Check the monthly fee (0 to 10%).",
+      });
+      expect(db.writes("planned_expenses", "insert")).toEqual([]);
+    });
+  });
+
   it("only takes one of your peso wallets", async () => {
     useDb({ accounts: wallets });
     expect(await addPlannedExpense({ ...input, accountId: "usd" })).toEqual({
