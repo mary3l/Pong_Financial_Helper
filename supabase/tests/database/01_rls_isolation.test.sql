@@ -20,7 +20,7 @@ insert into tests.tables (name) values
   ('person_entries'), ('products'), ('product_prices'), ('grocery_trips'),
   ('grocery_items'), ('widget_keys'), ('payroll_settings'), ('payroll_days'),
   ('payroll_overtime'), ('payroll_pay_changes'), ('payroll_cutoff_changes'),
-  ('user_categories');
+  ('user_categories'), ('wishlist_items');
 grant select on tests.tables to anon, authenticated;
 
 -- Each user's wallet id, for the "guessed id" test (the test knows it; RLS doesn't help).
@@ -109,13 +109,15 @@ begin
     values (uid, today, today - 2, today + 12);
   insert into public.user_categories (user_id, type, key, label, icon, tint)
     values (uid, 'expense', 'u_milk_tea', 'Milk tea', 'M5 12h.01', 'bg-plum-tint');
+  insert into public.wishlist_items (user_id, name, amount, category, earliest)
+    values (uid, 'Siargao trip', 18000, 'fun', today + 30);
 end $$;
 
 select tests.seed('11111111-1111-1111-1111-111111111111', 'key-of-a');
 select tests.seed('22222222-2222-2222-2222-222222222222', 'key-of-b');
 
 -- 6 checks per table (5 as user A, 1 signed out) + 4 more.
-select plan(20 * 6 + 4);
+select plan(21 * 6 + 4);
 
 -- As user A ---------------------------------------------------------------------
 

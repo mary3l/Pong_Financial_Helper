@@ -25,6 +25,7 @@ import {
   type ScheduleInputs,
 } from "@/lib/forecast";
 import { getUsdRate, type UsdRate } from "@/lib/fx";
+import type { Wish } from "@/lib/wishlist";
 import { onCardBills } from "@/lib/installments";
 import type { PriceMemory } from "@/lib/grocery";
 import {
@@ -668,6 +669,30 @@ export async function readUserCategories(
     icon: c.icon as string,
     tint: c.tint as string,
     hidden: Boolean(c.hidden),
+  }));
+}
+
+/** A plan in Plan › Wishlist: Pong picks when and how. 'scheduled' once you made it real. */
+export type WishItem = Wish & { status: "idea" | "scheduled" };
+
+/** Your wishlist, oldest first. "missing" until migration 0029 is run. */
+export async function getWishlist(): Promise<WishItem[] | "missing"> {
+  const supabase = await db();
+  const { data, error } = await supabase
+    .from("wishlist_items")
+    .select("id, name, amount, category, earliest, by_date, fee_rate, status")
+    .order("created_at");
+  if (error?.code === "42P01" || error?.code === "PGRST205") return "missing";
+  if (error) throw dbError(error);
+  return data.map((w) => ({
+    id: w.id as string,
+    name: w.name as string,
+    amount: Number(w.amount),
+    category: w.category as string,
+    earliest: w.earliest as string,
+    by: (w.by_date as string | null) ?? null,
+    feeRate: Number(w.fee_rate),
+    status: w.status === "scheduled" ? "scheduled" : "idea",
   }));
 }
 
