@@ -9,6 +9,7 @@ import {
   type MoneyHistory,
 } from "@/lib/bnpl";
 import { subcategoryOptions, type UserCategory } from "@/lib/categories";
+import type { Goal } from "@/lib/insights";
 import {
   addDays,
   dateInMonth,
@@ -704,6 +705,29 @@ export async function getBudgets(): Promise<Budget[]> {
     .order("created_at");
   if (error) throw dbError(error);
   return data.map((b) => ({ id: b.id, category: b.category, amount: Number(b.amount) }));
+}
+
+/**
+ * Your spending goals (Insights), the soonest to end first. "missing" until
+ * migration 0028 is run, so Insights can say goals need it.
+ */
+export async function getGoals(): Promise<Goal[] | "missing"> {
+  const supabase = await db();
+  const { data, error } = await supabase
+    .from("spending_goals")
+    .select("id, category, subcategory, limit_amount, starts_on, ends_on")
+    .order("ends_on")
+    .order("created_at");
+  if (error?.code === "42P01" || error?.code === "PGRST205") return "missing";
+  if (error) throw dbError(error);
+  return data.map((g) => ({
+    id: g.id as string,
+    category: g.category as string,
+    subcategory: (g.subcategory as string | null) ?? null,
+    limit: Number(g.limit_amount),
+    startsOn: g.starts_on as string,
+    endsOn: g.ends_on as string,
+  }));
 }
 
 /**
