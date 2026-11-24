@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { removeGoal, saveGoal } from "@/app/goal-actions";
 import { saveBudget } from "@/app/plan-actions";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
+import { CloseIcon } from "@/components/icons";
 import { showToast } from "@/components/toast";
 import { formatShortDay, isValidDate } from "@/lib/dates";
 import { MAX_AMOUNT, formatPeso, parseAmount } from "@/lib/money";
@@ -14,14 +15,7 @@ import { MAX_AMOUNT, formatPeso, parseAmount } from "@/lib/money";
 
 export type GoalPrefill = { category: string; sub: string; limit: number; endsOn: string };
 
-export function GoalForm({
-  categories,
-  subcategories,
-  usual,
-  ends,
-  today,
-  prefill,
-}: {
+type GoalFormProps = {
   categories: { key: string; label: string }[];
   /** Subcategories used before, per category, most used first. */
   subcategories: Record<string, string[]>;
@@ -32,8 +26,82 @@ export function GoalForm({
   today: string;
   /** From a suggestion's Make it a goal. */
   prefill: GoalPrefill | null;
-}) {
+};
+
+/**
+ * "+ New goal", which opens the goal form in a panel you can always leave:
+ * its ✕, Cancel, or Esc close it. Opened from a suggestion's Make it a goal
+ * (?goal=1…), it starts open and filled in; closing it, or saving, drops
+ * those from the URL so it doesn't open again on a refresh. Give it a `key`
+ * per prefill so a new suggestion opens it afresh.
+ */
+export function GoalComposer({ hasGoals, ...form }: GoalFormProps & { hasGoals: boolean }) {
   const router = useRouter();
+  const [open, setOpen] = useState(Boolean(form.prefill));
+
+  function close() {
+    setOpen(false);
+    const url = new URL(window.location.href);
+    const keys = ["goal", "gc", "gs", "gl", "ge"];
+    if (!keys.some((k) => url.searchParams.has(k))) return;
+    for (const key of keys) url.searchParams.delete(key);
+    router.replace(`${url.pathname}${url.search}#goals`, { scroll: false });
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex h-12 items-center gap-2 rounded-[20px] bg-card px-4 text-left font-extrabold text-sea-dark hover:bg-sea-tint"
+      >
+        <span aria-hidden="true">+</span>
+        {hasGoals ? "New goal" : "Set your first goal"}
+      </button>
+    );
+  }
+  return (
+    <div
+      role="region"
+      aria-labelledby="new-goal-heading"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          close();
+        }
+      }}
+      className="flex flex-col rounded-[20px] bg-card px-4 pt-3 pb-4 ring-2 ring-sea/40"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <h3 id="new-goal-heading" className="font-extrabold">
+          {form.prefill ? "Make it a goal" : "New goal"}
+        </h3>
+        <button
+          type="button"
+          onClick={close}
+          aria-label="Close without saving"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-mint text-muted hover:text-ink"
+        >
+          <CloseIcon size={16} />
+        </button>
+      </div>
+      <GoalForm {...form} onDone={close} />
+    </div>
+  );
+}
+
+function GoalForm({
+  categories,
+  subcategories,
+  usual,
+  ends,
+  today,
+  prefill,
+  onDone,
+}: GoalFormProps & {
+  /** Saved or cancelled: close the panel. */
+  onDone: () => void;
+}) {
   const [category, setCategory] = useState(prefill?.category ?? "");
   const [sub, setSub] = useState(prefill?.sub ?? "");
   const [amountText, setAmountText] = useState(prefill ? String(prefill.limit) : "");
@@ -55,14 +123,7 @@ export function GoalForm({
       const result = await saveGoal({ category, subcategory: sub, limit: amount, endsOn });
       if (result.error) return setError(result.error);
       showToast("Goal set");
-      // Drop the suggestion's prefill from the URL, so the form starts empty next time.
-      const url = new URL(window.location.href);
-      for (const key of ["goal", "gc", "gs", "gl", "ge"]) url.searchParams.delete(key);
-      router.replace(`${url.pathname}${url.search}#goals`, { scroll: false });
-      setCategory("");
-      setSub("");
-      setAmountText("");
-      setEndsOn(ends.kinsenas);
+      onDone();
     });
   }
 
@@ -137,11 +198,19 @@ export function GoalForm({
           Until
         </span>
         <div role="group" aria-labelledby="goal-until" className="flex flex-wrap gap-2">
-          <ChoiceChip selected={endsOn === ends.kinsenas} onClick={() => setEndsOn(ends.kinsenas)}>
+          <ChoiceChip
+            selected={endsOn === ends.kinsenas}
+            onClick={() => setEndsOn(ends.kinsenas)}
+            className={endsOn === ends.kinsenas ? "" : "ring-2 ring-line ring-inset"}
+          >
             End of kinsenas · {formatShortDay(ends.kinsenas, today)}
           </ChoiceChip>
           {ends.month !== ends.kinsenas && (
-            <ChoiceChip selected={endsOn === ends.month} onClick={() => setEndsOn(ends.month)}>
+            <ChoiceChip
+              selected={endsOn === ends.month}
+              onClick={() => setEndsOn(ends.month)}
+              className={endsOn === ends.month ? "" : "ring-2 ring-line ring-inset"}
+            >
               End of month · {formatShortDay(ends.month, today)}
             </ChoiceChip>
           )}
@@ -172,13 +241,23 @@ export function GoalForm({
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
         {error}
       </p>
-      <button
-        type="submit"
-        disabled={pending}
-        className="h-[52px] rounded-[18px] bg-sun font-extrabold text-ink disabled:opacity-60"
-      >
-        {pending ? "Saving…" : "Set goal"}
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={pending}
+          className="h-[52px] flex-[2] rounded-[18px] bg-sun font-extrabold text-ink disabled:opacity-60"
+        >
+          {pending ? "Saving…" : "Set goal"}
+        </button>
+        <button
+          type="button"
+          onClick={onDone}
+          disabled={pending}
+          className="h-[52px] flex-1 rounded-[18px] border-2 border-line font-extrabold"
+        >
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }
@@ -228,7 +307,7 @@ export function SetBudgetButton({
           showToast(result.error ?? `${label} budget set: ${formatPeso(amount)} a kinsenas`);
         })
       }
-      className="h-10 shrink-0 rounded-full bg-sun px-4 text-sm font-extrabold text-ink disabled:opacity-60"
+      className="h-10 shrink-0 rounded-full border-2 border-line px-3.5 text-sm font-extrabold text-ink hover:bg-sea-tint disabled:opacity-60"
     >
       {pending ? "Setting…" : "Set budget"}
     </button>
