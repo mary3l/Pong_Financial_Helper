@@ -693,6 +693,28 @@ Expect `true`.
 
 ---
 
+## Step 29 · Your wishlist
+
+File: `migrations/0029_wishlist.sql`
+
+- `wishlist_items`: plans in **Plan › Wishlist**, like a trip or a new phone, with the window to
+  look in (from a date, and by a date if you set one) and the fee if it goes on a card or BNPL.
+  Pong picks the gentlest date and way to pay for each one on its own. None of it is in your
+  forecast until you tap **Make it real**, which adds Pong's pick to Plan › Scheduled.
+- Only you can see or change yours (row-level security, like every other table).
+
+Until you run this, Plan › Wishlist asks you to run this step first.
+
+**Check**
+
+```sql
+select to_regclass('public.wishlist_items') is not null;
+```
+
+Expect `true`.
+
+---
+
 ## All done?
 
 This one query shows which steps have been run. Every column should be `true`.
@@ -740,7 +762,8 @@ select
   exists (select 1 from information_schema.columns
           where table_name = 'accounts' and column_name = 'credit_kind') as step_26,
   to_regclass('public.user_categories') is not null       as step_27,
-  to_regclass('public.spending_goals') is not null        as step_28;
+  to_regclass('public.spending_goals') is not null        as step_28,
+  to_regclass('public.wishlist_items') is not null        as step_29;
 ```
 
 The first `false` is the step to run next.

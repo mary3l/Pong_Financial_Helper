@@ -1,27 +1,34 @@
 import Link from "next/link";
 
-// Plan = Forecast + Payments + Scheduled + Budgets, as tabs at the top (design
+// Plan = Forecast + Payments + Scheduled + Budgets + Wishlist, as tabs at the top (design
 // canvas 3.1, 3.3). Payments is the payment plan; Scheduled holds recurring
 // and planned income and expenses.
 export function PlanTabs({
   current,
 }: {
-  current: "forecast" | "payments" | "scheduled" | "budgets";
+  current: "forecast" | "payments" | "scheduled" | "budgets" | "wishlist";
 }) {
   const tabs = [
     { key: "forecast", href: "/plan", label: "Forecast" },
     { key: "payments", href: "/plan/payments", label: "Payments" },
     { key: "scheduled", href: "/plan/scheduled", label: "Scheduled" },
     { key: "budgets", href: "/plan/budgets", label: "Budgets" },
+    { key: "wishlist", href: "/plan/wishlist", label: "Wishlist" },
   ] as const;
   return (
-    <nav aria-label="Plan" className="flex gap-6 border-b-2 border-line">
+    // Five tabs don't fit a phone: the row scrolls sideways. The line under it
+    // is an inset shadow, so the current tab's underline can sit on it
+    // without spilling out of the scroll box.
+    <nav
+      aria-label="Plan"
+      className="-mx-5 flex gap-5 overflow-x-auto px-5 shadow-[inset_0_-2px_0_var(--color-line)] [scrollbar-width:none] sm:mx-0 sm:gap-6 sm:px-0"
+    >
       {tabs.map((t) => (
         <Link
           key={t.key}
           href={t.href}
           aria-current={current === t.key ? "page" : undefined}
-          className={`-mb-0.5 border-b-[3px] py-2 ${
+          className={`shrink-0 border-b-[3px] py-2 whitespace-nowrap ${
             current === t.key
               ? "border-sea font-extrabold"
               : "border-transparent font-bold text-muted hover:text-ink"
