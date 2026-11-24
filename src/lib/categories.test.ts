@@ -8,7 +8,11 @@ import {
   categoryLabel,
   cleanSubcategory,
   isAdjustment,
+  EXPENSE_CATEGORIES,
+  STARTER_SUBCATEGORIES,
+  SUBCATEGORY_MAX,
   isCategoryFor,
+  subcategoriesWithStarters,
   subcategoryOptions,
   type UserCategory,
 } from "@/lib/categories";
@@ -104,5 +108,48 @@ describe("your own categories", () => {
 
   it("still reads a key of yours where the list wasn't passed", () => {
     expect(categoryInfo("expense", "u_milk_tea").label).toBe("Milk tea");
+  });
+});
+
+describe("starter subcategories", () => {
+  it("gives every built-in expense category but Other a few, short and distinct", () => {
+    for (const c of EXPENSE_CATEGORIES) {
+      const starters = STARTER_SUBCATEGORIES[c.key] ?? [];
+      if (c.key === "other") {
+        expect(starters).toEqual([]);
+        continue;
+      }
+      expect(starters.length, c.key).toBeGreaterThan(0);
+      expect(starters.length, c.key).toBeLessThanOrEqual(6);
+      expect(new Set(starters.map((s) => s.toLowerCase())).size, c.key).toBe(starters.length);
+      for (const s of starters)
+        expect(cleanSubcategory(s)?.length).toBeLessThanOrEqual(SUBCATEGORY_MAX);
+    }
+  });
+
+  it("leaves out what the Pay tab already logs, so it isn't logged twice", () => {
+    const gov = STARTER_SUBCATEGORIES.gov.map((s) => s.toLowerCase());
+    for (const paid of ["sss", "philhealth", "pag-ibig", "tax", "income tax"]) {
+      expect(gov).not.toContain(paid);
+    }
+  });
+
+  it("offers yours first, then starters you haven't used, ignoring case", () => {
+    expect(subcategoriesWithStarters("transport", ["Angkas", "jeep"])).toEqual([
+      { name: "Angkas", starter: false },
+      { name: "jeep", starter: false },
+      { name: "Tricycle", starter: true },
+      { name: "Grab or taxi", starter: true },
+      { name: "Bus", starter: true },
+      { name: "MRT/LRT", starter: true },
+      { name: "Gas", starter: true },
+    ]);
+  });
+
+  it("has none for your own categories", () => {
+    expect(subcategoriesWithStarters("u_milk_tea", ["Okinawa"])).toEqual([
+      { name: "Okinawa", starter: false },
+    ]);
+    expect(subcategoriesWithStarters("u_milk_tea")).toEqual([]);
   });
 });

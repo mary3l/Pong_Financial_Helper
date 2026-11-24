@@ -392,6 +392,37 @@ describe("TransactionForm", () => {
     });
   });
 
+  describe("starter subcategories", () => {
+    const subGroup = () => within(screen.getByRole("group", { name: /SUBCATEGORY/ }));
+
+    it("offers a category's starters before you've typed any, and saves the one you tap", async () => {
+      const user = renderForm();
+      await user.keyboard("85");
+      await pick(user, "Category", /Food/);
+      expect(subGroup().getByRole("button", { name: "Merienda" })).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("New subcategory, like Merienda")).toBeInTheDocument();
+      await user.click(subGroup().getByRole("button", { name: "Coffee & milk tea" }));
+      await pick(user, "Pay with", "Cash");
+      await user.click(submitButton());
+      expect(saveTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({ category: "food", subcategory: "Coffee & milk tea" }),
+        undefined,
+        undefined,
+      );
+    });
+
+    it("puts yours first, and doesn't show a starter twice", async () => {
+      const user = renderForm({ subcategories: { transport: ["jeep", "Angkas"] } });
+      await pick(user, "Category", /Transpo/);
+      const names = subGroup()
+        .getAllByRole("button")
+        .map((b) => b.textContent);
+      expect(names.slice(0, 2)).toEqual(["jeep", "Angkas"]);
+      expect(names.filter((n) => n?.toLowerCase() === "jeep")).toHaveLength(1);
+      expect(names).toContain("Tricycle");
+    });
+  });
+
   it("reuses a recent template", async () => {
     const template: Template = {
       type: "expense",
