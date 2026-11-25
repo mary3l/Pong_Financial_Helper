@@ -165,3 +165,32 @@ export async function creditTerms(supabase: Client, ids: string[]): Promise<Cred
     cutoffDay: a.cutoff_day ?? null,
   }));
 }
+
+/**
+ * Takes a wishlist plan's unpaid payments out of Plan › Scheduled. Paid ones
+ * stay, as history. False if it couldn't; true without migration 0030, as
+ * there's nothing linked to take out.
+ */
+export async function dropPlanPayments(supabase: Client, wishId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from("planned_expenses")
+    .delete()
+    .eq("wish_id", wishId)
+    .is("transaction_id", null);
+  return !error || isMissingColumn(error);
+}
+
+/** A plan with none of its payments left, paid or not, goes back to your wishlist ideas. */
+export async function reopenIfEmpty(supabase: Client, wishId: string): Promise<void> {
+  const { data, error } = await supabase
+    .from("planned_expenses")
+    .select("id")
+    .eq("wish_id", wishId)
+    .limit(1);
+  if (error || data.length) return;
+  await supabase
+    .from("wishlist_items")
+    .update({ status: "idea" })
+    .eq("id", wishId)
+    .eq("status", "scheduled");
+}

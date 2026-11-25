@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { createContext, use, useState, useTransition } from "react";
 import {
+  removePlanPayments,
   removeScheduled,
   saveScheduled,
   type ScheduledInput,
@@ -13,6 +14,7 @@ import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import { FormDialog } from "@/components/form-dialog";
 import { PathIcon } from "@/components/icons";
 import { LogButton } from "@/components/log-button";
+import { showToast } from "@/components/toast";
 import { categoriesFor, categoryInfo, type UserCategory } from "@/lib/categories";
 import type { Account, PlannedExpense, RecurringItem } from "@/lib/data";
 import { addDays, formatRelativeDay, formatShortDay } from "@/lib/dates";
@@ -62,8 +64,13 @@ type Row = {
   payday: boolean;
   /** The payroll calculator works this one out. */
   fromPayroll: boolean;
+  /** A payment of a wishlist plan you made real: shown together under the plan. */
+  wishId: string | null;
   input: ScheduledInput;
 };
+
+/** "Siargao Trip (2 of 6)": the part, if the name says. */
+const PART = /\s*\((\d+) of (\d+)\)\s*$/;
 
 /** Your own categories, for the rows and the form under ScheduledManager. */
 const CustomCategories = createContext<UserCategory[]>([]);
@@ -128,6 +135,7 @@ export function ScheduledManager({
         next,
         payday,
         fromPayroll,
+        wishId: null,
         input: {
           flow,
           name: r.name,
@@ -159,6 +167,7 @@ export function ScheduledManager({
         next: nextOf(p.id),
         payday: false,
         fromPayroll: p.payrollKey !== null,
+        wishId: p.wishId,
         input: {
           flow,
           name: p.name,
@@ -193,16 +202,27 @@ export function ScheduledManager({
           )}
         </div>
         <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
-          {list.map((row) => (
-            <li key={row.ref.id} className="border-b border-line-soft py-2.5 last:border-0">
-              <ItemRow
-                row={row}
-                accounts={accounts}
-                today={today}
-                onEdit={() => setEditing(row.ref.id)}
-              />
-            </li>
-          ))}
+          {grouped(list).map((entry) =>
+            Array.isArray(entry) ? (
+              <li key={entry[0].wishId} className="border-b border-line-soft py-2.5 last:border-0">
+                <PlanGroup
+                  parts={entry}
+                  accounts={accounts}
+                  today={today}
+                  onEdit={(id) => setEditing(id)}
+                />
+              </li>
+            ) : (
+              <li key={entry.ref.id} className="border-b border-line-soft py-2.5 last:border-0">
+                <ItemRow
+                  row={entry}
+                  accounts={accounts}
+                  today={today}
+                  onEdit={() => setEditing(entry.ref.id)}
+                />
+              </li>
+            ),
+          )}
           {!list.length && (
             <li className="py-3 text-[15px] text-muted">
               {flow === "in"
@@ -269,6 +289,133 @@ export function ScheduledManager({
   );
 }
 
+/** The rows in order, with each plan's payments together where its first one is. */
+function grouped(list: Row[]): (Row | Row[])[] {
+  const plans = new Map<string, Row[]>();
+  const out: (Row | Row[])[] = [];
+  for (const row of list) {
+    if (!row.wishId) {
+      out.push(row);
+      continue;
+    }
+    const parts = plans.get(row.wishId);
+    if (parts) parts.push(row);
+    else {
+      const fresh = [row];
+      plans.set(row.wishId, fresh);
+      out.push(fresh);
+    }
+  }
+  // A plan with one payment left is just that payment.
+  return out.map((e) => (Array.isArray(e) && e.length === 1 ? e[0] : e));
+}
+
+/**
+ * A wishlist plan you made real: one row with its payments, start to end.
+ * Open it to edit or remove a payment, or remove them all.
+ */
+function PlanGroup({
+  parts,
+  accounts,
+  today,
+  onEdit,
+}: {
+  parts: Row[];
+  accounts: Account[];
+  today: string;
+  onEdit: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const custom = use(CustomCategories);
+  const first = parts[0];
+  const last = parts.at(-1)!;
+  const info = categoryInfo("expense", first.category, custom);
+  const name = first.name.replace(PART, "");
+  const total = parts.reduce((sum, p) => sum + (p.amount ?? 0), 0);
+  const even = parts.every((p) => p.amount === first.amount);
+  const of = Number(first.name.match(PART)?.[2]) || parts.length;
+  // Mark paid for the next one stays a tap away while it's closed.
+  const next = first.next;
+  const soon = next && next.dueOn < addDays(today, 8);
+
+  function removeAll() {
+    if (!confirm) return setConfirm(true);
+    startTransition(async () => {
+      const r = await removePlanPayments(first.wishId!);
+      showToast(r.error ?? `Removed ${name}'s payments.`);
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <span
+          className={`flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] ${info.tint}`}
+        >
+          <PathIcon d={info.icon} size={21} />
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate font-bold">{name}</span>
+          <span className="text-[13px] text-muted">
+            Plan ·{" "}
+            {parts.length === of ? `${of} payments` : `${parts.length} of ${of} payments left`} ·{" "}
+            {formatShortDay(first.input.date!, today)} → {formatShortDay(last.input.date!, today)}
+          </span>
+        </span>
+        <span className="font-display text-[17px] font-semibold">
+          −{formatPeso(even ? first.amount! : total)}
+          {even && <span className="text-xs font-bold text-muted"> each</span>}
+        </span>
+        <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
+          {!open && next && soon && <LogButton item={next} accounts={accounts} />}
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+            className="h-10 rounded-full px-3 text-sm font-extrabold text-sea-dark hover:bg-mint"
+          >
+            {open ? "Hide payments" : "See payments"}
+          </button>
+        </div>
+      </div>
+      {open && (
+        <div className="flex flex-col gap-1 rounded-[16px] bg-mint px-3 py-1">
+          <ul className="flex flex-col">
+            {parts.map((row, i) => {
+              const n = Number(row.name.match(PART)?.[1]) || i + 1;
+              return (
+                <li key={row.ref.id} className="border-b border-line-soft py-2 last:border-0">
+                  <ItemRow
+                    row={{ ...row, label: `Payment ${n} of ${of}` }}
+                    accounts={accounts}
+                    today={today}
+                    onEdit={() => onEdit(row.ref.id)}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+          <button
+            type="button"
+            onClick={removeAll}
+            onBlur={() => setConfirm(false)}
+            disabled={pending}
+            className={`h-11 self-start px-1 text-sm font-extrabold disabled:opacity-60 ${confirm ? "text-coral-text" : "text-muted"}`}
+          >
+            {pending
+              ? "Removing…"
+              : confirm
+                ? `Tap again to remove all ${parts.length}`
+                : "Remove all"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Roughly what a recurring row adds up to in a month; one-offs count 0. */
 function monthlyAmount(row: Row, recurring: RecurringItem[]): number {
   if (row.ref.table !== "recurring" || !row.amount) return 0;
@@ -299,7 +446,8 @@ function ItemRow({
   today,
   onEdit,
 }: {
-  row: Row;
+  /** label: shown in place of the name, like "Payment 2 of 6" under a plan. */
+  row: Row & { label?: string };
   accounts: Account[];
   today: string;
   onEdit: () => void;
@@ -331,7 +479,7 @@ function ItemRow({
         <PathIcon d={info.icon} size={21} />
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate font-bold">{row.name}</span>
+        <span className="truncate font-bold">{row.label ?? row.name}</span>
         <span className="text-[13px] text-muted">{detail}</span>
       </span>
       <span

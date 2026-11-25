@@ -715,6 +715,126 @@ Expect `true`.
 
 ---
 
+## Step 30 · Plans and their scheduled payments
+
+File: `migrations/0030_plan_links.sql`
+
+- `planned_expenses.wish_id`: which wishlist plan a scheduled payment came from. Plan › Scheduled
+  shows a plan's payments as one row, and removing or changing a plan you made real takes its
+  unpaid payments with it.
+- Plans you already made real are linked by name when you run it.
+
+Until you run this, plans you make real still work, but they show as separate payments.
+
+**Check**
+
+```sql
+select exists (select 1 from information_schema.columns
+               where table_name = 'planned_expenses' and column_name = 'wish_id');
+```
+
+Expect `true`.
+
+Then, in [Check access and connections](#check-access-and-connections):
+
+- The CRUD check shows `planned_expenses` and `wishlist_items` with every column `true`.
+- The connections check lists `planned_expenses_wish_fkey`:
+  `planned_expenses (wish_id, user_id) → wishlist_items (id, user_id)`, on delete `set null (wish_id)`.
+
+---
+
+## Check access and connections
+
+Two read-only checks you can run any time. They only look; they change nothing.
+
+### What the app can do with each table (CRUD)
+
+CRUD is the four things the app does with your data: **C**reate (add a row), **R**ead (see
+it), **U**pdate (change it) and **D**elete (remove it). Two things decide each one:
+
+- **Grants**: whether signed-in users (the `authenticated` role) may do it on the table at all.
+- **Row-level security (RLS)** and its **policies**: the rules that narrow it to _your own_ rows.
+
+```sql
+select
+  c.relname                                                   as table_name,
+  c.relrowsecurity                                            as rls_on,
+  has_table_privilege('authenticated', c.oid, 'INSERT')       as can_create,
+  has_table_privilege('authenticated', c.oid, 'SELECT')       as can_read,
+  has_table_privilege('authenticated', c.oid, 'UPDATE')       as can_update,
+  has_table_privilege('authenticated', c.oid, 'DELETE')       as can_delete,
+  not has_table_privilege('anon', c.oid, 'SELECT')            as visitors_blocked,
+  coalesce((select string_agg(p.policyname || ' (' || p.cmd || ')', ', ' order by p.policyname)
+            from pg_policies p
+            where p.schemaname = 'public' and p.tablename = c.relname), 'none') as policies
+from pg_class c
+join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public' and c.relkind = 'r'
+order by c.relname;
+```
+
+**How to read it**
+
+- Every table should show `true` in every column, and at least one policy. Each table here is
+  meant to be fully yours to add to, see, change and remove.
+- `rls_on = false` or `policies = none`: that table isn't protected to your own rows. Re-run the
+  migration that made it.
+- `visitors_blocked = false`: signed-out visitors were given access. Re-run step 8.
+- A policy with `(ALL)` covers all four of Create, Read, Update and Delete. Some tables, like
+  `widget_keys`, have one policy for each instead (`SELECT`, `INSERT`, `UPDATE`, `DELETE`).
+
+### What each table connects to
+
+A connection (a _foreign key_) is a column that points to a row in another table, like a
+scheduled payment pointing to the plan it came from. Each one also says what happens to this
+row when the row it points to is deleted:
+
+- **cascade**: this row is deleted too.
+- **set null**: this row stays, and just the link is cleared.
+- **restrict / no action**: the other row can't be deleted while this one points to it.
+
+```sql
+select
+  c.conrelid::regclass                                        as table_name,
+  c.conname                                                   as connection,
+  '(' || (select string_agg(a.attname, ', ' order by k.ord)
+          from unnest(c.conkey) with ordinality k(attnum, ord)
+          join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.attnum)
+      || ') → ' || c.confrelid::regclass || ' ('
+      || (select string_agg(a.attname, ', ' order by k.ord)
+          from unnest(c.confkey) with ordinality k(attnum, ord)
+          join pg_attribute a on a.attrelid = c.confrelid and a.attnum = k.attnum)
+      || ')'                                                  as points_to,
+  case c.confdeltype
+    when 'c' then 'cascade'
+    when 'n' then 'set null'
+    when 'd' then 'set default'
+    when 'r' then 'restrict'
+    else 'no action'
+  end || coalesce(' (' || (select string_agg(a.attname, ', ')
+                           from unnest(c.confdelsetcols) s(attnum)
+                           join pg_attribute a on a.attrelid = c.conrelid
+                                              and a.attnum = s.attnum) || ')', '')
+                                                              as on_delete
+from pg_constraint c
+join pg_namespace n on n.oid = c.connamespace
+where c.contype = 'f' and n.nspname = 'public'
+order by 1, 2;
+```
+
+**How to read it**, with examples from this app:
+
+- `user_id → auth.users (id)`, **cascade**: deleting your account deletes all your rows.
+- `(account_id, user_id) → accounts (id, user_id)`: links carry `user_id` too, so a row can only
+  ever point to one of _your_ rows, never someone else's.
+- `planned_expenses (wish_id, user_id) → wishlist_items (id, user_id)`, **set null (wish_id)**:
+  removing a plan keeps its payments that were already paid (as history) and only clears the
+  link. Pong deletes the unpaid ones itself first.
+- `(transaction_id, user_id) → transactions`, **set null (transaction_id)**: deleting a logged
+  transaction makes that payment unpaid again instead of deleting it.
+
+---
+
 ## All done?
 
 This one query shows which steps have been run. Every column should be `true`.
@@ -763,7 +883,9 @@ select
           where table_name = 'accounts' and column_name = 'credit_kind') as step_26,
   to_regclass('public.user_categories') is not null       as step_27,
   to_regclass('public.spending_goals') is not null        as step_28,
-  to_regclass('public.wishlist_items') is not null        as step_29;
+  to_regclass('public.wishlist_items') is not null        as step_29,
+  exists (select 1 from information_schema.columns
+          where table_name = 'planned_expenses' and column_name = 'wish_id') as step_30;
 ```
 
 The first `false` is the step to run next.

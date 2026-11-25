@@ -6,6 +6,7 @@ import { couldBeCategory } from "@/lib/categories";
 import { isValidDate } from "@/lib/dates";
 import { MAX_AMOUNT, roundCents } from "@/lib/money";
 import { isValidSchedule, type Frequency } from "@/lib/schedule";
+import { dropPlanPayments, reopenIfEmpty } from "@/lib/server-writes";
 
 // Recurring and planned income and expenses (Plan › Scheduled). Payday has
 // its own screen in setup; everything else you expect lives here. See
@@ -147,8 +148,28 @@ export async function removeScheduled({ table, id }: ScheduledRef): Promise<Sche
 
   let query = supabase.from(TABLES[table]).delete().eq("id", id);
   if (table === "recurring") query = query.neq("kind", "payday");
-  const { data, error } = await query.select("id");
+  // "*": wish_id is migration 0030.
+  const { data, error } = await query.select("*");
   if (error || !data.length) return { error: "Couldn't remove that. Please try again." };
+  // The last payment of a plan gone: the plan goes back to your wishlist ideas.
+  const wishId = (data[0] as { wish_id?: string | null }).wish_id;
+  if (wishId) await reopenIfEmpty(supabase, wishId);
+
+  refresh();
+  return {};
+}
+
+/**
+ * Remove all, on a plan in Scheduled: its unpaid payments go, and the plan
+ * goes back to your wishlist ideas (if none of it was paid).
+ */
+export async function removePlanPayments(wishId: string): Promise<ScheduleResult> {
+  if (typeof wishId !== "string" || !wishId) return { error: "Pick a plan." };
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  if (!(await dropPlanPayments(supabase, wishId)))
+    return { error: "Couldn't remove those. Please try again." };
+  await reopenIfEmpty(supabase, wishId);
 
   refresh();
   return {};
