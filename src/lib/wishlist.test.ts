@@ -5,6 +5,7 @@ import {
   MAX_DATES,
   bestPicks,
   candidateDates,
+  partsThatFit,
   setAsideFor,
   windowOf,
   type Wish,
@@ -160,10 +161,42 @@ describe("Pong's pick", () => {
     expect(new Set(kinds).size).toBe(kinds.length);
   });
 
+  it("pays off parts from your wallets by the pay off by date", () => {
+    const r = pick(wish({ earliest: "2027-02-11", by: "2027-07-11" }), []);
+    const parts = [r.best!, ...r.others].filter((p) => p.strategy.kind === "installments");
+    for (const p of [r.best!, ...r.others]) {
+      expect(p.payments.every((x) => x.dueOn >= "2027-02-11" && x.dueOn <= "2027-07-11")).toBe(
+        true,
+      );
+    }
+    for (const p of parts) expect(p.label).toMatch(/ → .*\(\d+ payments\)$/);
+  });
+
+  it("offers no parts when the start and pay off by dates are the same day", () => {
+    const r = pick(wish({ amount: 5000, earliest: "2027-12-30", by: "2027-12-30" }), []);
+    expect(r.best!.strategy).toEqual({ kind: "full" });
+    expect(r.best!.label).toBe("Pay ₱5,000 on Dec 30, 2027 from your wallets");
+    expect(r.others.every((p) => p.strategy.kind !== "installments")).toBe(true);
+  });
+
+  it("says when you buy on credit and when its bills come", () => {
+    const r = pick(wish({ by: "2026-11-10" }));
+    expect(r.best!.label).toMatch(/^Buy Nov \d+ on SPayLater/);
+  });
+
   it("is the same whatever else is on the wishlist: it only sees your forecast", () => {
     // A second wish never goes into `items`, so the first one's pick doesn't move.
     const alone = pick(wish());
     pick(wish({ id: "w2", name: "Phone", amount: 24000 }));
     expect(pick(wish())).toEqual(alone);
+  });
+});
+
+describe("parts that fit", () => {
+  it("counts the monthly parts from the first date up to the last", () => {
+    expect(partsThatFit("2027-02-11", "2027-07-11")).toBe(6);
+    expect(partsThatFit("2027-02-11", "2027-07-10")).toBe(5);
+    expect(partsThatFit("2027-12-30", "2027-12-30")).toBe(1);
+    expect(partsThatFit("2027-01-01", "2030-01-01")).toBe(24);
   });
 });

@@ -170,6 +170,8 @@ export type PlannedExpense = {
   transactionId: string | null;
   /** Set on income tax payments the payroll calculator manages ("2026-Q3"). */
   payrollKey: string | null;
+  /** The wishlist plan it came from, when you made one real (0030). */
+  wishId: string | null;
 };
 
 export type Budget = { id: string; category: string; amount: number };
@@ -457,9 +459,11 @@ export async function getPlannedExpenses(from: string): Promise<PlannedExpense[]
       .select(columns)
       .or(`due_on.gte.${from},transaction_id.is.null`)
       .order("due_on");
-  // 42703: migration 0013 (payroll_key) hasn't been run yet.
-  const first = await select(`${base}, payroll_key`);
-  const { data, error } = first.error?.code === "42703" ? await select(base) : first;
+  // 42703: a migration hasn't been run yet: 0030 (wish_id), or 0013 (payroll_key) too.
+  let result = await select(`${base}, payroll_key, wish_id`);
+  if (result.error?.code === "42703") result = await select(`${base}, payroll_key`);
+  if (result.error?.code === "42703") result = await select(base);
+  const { data, error } = result;
   if (error) throw dbError(error);
   return (data as unknown as PlannedRow[]).map((p) => ({
     id: p.id,
@@ -471,6 +475,7 @@ export async function getPlannedExpenses(from: string): Promise<PlannedExpense[]
     accountId: p.account_id,
     transactionId: p.transaction_id,
     payrollKey: p.payroll_key ?? null,
+    wishId: p.wish_id ?? null,
   }));
 }
 
@@ -484,6 +489,7 @@ type PlannedRow = {
   account_id: string | null;
   transaction_id: string | null;
   payroll_key?: string | null;
+  wish_id?: string | null;
 };
 
 /**

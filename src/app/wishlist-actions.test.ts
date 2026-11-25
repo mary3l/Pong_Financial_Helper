@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createClient } from "@/lib/supabase/server";
 import { fail, fakeSupabase, type FakeSupabase } from "@/test/fake-supabase";
-import { makeWishReal, removeWish, saveWish, type WishInput } from "./wishlist-actions";
+import { makeWishReal, removeWish, reopenWish, saveWish, type WishInput } from "./wishlist-actions";
 
 vi.mock("next/cache", () => ({ refresh: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
@@ -58,11 +58,11 @@ describe("saveWish", () => {
     ["long name", { name: "x".repeat(51) }, "Keep the name to 50 characters."],
     ["zero amount", { amount: 0 }, "Enter an amount above ₱0."],
     ["income category", { category: "salary" }, "Pick a category."],
-    ["bad date", { earliest: "soon" }, "Pick the earliest date."],
+    ["bad date", { earliest: "soon" }, "Pick the start date."],
     [
       "by before earliest",
       { by: "2026-11-30" },
-      'The "by" date has to be on or after the earliest date.',
+      'The "pay off by" date has to be on or after the start date.',
     ],
     ["fee over 10%", { feeRate: 12 }, "Check the monthly fee (0 to 10%)."],
   ])("rejects %s before signing in", async (_, patch, error) => {
@@ -99,12 +99,35 @@ describe("saveWish", () => {
   });
 });
 
+const parts = [
+  { id: "p1", wish_id: "w1", transaction_id: "t1" },
+  { id: "p2", wish_id: "w1", transaction_id: null },
+  { id: "p3", wish_id: "w1", transaction_id: null },
+  { id: "other", wish_id: null, transaction_id: null },
+];
+
 describe("removeWish", () => {
   it("removes it, and says so when it's gone already", async () => {
     expect(await removeWish("w1")).toEqual({});
     expect(await removeWish("w1")).toEqual({
       error: "Couldn't remove that plan. Please try again.",
     });
+  });
+
+  it("takes its unpaid payments with it, keeping the paid ones", async () => {
+    useDb({ wishlist_items: [{ ...trip, status: "scheduled" }], planned_expenses: parts });
+    expect(await removeWish("w1")).toEqual({});
+    expect(db.table("planned_expenses").map((r) => r.id)).toEqual(["p1", "other"]);
+    expect(db.table("wishlist_items")).toEqual([]);
+  });
+});
+
+describe("reopenWish", () => {
+  it("takes its unpaid payments out of Scheduled and makes it an idea again", async () => {
+    useDb({ wishlist_items: [{ ...trip, status: "scheduled" }], planned_expenses: parts });
+    expect(await reopenWish("w1")).toEqual({});
+    expect(db.table("planned_expenses").map((r) => r.id)).toEqual(["p1", "other"]);
+    expect(db.table("wishlist_items")[0].status).toBe("idea");
   });
 });
 
@@ -119,6 +142,7 @@ describe("makeWishReal", () => {
       expect.objectContaining({ name: "Siargao trip", amount: 18000, due_on: "2027-03-15" }),
     ]);
     expect(db.writes("wishlist_items", "update")).toEqual([{ status: "scheduled" }]);
+    expect(planned()[0].wish_id).toBe("w1");
   });
 
   it("in parts from your wallets: one a month", async () => {
@@ -147,7 +171,13 @@ describe("makeWishReal", () => {
     expect(
       await makeWishReal("w1", {
         date: "2027-03-15",
-        strategy: { kind: "installments", months: 5 },
+        strategy: { kind: "installments", months: 25 },
+      }),
+    ).toEqual({ error: "Pick a way to pay." });
+    expect(
+      await makeWishReal("w1", {
+        date: "2027-03-15",
+        strategy: { kind: "credit", lineId: "spay", months: 5 },
       }),
     ).toEqual({ error: "Pick a way to pay." });
     expect(await makeWishReal("w1", { date: "nope", strategy: { kind: "full" } })).toEqual({

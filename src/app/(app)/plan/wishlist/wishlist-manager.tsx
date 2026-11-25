@@ -2,18 +2,29 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { makeWishReal, removeWish, saveWish, type WishInput } from "@/app/wishlist-actions";
+import {
+  makeWishReal,
+  removeWish,
+  reopenWish,
+  saveWish,
+  type WishInput,
+} from "@/app/wishlist-actions";
 import { AmountInput } from "@/components/amount-input";
 import { FIELD_CLASS } from "@/components/choice-chip";
 import { ForecastChart } from "@/components/forecast-chart";
 import { Pong, type PongMood } from "@/components/pong";
 import { showToast } from "@/components/toast";
 import type { WishItem } from "@/lib/data";
-import { formatShortDay, isValidDate } from "@/lib/dates";
+import { addDays, formatShortDay, isValidDate } from "@/lib/dates";
 import { MAX_AMOUNT, formatPeso, parseAmount } from "@/lib/money";
-import type { WishPick, WishResult } from "@/lib/wishlist";
+import { WINDOW_DAYS, windowOf, type WishPick, type WishResult } from "@/lib/wishlist";
 
-export type WishRow = { wish: WishItem; result: WishResult | null };
+export type WishRow = {
+  wish: WishItem;
+  result: WishResult | null;
+  /** Made real: its unpaid payments in Scheduled; null for none (or before migration 0030). */
+  upcoming: { count: number; first: string; last: string } | null;
+};
 
 const MOODS: Record<WishPick["verdict"]["tone"], PongMood> = {
   comfortable: "happy",
@@ -117,19 +128,34 @@ export function WishlistManager({
         <section className="flex flex-col gap-2">
           <h2 className="text-[13px] font-extrabold text-muted">MADE REAL</h2>
           <ul className="flex flex-col divide-y divide-line rounded-[20px] bg-card px-4">
-            {real.map(({ wish }) => (
-              <li key={wish.id} className="flex items-center justify-between gap-3 py-3">
+            {real.map(({ wish, upcoming }) => (
+              <li key={wish.id} className="flex flex-col gap-1 py-3">
                 <span className="min-w-0 truncate font-bold">
                   {wish.name} · {formatPeso(wish.amount)}
                 </span>
-                <span className="flex shrink-0 items-center gap-3">
+                {upcoming && (
+                  <span className="text-[13px] text-muted">
+                    {upcoming.count === 1
+                      ? `1 payment · ${formatShortDay(upcoming.first, today)}`
+                      : `${upcoming.count} payments · ${formatShortDay(upcoming.first, today)} → ${formatShortDay(upcoming.last, today)}`}
+                  </span>
+                )}
+                <span className="flex flex-wrap items-center gap-x-3">
                   <Link
                     href="/plan/scheduled"
-                    className="text-sm font-extrabold text-sea-dark underline"
+                    className="flex h-11 items-center px-1 text-sm font-extrabold text-sea-dark underline"
                   >
                     In Scheduled
                   </Link>
-                  <RemoveButton id={wish.id} />
+                  <ChangePlanButton id={wish.id} />
+                  <RemoveButton
+                    id={wish.id}
+                    confirmText={
+                      upcoming
+                        ? `Tap again: removes it and ${upcoming.count === 1 ? "its payment" : `its ${upcoming.count} payments`}`
+                        : undefined
+                    }
+                  />
                 </span>
               </li>
             ))}
@@ -140,14 +166,12 @@ export function WishlistManager({
   );
 }
 
-/** "Any time in the next year", "From Feb 1", "Feb 1 to May 31". */
+/** When it can be paid: "On Dec 30, 2027", or "Feb 11, 2028 → Jul 11, 2028". */
 function windowText(wish: WishItem, today: string): string {
-  const from = wish.earliest > today ? formatShortDay(wish.earliest, today) : null;
-  const by = wish.by ? formatShortDay(wish.by, today) : null;
-  if (from && by) return `${from} to ${by}`;
-  if (by) return `By ${by}`;
-  if (from) return `From ${from}`;
-  return "Any time in the next year";
+  const { from, last } = windowOf(wish, today);
+  return from === last
+    ? `On ${formatShortDay(from, today)}`
+    : `${formatShortDay(from, today)} → ${formatShortDay(last, today)}`;
 }
 
 function WishCard({
@@ -206,7 +230,7 @@ function WishCard({
           <Pong mood={MOODS[best.verdict.tone]} size={52} decorative />
           <div className="flex min-w-0 flex-col gap-0.5 text-[15px]">
             <p>
-              <strong>Best: {formatShortDay(best.date, today)}</strong> · {best.label}
+              <strong>Best:</strong> {best.label}
             </p>
             <PickDetails pick={best} today={today} />
           </div>
@@ -248,9 +272,7 @@ function WishCard({
                     className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0"
                   >
                     <div className="flex min-w-0 flex-col gap-0.5 text-[15px]">
-                      <p>
-                        <strong>{formatShortDay(p.date, today)}</strong> · {p.label}
-                      </p>
+                      <p className="font-bold">{p.label}</p>
                       <PickDetails pick={p} today={today} tone />
                     </div>
                     <button
@@ -333,7 +355,27 @@ function PickDetails({
   );
 }
 
-function RemoveButton({ id }: { id: string }) {
+/** Made real: takes its unpaid payments out of Scheduled and makes it an idea again. */
+function ChangePlanButton({ id }: { id: string }) {
+  const [pending, startTransition] = useTransition();
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        startTransition(async () => {
+          const r = await reopenWish(id);
+          showToast(r.error ?? "Back in your ideas. Edit it or pick another way.");
+        })
+      }
+      disabled={pending}
+      className="h-11 px-1 text-sm font-extrabold text-sea-dark disabled:opacity-60"
+    >
+      {pending ? "Changing…" : "Change plan"}
+    </button>
+  );
+}
+
+function RemoveButton({ id, confirmText }: { id: string; confirmText?: string }) {
   const [confirm, setConfirm] = useState(false);
   const [pending, startTransition] = useTransition();
   return (
@@ -350,7 +392,7 @@ function RemoveButton({ id }: { id: string }) {
       disabled={pending}
       className={`h-11 px-2 font-extrabold ${confirm ? "text-coral-text" : "text-muted"}`}
     >
-      {confirm ? "Tap again to remove" : "Remove"}
+      {confirm ? (confirmText ?? "Tap again to remove") : "Remove"}
     </button>
   );
 }
@@ -372,7 +414,8 @@ function WishForm({
   const [amountText, setAmountText] = useState(wish ? String(wish.amount) : "");
   const [category, setCategory] = useState(wish?.category ?? "fun");
   const [earliest, setEarliest] = useState(wish?.earliest ?? today);
-  const [by, setBy] = useState(wish?.by ?? "");
+  // New plans start with a year to pay it off, which you can change.
+  const [by, setBy] = useState(wish ? (wish.by ?? "") : addDays(today, WINDOW_DAYS));
   const [feeText, setFeeText] = useState(wish?.feeRate ? String(wish.feeRate) : "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -382,8 +425,9 @@ function WishForm({
     const amount = parseAmount(amountText);
     if (!name.trim()) return setError("What is it? Give it a name.");
     if (!(amount > 0 && amount <= MAX_AMOUNT)) return setError("Enter an amount above ₱0.");
-    if (!isValidDate(earliest)) return setError("Pick the earliest date.");
-    if (by && by < earliest) return setError('The "by" date has to be on or after the earliest.');
+    if (!isValidDate(earliest)) return setError("Pick the start date.");
+    if (by && by < earliest)
+      return setError('The "pay off by" date has to be on or after the start date.');
     const input: WishInput = {
       name,
       amount,
@@ -456,7 +500,7 @@ function WishForm({
         </div>
         <div className="flex flex-col gap-1">
           <label htmlFor="wish-earliest" className="text-sm font-bold">
-            Not before
+            Start date
           </label>
           <input
             id="wish-earliest"
@@ -468,7 +512,7 @@ function WishForm({
         </div>
         <div className="flex flex-col gap-1">
           <label htmlFor="wish-by" className="text-sm font-bold">
-            By <span className="font-semibold text-muted">(optional)</span>
+            Pay off by
           </label>
           <input
             id="wish-by"
@@ -496,9 +540,10 @@ function WishForm({
         </div>
       )}
       <p className="text-[13px] text-muted">
-        I look from &quot;Not before&quot; up to &quot;By&quot;, or a year on, and pick the soonest
-        gentle date and way to pay: all at once from your wallets, in parts
-        {hasCredit ? ", or on a card or BNPL" : ""}.
+        Every payment from your wallets lands between these dates. I pick the soonest gentle way:
+        all at once, or in monthly parts that are done by &quot;Pay off by&quot;
+        {hasCredit ? ". On a card or BNPL, you buy it in between and its bills come after" : ""}. No
+        &quot;Pay off by&quot;: a year from the start.
       </p>
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
         {error}

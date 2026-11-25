@@ -234,7 +234,25 @@ export type PlannedInput = {
    * from any wallet; `first` is the day you buy it.
    */
   credit?: { lineId: string; ratePerMonth: number } | null;
+  /** The wishlist plan it's for (Make it real), so the payments stay linked to it. */
+  wishId?: string | null;
 };
+
+/**
+ * Saves planned rows, linked to their plan when there is one. Without
+ * migration 0030 (no wish_id yet, 42703) they're saved unlinked.
+ */
+async function insertPlanned(
+  supabase: Client,
+  rows: Record<string, unknown>[],
+  wishId: string | null | undefined,
+) {
+  if (!wishId) return supabase.from("planned_expenses").insert(rows);
+  const linked = await supabase
+    .from("planned_expenses")
+    .insert(rows.map((r) => ({ ...r, wish_id: wishId })));
+  return linked.error?.code === "42703" ? supabase.from("planned_expenses").insert(rows) : linked;
+}
 
 /** Planned names are up to 60 characters: "Shoes · SPayLater (2 of 3)", the name cut to fit. */
 function plannedName(name: string, i: number, months: number): string {
@@ -282,7 +300,8 @@ export async function addPlannedExpense(input: PlannedInput): Promise<PlanResult
       months: input.months,
       firstDue: bnplFirstDue(input.first, line.due_day ?? null, line.cutoff_day ?? null),
     });
-    const { error } = await supabase.from("planned_expenses").insert(
+    const { error } = await insertPlanned(
+      supabase,
       schedule.map((p, i) => ({
         name: plannedName(`${name} · ${line.name}`, i, input.months),
         amount: p.amount,
@@ -291,6 +310,7 @@ export async function addPlannedExpense(input: PlannedInput): Promise<PlanResult
         // Its bills are paid from whichever wallet you like.
         account_id: null,
       })),
+      input.wishId,
     );
     if (error) return FAILED;
     refresh();
@@ -309,7 +329,7 @@ export async function addPlannedExpense(input: PlannedInput): Promise<PlanResult
     due_on: date,
     account_id: accountId,
   }));
-  const { error } = await supabase.from("planned_expenses").insert(rows);
+  const { error } = await insertPlanned(supabase, rows, input.wishId);
   if (error) return FAILED;
 
   refresh();

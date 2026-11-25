@@ -18,6 +18,8 @@ export const MAX_DATES = 26;
 export const BORROW_MARGIN = 0.1;
 
 const INSTALLMENT_MONTHS = [3, 6, 12] as const;
+/** Monthly parts from your wallets at most, like Can I afford this?. */
+export const MAX_PARTS = 24;
 const CREDIT_MONTHS = [1, 3, 6, 12] as const;
 
 export type Wish = {
@@ -25,9 +27,9 @@ export type Wish = {
   name: string;
   amount: number;
   category: string;
-  /** Not before this date. */
+  /** The start date: nothing is paid before it. */
   earliest: string;
-  /** Not after this date; null for up to a year on. */
+  /** Pay off by: every payment from your wallets is on or before it. Null for a year on. */
   by: string | null;
   /** If it goes on a card or BNPL: the fee in % a month. */
   feeRate: number;
@@ -36,7 +38,7 @@ export type Wish = {
 export type Strategy =
   /** Save up and pay it all from your wallets on the date. */
   | { kind: "full" }
-  /** Monthly parts from your wallets, the first on the date. */
+  /** Monthly parts from your wallets, the first on the date and the last by the "pay off by" date. */
   | { kind: "installments"; months: number }
   /** On a card or BNPL bought on the date, paid back on its due days. */
   | { kind: "credit"; lineId: string; months: number };
@@ -45,7 +47,7 @@ export type WishPick = {
   /** The day you buy it (or the first part, from your wallets). */
   date: string;
   strategy: Strategy;
-  /** "Pay in full from your wallets", "On SPayLater: ₱4,240 × 6 months". */
+  /** When and how, start to end: "₱3,000 a month, Feb 11 → Jul 11, 2028 (6 payments)". */
   label: string;
   verdict: Verdict;
   /** What leaves your wallets and when, fees included. */
@@ -183,6 +185,12 @@ export function bestPicks({
     first,
     months,
   });
+  const day = (d: string) => formatShortDay(d, today);
+  /** "Feb 11 → Jul 11, 2028": the year once when both share it. */
+  const span = (a: string, b: string) =>
+    a.slice(0, 4) === b.slice(0, 4) && a.slice(0, 4) !== today.slice(0, 4)
+      ? `${formatShortDay(a, a)} → ${day(b)}`
+      : `${day(a)} → ${day(b)}`;
   const fromWallets = (date: string, months: number): WishPick => {
     const verdict = affordVerdict({
       start,
@@ -192,15 +200,16 @@ export function bestPicks({
       nextPayday: null,
     });
     const amounts = splitAmount(wish.amount, months);
+    const dueOns = monthlyDates(date, months);
     return {
       date,
       strategy: months > 1 ? { kind: "installments", months } : { kind: "full" },
       label:
         months > 1
-          ? `${formatPeso(amounts[0])} a month for ${months} months from your wallets`
-          : "Pay in full from your wallets",
+          ? `${formatPeso(amounts[0])} a month, ${span(date, dueOns.at(-1)!)} (${months} payments)`
+          : `Pay ${formatPeso(wish.amount)} on ${day(date)} from your wallets`,
       verdict,
-      payments: monthlyDates(date, months).map((dueOn, i) => ({ dueOn, amount: amounts[i] })),
+      payments: dueOns.map((dueOn, i) => ({ dueOn, amount: amounts[i] })),
       fees: 0,
       cut: cutOf(verdict),
       borrowed: false,
@@ -223,7 +232,11 @@ export function bestPicks({
 
   const spread: WishPick[] = [];
   for (const date of focus) {
-    for (const months of INSTALLMENT_MONTHS) spread.push(fromWallets(date, months));
+    // Parts from your wallets end by the "pay off by" date: 3, 6 or 12 if
+    // they fit, and as many as fit, so the whole window can be used.
+    const fit = partsThatFit(date, window.last);
+    const parts = new Set([...INSTALLMENT_MONTHS.filter((m) => m <= fit), fit]);
+    for (const months of parts) if (months > 1) spread.push(fromWallets(date, months));
     if (!credit.length) continue;
     for (const months of CREDIT_MONTHS) {
       const options = affordWithCredit({
@@ -238,13 +251,15 @@ export function bestPicks({
       });
       for (const o of options) {
         if (!o.verdict) continue;
+        const bills = o.payments.map((p) => p.dueOn);
         spread.push({
           date,
           strategy: { kind: "credit", lineId: o.line.id, months },
+          // You buy it on the date; the card's bills come after, on its due days.
           label:
             months > 1
-              ? `On ${o.line.name}: ${formatPeso(o.payment)} × ${months} months`
-              : `On ${o.line.name}, one bill of ${formatPeso(o.payment)}`,
+              ? `Buy ${day(date)} on ${o.line.name}, then ${formatPeso(o.payment)} a month, ${span(bills[0], bills.at(-1)!)}`
+              : `Buy ${day(date)} on ${o.line.name}, one bill of ${formatPeso(o.payment)} on ${day(bills[0])}`,
           verdict: o.verdict,
           payments: o.payments.map((p) => ({ dueOn: p.dueOn, amount: p.amount })),
           fees: o.fees,
@@ -270,6 +285,13 @@ export function bestPicks({
   return { best, others, why: whyText(best, full, window, today), window };
 }
 
+/** How many monthly parts from `first` end on or before `last`, up to MAX_PARTS. */
+export function partsThatFit(first: string, last: string): number {
+  const dates = monthlyDates(first, MAX_PARTS);
+  const n = dates.findIndex((d) => d > last);
+  return n === -1 ? MAX_PARTS : n;
+}
+
 function whyText(
   best: WishPick | null,
   full: WishPick[],
@@ -278,7 +300,7 @@ function whyText(
 ): string {
   const day = (d: string) => formatShortDay(d, today);
   if (!best) {
-    return `Nothing fits from ${day(window.from)} to ${day(window.last)} without leaving your wallets short. Try a later "by" date, or a smaller amount.`;
+    return `Nothing fits from ${day(window.from)} to ${day(window.last)} without leaving your wallets short. Try a later "pay off by" date, or a smaller amount.`;
   }
   const fullBest = full.filter((p) => p.verdict.tone !== "no").sort((a, b) => a.cut - b.cut)[0];
   if (best.strategy.kind === "credit") {

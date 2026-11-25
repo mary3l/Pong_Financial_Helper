@@ -3,7 +3,12 @@ import { refresh } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { SIGNED_OUT_ERROR } from "@/lib/auth";
 import { fakeSupabase, type FakeSupabase } from "@/test/fake-supabase";
-import { removeScheduled, saveScheduled, type ScheduledInput } from "./schedule-actions";
+import {
+  removePlanPayments,
+  removeScheduled,
+  saveScheduled,
+  type ScheduledInput,
+} from "./schedule-actions";
 
 vi.mock("next/cache", () => ({ refresh: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
@@ -124,5 +129,48 @@ describe("removeScheduled", () => {
     useDb({ planned_expenses: [{ id: "p1" }] });
     expect(await removeScheduled({ table: "planned", id: "p1" })).toEqual({});
     expect(db.table("planned_expenses")).toEqual([]);
+  });
+
+  it("puts a plan back in your ideas when its last payment goes", async () => {
+    useDb({
+      wishlist_items: [{ id: "w1", status: "scheduled" }],
+      planned_expenses: [
+        { id: "p1", wish_id: "w1", transaction_id: null },
+        { id: "p2", wish_id: "w1", transaction_id: null },
+      ],
+    });
+    await removeScheduled({ table: "planned", id: "p1" });
+    expect(db.table("wishlist_items")[0].status).toBe("scheduled");
+    await removeScheduled({ table: "planned", id: "p2" });
+    expect(db.table("wishlist_items")[0].status).toBe("idea");
+  });
+});
+
+describe("removePlanPayments", () => {
+  it("removes a plan's unpaid payments; with none paid, it's an idea again", async () => {
+    useDb({
+      wishlist_items: [{ id: "w1", status: "scheduled" }],
+      planned_expenses: [
+        { id: "p1", wish_id: "w1", transaction_id: null },
+        { id: "p2", wish_id: "w1", transaction_id: null },
+        { id: "mine", wish_id: null, transaction_id: null },
+      ],
+    });
+    expect(await removePlanPayments("w1")).toEqual({});
+    expect(db.table("planned_expenses").map((r) => r.id)).toEqual(["mine"]);
+    expect(db.table("wishlist_items")[0].status).toBe("idea");
+  });
+
+  it("keeps the plan made real when some of it was paid", async () => {
+    useDb({
+      wishlist_items: [{ id: "w1", status: "scheduled" }],
+      planned_expenses: [
+        { id: "p1", wish_id: "w1", transaction_id: "t1" },
+        { id: "p2", wish_id: "w1", transaction_id: null },
+      ],
+    });
+    expect(await removePlanPayments("w1")).toEqual({});
+    expect(db.table("planned_expenses").map((r) => r.id)).toEqual(["p1"]);
+    expect(db.table("wishlist_items")[0].status).toBe("scheduled");
   });
 });
