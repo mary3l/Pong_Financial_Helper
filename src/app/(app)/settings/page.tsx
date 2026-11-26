@@ -64,6 +64,7 @@ export default function SettingsPage() {
           href="/money"
         />
         <Row title="Grocery mode" detail="Scan as you shop and stay in budget" href="/grocery" />
+        <Row title="Compare prices" detail="Price per ml, g or piece" href="/compare" />
         <Row title="Insights" detail="Is your spending going up or down?" href="/insights" />
         <Row
           title="Pay"

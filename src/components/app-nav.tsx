@@ -12,6 +12,7 @@ import {
   MoneyIcon,
   PlanIcon,
   PlusIcon,
+  ScaleIcon,
   TrendIcon,
 } from "@/components/icons";
 
@@ -143,6 +144,18 @@ function SidebarPanel({ isActive }: { isActive: IsActive }) {
         >
           <GroceryIcon size={22} />
           Grocery mode
+        </Link>
+        <Link
+          href="/compare"
+          aria-current={isActive("/compare") ? "page" : undefined}
+          className={`flex h-[46px] items-center gap-3 rounded-[14px] px-3.5 text-[15px] ${
+            isActive("/compare")
+              ? "bg-sea-tint font-extrabold text-sea-dark"
+              : "font-bold text-ink hover:bg-mint"
+          }`}
+        >
+          <ScaleIcon size={22} />
+          Compare prices
         </Link>
         <Link
           href="/payroll"
