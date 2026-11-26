@@ -83,6 +83,14 @@ export function CloseIcon(props: IconProps) {
   );
 }
 
+export function ScaleIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3v18M7 21h10M5 7h14M5 7l-3 7a3 3 0 0 0 6 0L5 7M19 7l-3 7a3 3 0 0 0 6 0l-3-7" />
+    </Icon>
+  );
+}
+
 export function CalculatorIcon(props: IconProps) {
   return (
     <Icon {...props}>

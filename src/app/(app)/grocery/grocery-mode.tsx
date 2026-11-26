@@ -469,7 +469,7 @@ function Scanning({
       {scanning ? (
         <BarcodeScanner onDetected={onScan} onClose={() => setScanning(false)} />
       ) : (
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2">
           <button
             type="button"
             onClick={() => setScanning(true)}
@@ -485,6 +485,12 @@ function Scanning({
           >
             Undo
           </button>
+          <Link
+            href="/compare"
+            className="flex h-[52px] items-center rounded-[18px] bg-card px-5 font-extrabold text-ink"
+          >
+            Compare
+          </Link>
         </div>
       )}
 
