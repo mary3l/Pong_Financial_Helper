@@ -2,7 +2,12 @@ import { Suspense } from "react";
 import { Pong } from "@/components/pong";
 import { SignInError, SignInPanel } from "./sign-in-panel";
 
-export const metadata = { title: "Sign in · Pong Money" };
+export const metadata = {
+  title: "Pong Money · Budget app for paydays, bills and groceries",
+  description:
+    "Budget tracker for the Philippines: plan each kinsenas payday, see what's safe to spend, track bills and loans, and compare grocery prices per ml or kg.",
+  alternates: { canonical: "/login" },
+};
 
 export default function LoginPage() {
   return (

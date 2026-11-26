@@ -1,3 +1,5 @@
+export const metadata = { robots: { index: false, follow: false } };
+
 // First-run setup (design canvas 1.2 and 1.3): no nav, one column.
 export default function SetupLayout({ children }: LayoutProps<"/setup">) {
   return (
