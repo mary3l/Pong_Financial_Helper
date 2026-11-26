@@ -3,6 +3,9 @@ import { OfflineBanner } from "@/components/offline";
 import { Toaster } from "@/components/toast";
 import { TopActions } from "@/components/top-actions";
 
+// Private screens: never in search results.
+export const metadata = { robots: { index: false, follow: false } };
+
 // Signed-in area. The proxy redirects signed-out visitors to /login; data is
 // protected separately by row-level security in Supabase. `modal` shows Add
 // over the current page (see @modal).

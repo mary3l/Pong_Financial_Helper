@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Fredoka, Nunito } from "next/font/google";
 import { ServiceWorker } from "@/components/offline";
 import { ThemeScript } from "@/components/theme";
+import { siteUrl } from "@/lib/site-url";
 import "./globals.css";
 
 const fredoka = Fredoka({
@@ -14,9 +15,21 @@ const nunito = Nunito({
   subsets: ["latin"],
 });
 
+const DESCRIPTION = "Track spending, bills and paydays with Pong, your money buddy.";
+
 export const metadata: Metadata = {
+  metadataBase: siteUrl(),
   title: "Pong Money",
-  description: "Track spending, bills and paydays with Pong, your money buddy.",
+  description: DESCRIPTION,
+  applicationName: "Pong Money",
+  openGraph: {
+    type: "website",
+    siteName: "Pong Money",
+    title: "Pong Money",
+    description: DESCRIPTION,
+    locale: "en_PH",
+  },
+  twitter: { card: "summary_large_image" },
   appleWebApp: { capable: true, title: "Pong Money", statusBarStyle: "default" },
 };
 
