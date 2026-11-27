@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 const PUBLIC_PATHS = ["/login", "/auth"];
 
 // Refreshes the Supabase session cookie and sends signed-out visitors to /login.
+// Signed out, `/` shows the public home page (app/welcome) at the same address.
 // This is an optimistic check only: data access is protected by RLS in Postgres.
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -42,6 +43,13 @@ export async function updateSession(request: NextRequest) {
     (p) => pathname === p || pathname.startsWith(`${p}/`),
   );
 
+  // The public home page lives at `/` only, so search engines see one address.
+  if (pathname === "/welcome") {
+    return redirectKeepingCookies(request, response, "/");
+  }
+  if (!signedIn && pathname === "/") {
+    return rewriteKeepingCookies(request, response, "/welcome");
+  }
   if (!signedIn && !isPublic) {
     return redirectKeepingCookies(request, response, "/login");
   }
@@ -55,6 +63,18 @@ export async function updateSession(request: NextRequest) {
   }
 
   return response;
+}
+
+function rewriteKeepingCookies(
+  request: NextRequest,
+  from: NextResponse,
+  pathname: string,
+) {
+  const url = request.nextUrl.clone();
+  url.pathname = pathname;
+  const rewrite = NextResponse.rewrite(url, { request });
+  from.cookies.getAll().forEach((cookie) => rewrite.cookies.set(cookie));
+  return rewrite;
 }
 
 function redirectKeepingCookies(

@@ -8,9 +8,12 @@ describe("seo files", () => {
   it("lets crawlers see only the public pages", () => {
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://pong.example");
     expect(robots()).toEqual({
-      rules: { userAgent: "*", allow: ["/login", "/opengraph-image"], disallow: "/" },
+      rules: { userAgent: "*", allow: ["/$", "/login", "/opengraph-image"], disallow: "/" },
       sitemap: "https://pong.example/sitemap.xml",
     });
-    expect(sitemap()).toEqual([{ url: "https://pong.example/login" }]);
+    expect(sitemap()).toEqual([
+      { url: "https://pong.example/", changeFrequency: "monthly", priority: 1 },
+      { url: "https://pong.example/login", changeFrequency: "monthly", priority: 0.5 },
+    ]);
   });
 });

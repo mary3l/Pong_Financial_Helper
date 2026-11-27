@@ -10,4 +10,4 @@ export function siteUrl(env: Record<string, string | undefined> = process.env): 
 }
 
 /** Pages anyone can open signed out, and that search engines may list. */
-export const PUBLIC_PAGES = ["/login"];
+export const PUBLIC_PAGES = ["/", "/login"];
