@@ -95,3 +95,167 @@ body {
     animation: pong-peek 3.2s ease-in-out infinite;
   }
 }
+
+/* Landing page (src/app/welcome): sections rise in as they scroll into view
+   (reveal.tsx), items inside follow one after another (--i), and Pong, coins
+   and phones move a little. With reduced motion, everything just shows, still. */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes word-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.4em);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes float-up {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.6);
+  }
+  15% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-260px) scale(1);
+  }
+}
+@keyframes wiggle {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  25% {
+    transform: rotate(-14deg) scale(1.15);
+  }
+  60% {
+    transform: rotate(10deg);
+  }
+}
+@keyframes phone-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0);
+  }
+  50% {
+    transform: translateY(-8px) rotate(-0.6deg);
+  }
+}
+@keyframes ring-pulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  25% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.05);
+  }
+}
+@keyframes shine {
+  0%,
+  70% {
+    transform: translateX(-120%) skewX(-20deg);
+  }
+  100% {
+    transform: translateX(220%) skewX(-20deg);
+  }
+}
+/* Floating coins behind the hero Pong only show when they can move. */
+.coin {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.landing) {
+    scroll-behavior: smooth;
+  }
+  .reveal {
+    transition:
+      opacity 0.8s ease-out,
+      transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .reveal[data-shown="false"] {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  /* Hover lifts use `translate`, so they don't fight the stagger's `transform`. */
+  .reveal .stagger {
+    transition:
+      opacity 0.6s ease-out,
+      transform 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+      translate 0.2s ease-out,
+      box-shadow 0.2s ease-out;
+    transition-delay: calc(var(--i, 0) * 80ms + 0.15s), calc(var(--i, 0) * 80ms + 0.15s), 0s, 0s;
+  }
+  .reveal[data-shown="false"] .stagger {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  .reveal .reveal-pong {
+    transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition-delay: calc(var(--i, 0) * 80ms + 0.35s);
+  }
+  .reveal[data-shown="false"] .reveal-pong {
+    transform: rotate(-12deg) scale(0.8);
+  }
+  .reveal[data-shown="true"] .wiggle {
+    animation: wiggle 0.8s ease-in-out both;
+    animation-delay: calc(var(--i, 0) * 80ms + 0.5s);
+  }
+  .pop-in {
+    animation: pop-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+  .word-rise {
+    animation: word-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--i, 0) * 70ms);
+  }
+  .coin {
+    animation: float-up 6s ease-in infinite;
+    animation-delay: calc(var(--i, 0) * -1.3s);
+  }
+  .phone-float {
+    animation: phone-float 5s ease-in-out infinite;
+    animation-delay: calc(var(--i, 0) * -1.6s);
+  }
+  .ring-pulse {
+    animation: ring-pulse 1.2s ease-out 2 both;
+  }
+  .shine::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    width: 40%;
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent);
+    animation: shine 3.5s ease-in-out infinite;
+    pointer-events: none;
+  }
+  /* FAQ answers slide open where the browser can animate to `auto`. */
+  .faq {
+    interpolate-size: allow-keywords;
+  }
+  .faq details::details-content {
+    block-size: 0;
+    overflow: hidden;
+    transition:
+      block-size 0.3s ease,
+      content-visibility 0.3s allow-discrete;
+  }
+  .faq details[open]::details-content {
+    block-size: auto;
+  }
+}

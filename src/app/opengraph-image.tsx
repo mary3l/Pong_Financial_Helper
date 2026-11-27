@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { ImageResponse } from "next/og";
 
 // The preview card when a Pong Money link is shared (Messenger, Facebook…).
-export const alt = "Pong Money: budget, bills, paydays and grocery tracker";
+export const alt = "Pong Money: financial helper app for paydays, bills and groceries";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -27,7 +27,7 @@ export default async function OpengraphImage() {
       <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
         <div style={{ fontSize: 96, fontWeight: 800 }}>Pong Money</div>
         <div style={{ fontSize: 40, maxWidth: 640 }}>
-          Budget, bills, paydays and grocery prices in one place.
+          Your financial helper for paydays, bills and groceries.
         </div>
       </div>
     </div>,

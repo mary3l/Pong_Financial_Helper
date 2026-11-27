@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Pong Money",
     short_name: "Pong Money",
-    description: "Track spending, bills and paydays with Pong, your money buddy.",
+    description: "Pong is a financial helper app for paydays, bills, utang and groceries.",
     id: "/",
     start_url: "/",
     scope: "/",

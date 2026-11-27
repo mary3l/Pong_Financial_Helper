@@ -15,13 +15,30 @@ const nunito = Nunito({
   subsets: ["latin"],
 });
 
-const DESCRIPTION = "Track spending, bills and paydays with Pong, your money buddy.";
+const DESCRIPTION =
+  "Pong is a financial helper app for paydays, bills, utang and groceries in the Philippines.";
 
 export const metadata: Metadata = {
   metadataBase: siteUrl(),
   title: "Pong Money",
   description: DESCRIPTION,
   applicationName: "Pong Money",
+  keywords: [
+    "financial helper app",
+    "budget app Philippines",
+    "budget tracker",
+    "kinsenas",
+    "payday budget",
+    "expense tracker",
+    "utang tracker",
+    "bills tracker",
+    "grocery price compare",
+  ],
+  // Google Search Console's ownership check. Set GOOGLE_SITE_VERIFICATION on
+  // Vercel to the code Search Console gives; without it no tag is added.
+  verification: process.env.GOOGLE_SITE_VERIFICATION
+    ? { google: process.env.GOOGLE_SITE_VERIFICATION }
+    : undefined,
   openGraph: {
     type: "website",
     siteName: "Pong Money",
