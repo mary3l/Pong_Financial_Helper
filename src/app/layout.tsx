@@ -15,7 +15,8 @@ const nunito = Nunito({
   subsets: ["latin"],
 });
 
-const DESCRIPTION = "Track spending, bills and paydays with Pong, your money buddy.";
+const DESCRIPTION =
+  "Pong is a financial helper app for paydays, bills, utang and groceries in the Philippines.";
 
 export const metadata: Metadata = {
   metadataBase: siteUrl(),
@@ -23,6 +24,7 @@ export const metadata: Metadata = {
   description: DESCRIPTION,
   applicationName: "Pong Money",
   keywords: [
+    "financial helper app",
     "budget app Philippines",
     "budget tracker",
     "kinsenas",

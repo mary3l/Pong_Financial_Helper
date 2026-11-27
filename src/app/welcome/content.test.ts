@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FAQ, jsonLd, structuredData } from "./content";
+import { FAQ, FEATURES, WHY, jsonLd, structuredData } from "./content";
 
 describe("home page structured data", () => {
   const data = JSON.parse(jsonLd(structuredData(new URL("https://pong.example"))));
@@ -25,5 +25,11 @@ describe("home page structured data", () => {
 
   it("can't close its script tag early", () => {
     expect(jsonLd({ text: "</script><script>alert(1)</script>" })).not.toContain("<");
+  });
+
+  it("gives every feature its own colour, and every worry a Pong face", () => {
+    const tints = FEATURES.map((f) => f.tint);
+    expect(new Set(tints).size).toBe(FEATURES.length);
+    expect(WHY.map((w) => w.mood)).toEqual(["shocked", "worried", "ask"]);
   });
 });

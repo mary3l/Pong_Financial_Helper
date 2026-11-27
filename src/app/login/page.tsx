@@ -3,7 +3,7 @@ import { SignInHero } from "./hero";
 export const metadata = {
   title: "Sign in · Pong Money",
   description:
-    "Sign in to Pong Money, the free budget app for paydays, bills, utang and groceries in the Philippines.",
+    "Sign in to Pong Money, the free financial helper app for paydays, bills, utang and groceries in the Philippines.",
   alternates: { canonical: "/login" },
 };
 

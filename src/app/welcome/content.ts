@@ -1,35 +1,68 @@
 // Text for the public home page, and the structured data search engines read
 // from it. The FAQ answers feed both, so what Google shows always matches the page.
 
-export const TITLE = "Pong Money · Free budget app for paydays, bills and groceries";
+import type { PongMood } from "@/components/pong";
+
+export const TITLE = "Pong Money · Financial helper app for paydays, bills and groceries";
 
 export const DESCRIPTION =
-  "Free budget tracker for the Philippines: plan each kinsenas payday, see what's safe to spend, track bills, loans, utang and pautang, and compare grocery prices per ml or kg.";
+  "Pong is a free financial helper app for the Philippines: plan each kinsenas payday, see what's safe to spend, track bills, loans, utang and pautang, and compare grocery prices per ml or kg.";
+
+/** The money worries Pong is made for, and what Pong does about each. */
+export const WHY: readonly { mood: PongMood; worry: string; answer: string }[] = [
+  {
+    mood: "shocked",
+    worry: "“Sweldo's gone before the next kinsenas.”",
+    answer: "Pong splits your pay into a daily amount that lasts until payday.",
+  },
+  {
+    mood: "worried",
+    worry: "“Bills pop up out of nowhere.”",
+    answer: "Pong lines up every bill against the pay that covers it, so nothing surprises you.",
+  },
+  {
+    mood: "ask",
+    worry: "“Who owes me again?”",
+    answer: "Pong keeps your utang and pautang, so you don't have to remember.",
+  },
+];
 
 export const FEATURES = [
   {
     title: "Safe to spend today",
-    body: "Pong takes your next payday, your bills and your savings into account and shows how much you can spend each day without coming up short.",
+    body: "Your payday, bills and savings turned into one number: what you can spend today.",
+    tint: "bg-sea-tint",
+    emoji: "💰",
   },
   {
     title: "Paydays and bills",
-    body: "Set your kinsenas or monthly payday, your deductions and your due dates. Pong lines up every bill against the pay that covers it.",
+    body: "Kinsenas, monthly or weekly pay, with every due date matched to the pay that covers it.",
+    tint: "bg-sun-tint",
+    emoji: "📅",
   },
   {
     title: "Utang and pautang",
-    body: "Keep track of who owes you and who you owe, split bills with friends, and mark payments as they come in.",
+    body: "Who owes you, who you owe, split bills, and payments as they come in.",
+    tint: "bg-plum-tint",
+    emoji: "🤝",
   },
   {
     title: "Loans, credit cards and BNPL",
-    body: "Add loans, credit cards and buy-now-pay-later plans to see each installment and when you'll be fully paid.",
+    body: "Every installment, and the day you'll be fully paid.",
+    tint: "bg-coral-tint",
+    emoji: "💳",
   },
   {
     title: "Grocery prices per ml or kg",
-    body: "Compare sizes and promos by unit price, and use grocery mode to keep a running total as you shop.",
+    body: "Find the better deal by unit price, and keep a running total as you shop.",
+    tint: "bg-sky-tint",
+    emoji: "🛒",
   },
   {
     title: "Wallets in one place",
-    body: "Cash, bank accounts and e-wallets like GCash and Maya side by side, with savings kept separate from spending money.",
+    body: "Cash, bank, GCash and Maya side by side, with savings kept apart.",
+    tint: "bg-mint",
+    emoji: "👛",
   },
 ] as const;
 
