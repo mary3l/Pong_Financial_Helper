@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { clampDays, dailySafe, pesos, pongFor } from "./daily";
+import { clampDays, dailySafe, leftover, pesos, pongFor } from "./daily";
 
 describe("Try it: daily amount", () => {
+  it("sets aside bills and savings first", () => {
+    expect(leftover(12000, 4500, 1000)).toBe(6500);
+    expect(leftover(5000, 6000, 0)).toBe(-1000);
+  });
+
   it("splits what's left of the sweldo over the days to payday", () => {
     // (12,000 − 4,500 − 1,000) ÷ 15 = 433.33…, rounded down.
     expect(dailySafe(12000, 4500, 1000, 15)).toBe(433);

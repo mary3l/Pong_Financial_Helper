@@ -11,7 +11,7 @@ function Phone({ children, tint = "bg-mint" }: { children: React.ReactNode; tint
   return (
     <div
       aria-hidden="true"
-      className="relative mx-auto h-[440px] w-[230px] shrink-0 rounded-[38px] border-[7px] border-ink bg-ink p-0 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.45)]"
+      className="phone-float relative mx-auto h-[440px] w-[230px] shrink-0 rounded-[38px] border-[7px] border-ink bg-ink p-0 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.45)]"
     >
       <div className={`flex h-full flex-col gap-2.5 overflow-hidden rounded-[30px] ${tint} p-3`}>
         <div className="mx-auto mb-1 h-1.5 w-16 rounded-full bg-ink/80" />
@@ -181,8 +181,12 @@ export function Screens() {
         }}
         className="-mx-6 flex snap-x snap-mandatory gap-6 overflow-x-auto px-6 pt-4 pb-2 [scrollbar-width:none] md:mx-0 md:grid md:grid-cols-3 md:overflow-visible md:px-0"
       >
-        {SCREENS.map(({ key, Screen, caption }) => (
-          <li key={key} className="flex w-full shrink-0 snap-center flex-col gap-4 md:w-auto">
+        {SCREENS.map(({ key, Screen, caption }, i) => (
+          <li
+            key={key}
+            style={{ "--i": i } as React.CSSProperties}
+            className="stagger flex w-full shrink-0 snap-center flex-col gap-4 md:w-auto"
+          >
             <Screen />
             <p className="mx-auto max-w-[260px] text-center text-[15px] leading-snug text-muted">
               {caption}

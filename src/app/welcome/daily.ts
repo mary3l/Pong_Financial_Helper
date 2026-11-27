@@ -16,9 +16,14 @@ export function clampDays(days: number): number {
   return Math.min(31, Math.max(1, Math.round(days)));
 }
 
+/** What's left of the sweldo once Pong sets aside bills and savings. */
+export function leftover(pay: number, bills: number, savings: number): number {
+  return pay - bills - savings;
+}
+
 /** (sweldo − bills − savings) ÷ days, rounded down to the peso. */
 export function dailySafe(pay: number, bills: number, savings: number, days: number): number {
-  return Math.floor((pay - bills - savings) / clampDays(days));
+  return Math.floor(leftover(pay, bills, savings) / clampDays(days));
 }
 
 /** Pong's face and words for a daily amount. */
