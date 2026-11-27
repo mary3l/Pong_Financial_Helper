@@ -48,11 +48,14 @@ describe("Try it", () => {
   it("shows Pong's working: what's left, then split by day", async () => {
     const user = userEvent.setup();
     render(<TryIt />);
-    expect(math("math-left")).toHaveTextContent("₱12,000 − ₱4,500 − ₱1,000 = ₱6,500 left");
-    expect(math("math-split")).toHaveTextContent("₱6,500 ÷ 15 days = ₱433 a day");
+    // ₱12,000 − ₱4,500 − ₱1,000 = ₱6,500 left, ÷ 15 days = ₱433 a day.
+    expect(math("math-left")).toHaveTextContent(/= Left\s*₱6,500/);
+    expect(math("math-split")).toHaveTextContent("÷ 15 days until payday");
+    expect(amount()).toHaveTextContent("₱433");
 
     await user.click(screen.getByRole("button", { name: "One day fewer" }));
-    expect(math("math-split")).toHaveTextContent("₱6,500 ÷ 14 days = ₱464 a day");
+    expect(math("math-split")).toHaveTextContent("÷ 14 days until payday");
+    expect(amount()).toHaveTextContent("₱464");
   });
 
   it("'Let Pong track it for real' carries the amount to the sign-in card", async () => {

@@ -72,9 +72,9 @@ export default function WelcomePage() {
           />
 
           <div
-            className={`${WRAP} relative grid items-center gap-10 pt-12 pb-24 md:grid-cols-[1.1fr_1fr] md:pt-20 md:pb-32`}
+            className={`${WRAP} relative grid items-center gap-10 pt-12 pb-24 md:pt-16 lg:grid-cols-[1.1fr_1fr] lg:pt-20 lg:pb-32`}
           >
-            <div className="order-2 flex flex-col gap-5 md:order-1">
+            <div className="order-2 mx-auto flex w-full max-w-[640px] flex-col gap-5 lg:order-1 lg:mx-0 lg:max-w-none">
               <h1 className="font-display text-[40px] leading-[1.05] font-semibold md:text-6xl">
                 {HEADLINE.map((word, i) => (
                   <span key={i}>
@@ -97,7 +97,7 @@ export default function WelcomePage() {
               </p>
             </div>
 
-            <div className="relative order-1 flex flex-col items-center md:order-2">
+            <div className="relative order-1 flex flex-col items-center lg:order-2">
               {/* Coins drifting up behind Pong. */}
               {[18, 34, 62, 78, 48].map((left, i) => (
                 <span
@@ -135,21 +135,23 @@ export default function WelcomePage() {
                 Made for the money worries we all know
               </h2>
             </div>
-            <ul className="grid gap-5 md:grid-cols-3">
+            <ul className="grid gap-5 lg:grid-cols-3">
               {WHY.map((w, i) => (
                 <li
                   key={w.worry}
                   style={index(i)}
-                  className="stagger flex flex-col gap-3 rounded-[28px] bg-card p-6 hover:-translate-y-1 hover:shadow-[0_14px_30px_-18px_rgba(0,0,0,0.35)]"
+                  className="stagger flex flex-col gap-3 rounded-[28px] bg-card p-6 md:flex-row md:items-center md:gap-6 lg:flex-col lg:items-start lg:gap-3 hover:-translate-y-1 hover:shadow-[0_14px_30px_-18px_rgba(0,0,0,0.35)]"
                 >
                   <Pong mood={w.mood} size={84} className="reveal-pong" />
-                  <p className="font-display text-xl leading-snug font-semibold">{w.worry}</p>
-                  <p className="leading-relaxed text-muted">
-                    <span aria-hidden="true" className="font-extrabold text-sea-dark">
-                      →{" "}
-                    </span>
-                    {w.answer}
-                  </p>
+                  <div className="flex flex-col gap-3">
+                    <p className="font-display text-xl leading-snug font-semibold">{w.worry}</p>
+                    <p className="leading-relaxed text-muted">
+                      <span aria-hidden="true" className="font-extrabold text-sea-dark">
+                        →{" "}
+                      </span>
+                      {w.answer}
+                    </p>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -226,9 +228,9 @@ export default function WelcomePage() {
         <section aria-labelledby="faq" className="faq relative bg-mint">
           <Reveal
             as="div"
-            className={`${WRAP} grid items-start gap-8 md:grid-cols-[minmax(0,320px)_1fr] md:gap-12 ${PAD}`}
+            className={`${WRAP} grid items-start gap-8 lg:grid-cols-[minmax(0,320px)_1fr] lg:gap-12 ${PAD}`}
           >
-            <div className="flex flex-col gap-3 md:sticky md:top-28">
+            <div className="flex flex-col gap-3 lg:sticky lg:top-28">
               <Eyebrow>Questions</Eyebrow>
               <h2 id="faq" className={H2}>
                 Good to know
@@ -236,7 +238,7 @@ export default function WelcomePage() {
               <p className="text-lg leading-relaxed text-muted">
                 Still curious? Sign in and look around. It&apos;s free.
               </p>
-              <div className="mt-2 hidden md:block">
+              <div className="mt-2 hidden lg:block">
                 <Pong mood="ask" size={120} className="reveal-pong" />
               </div>
             </div>

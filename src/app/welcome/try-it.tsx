@@ -46,6 +46,34 @@ function useCountUp(target: number): number {
   return shown;
 }
 
+function Row({
+  label,
+  amount,
+  strong = false,
+  sun = false,
+  testId,
+}: {
+  label: string;
+  amount?: string;
+  strong?: boolean;
+  sun?: boolean;
+  testId?: string;
+}) {
+  return (
+    <p
+      data-testid={testId}
+      className={`flex items-baseline justify-between gap-3 ${sun ? "font-extrabold text-sun" : ""}`}
+    >
+      <span className="whitespace-nowrap">{label}</span>
+      {amount && (
+        <span className={`whitespace-nowrap ${strong ? "font-bold text-white" : ""}`}>
+          {amount}
+        </span>
+      )}
+    </p>
+  );
+}
+
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
     <li className="stagger flex gap-3" style={{ "--i": n } as React.CSSProperties}>
@@ -110,7 +138,7 @@ export function TryIt() {
   const dayWord = days === 1 ? "day" : "days";
 
   return (
-    <div className="grid gap-6 rounded-[28px] bg-card p-6 shadow-[0_2px_0_var(--color-line)] md:grid-cols-[1fr_1.1fr] md:p-8">
+    <div className="grid gap-6 rounded-[28px] bg-card p-4 shadow-[0_2px_0_var(--color-line)] sm:p-6 lg:grid-cols-[1fr_1.1fr] lg:p-8">
       <ol className="flex flex-col gap-5">
         <Step n={1} title="Tell Pong your sweldo">
           <Money label="Sweldo this payday" value={pay} onChange={setPay} />
@@ -153,28 +181,25 @@ export function TryIt() {
         </Step>
       </ol>
 
-      <div className="relative flex flex-col justify-center gap-4 overflow-hidden rounded-[24px] bg-sea p-6 text-white">
+      <div className="relative flex flex-col justify-center gap-4 overflow-hidden rounded-[24px] bg-sea p-4 text-white sm:p-6">
         <div
           aria-hidden="true"
           className="absolute -top-12 -right-10 h-40 w-40 rounded-full bg-sea-light"
         />
 
-        {/* Pong's working, line by line. */}
-        <div className="relative flex flex-col gap-1.5 rounded-[18px] bg-sea-deep/60 p-4 text-[15px] text-sea-text">
-          <p data-testid="math-left">
-            <span className="font-bold text-white">{peso(pesos(pay))}</span> − {peso(pesos(bills))}{" "}
-            − {peso(pesos(savings))} ={" "}
-            <span className="font-extrabold text-sun">{peso(left)} left</span>
-          </p>
-          <p data-testid="math-split">
-            <span className="font-bold text-white">{peso(left)}</span> ÷ {days} {dayWord} ={" "}
-            <span className="font-extrabold text-sun">{peso(daily)} a day</span>
-          </p>
+        {/* Pong's working, as a little receipt: one amount per line. */}
+        <div className="relative flex flex-col gap-1 rounded-[18px] bg-sea-deep/60 p-4 text-[15px] text-sea-text tabular-nums">
+          <Row label="Sweldo" amount={peso(pesos(pay))} strong />
+          <Row label="− Bills" amount={peso(pesos(bills))} />
+          <Row label="− Savings" amount={peso(pesos(savings))} />
+          <div className="my-1 border-t border-white/20" />
+          <Row testId="math-left" label="= Left" amount={peso(left)} sun />
+          <Row testId="math-split" label={`÷ ${days} ${dayWord} until payday`} />
         </div>
 
         <div className="relative flex items-center justify-between gap-2">
-          <div className="flex flex-col gap-1">
-            <span className="text-sm font-bold text-sea-text">YOU CAN SPEND</span>
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="text-sm font-bold whitespace-nowrap text-sea-text">YOU CAN SPEND</span>
             {/* The real amount for screen readers; the counting one is for eyes. */}
             <output className="sr-only">{peso(daily)}</output>
             <span
@@ -183,12 +208,12 @@ export function TryIt() {
             >
               {peso(shown)}
             </span>
-            <span className="text-[15px] text-sea-text">a day until payday</span>
+            <span className="text-[15px] whitespace-nowrap text-sea-text">a day until payday</span>
           </div>
           <Pong
             key={pong.mood}
             mood={pong.mood}
-            size={96}
+            size={80}
             className="pop-in shrink-0 drop-shadow-[0_3px_0_rgba(0,0,0,0.18)]"
           />
         </div>

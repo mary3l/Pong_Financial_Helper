@@ -166,7 +166,22 @@ const SCREENS = [
   },
 ];
 
-/** Side by side on wide screens; a sideways swipe with dots on phones. */
+/** Which phone the swipe is on: the one nearest the left edge, or the last at the end. */
+function currentIndex(track: HTMLElement): number {
+  const items = [...track.children] as HTMLElement[];
+  if (track.scrollLeft >= track.scrollWidth - track.clientWidth - 2) return items.length - 1;
+  const start = track.scrollLeft + items[0].offsetLeft;
+  let best = 0;
+  items.forEach((item, i) => {
+    if (Math.abs(item.offsetLeft - start) < Math.abs(items[best].offsetLeft - start)) best = i;
+  });
+  return best;
+}
+
+/**
+ * Side by side on computers; a sideways swipe with dots on phones (one phone
+ * at a time) and tablets (two at a time).
+ */
 export function Screens() {
   const track = useRef<HTMLUListElement>(null);
   const [active, setActive] = useState(0);
@@ -175,17 +190,14 @@ export function Screens() {
     <div className="flex flex-col gap-4">
       <ul
         ref={track}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          setActive(Math.round(el.scrollLeft / el.clientWidth));
-        }}
-        className="-mx-6 flex snap-x snap-mandatory gap-6 overflow-x-auto px-6 pt-4 pb-2 [scrollbar-width:none] md:mx-0 md:grid md:grid-cols-3 md:overflow-visible md:px-0"
+        onScroll={(e) => setActive(currentIndex(e.currentTarget))}
+        className="-mx-6 flex snap-x snap-mandatory gap-6 overflow-x-auto px-6 pt-4 pb-2 [scrollbar-width:none] lg:mx-0 lg:grid lg:grid-cols-3 lg:overflow-visible lg:px-0"
       >
         {SCREENS.map(({ key, Screen, caption }, i) => (
           <li
             key={key}
             style={{ "--i": i } as React.CSSProperties}
-            className="stagger flex w-full shrink-0 snap-center flex-col gap-4 md:w-auto"
+            className="stagger flex w-full shrink-0 snap-center flex-col gap-4 sm:w-[calc(50%-12px)] lg:w-auto"
           >
             <Screen />
             <p className="mx-auto max-w-[260px] text-center text-[15px] leading-snug text-muted">
@@ -194,7 +206,7 @@ export function Screens() {
           </li>
         ))}
       </ul>
-      <div className="flex justify-center gap-2 md:hidden">
+      <div className="flex justify-center gap-2 lg:hidden">
         {SCREENS.map(({ key }, i) => (
           <button
             key={key}
@@ -202,8 +214,8 @@ export function Screens() {
             aria-label={`Show screen ${i + 1} of ${SCREENS.length}`}
             aria-current={active === i}
             onClick={() => {
-              const el = track.current;
-              el?.scrollTo({ left: i * el.clientWidth, behavior: "smooth" });
+              const item = track.current?.children[i];
+              item?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
             }}
             className={`h-2.5 rounded-full transition-all ${active === i ? "w-6 bg-sea" : "w-2.5 bg-line"}`}
           />
