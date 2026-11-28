@@ -4,6 +4,7 @@ import {
   elapsedShare,
   frequentBuys,
   goalProgress,
+  monthBreakdown,
   paydayEffect,
   suggestions,
   summarize,
@@ -262,5 +263,99 @@ describe("goalProgress", () => {
 
   it("counts the whole category when it has no subcategory", () => {
     expect(goalProgress({ ...goal, subcategory: null }, txns, "2026-11-20").spent).toBe(1299);
+  });
+});
+
+describe("where it went", () => {
+  // The design review's example: Nov 28, against Oct 1–28.
+  const nov = [
+    txn("2026-11-03", 7000, "food"),
+    txn("2026-11-05", 4050, "transport"),
+    txn("2026-11-10", 3100, "bills"),
+    txn("2026-11-12", 2500, "shopping"),
+    txn("2026-11-20", 1750, "fun"),
+  ];
+  const oct = [
+    txn("2026-10-04", 6200, "food"),
+    txn("2026-10-06", 4350, "transport"),
+    txn("2026-10-11", 3100, "bills"),
+    txn("2026-10-15", 3550, "shopping"),
+    // After Oct 28: left out while November is still running.
+    txn("2026-10-30", 9999, "food"),
+  ];
+
+  it("ranks the top 3 against the same days last month", () => {
+    const b = monthBreakdown([...oct, ...nov], "2026-11-16", "2026-11-28")!;
+    expect(b.month).toEqual({ start: "2026-11-01", end: "2026-11-28" });
+    expect(b.last).toEqual({ start: "2026-10-01", end: "2026-10-28" });
+    expect(b.running).toBe(true);
+    expect(b.total).toBe(18400);
+    expect(b.lastTotal).toBe(17200);
+    expect(b.change).toBe(1200);
+    expect(b.top.map((t) => [t.key, t.current, t.change])).toEqual([
+      ["food", 7000, 800],
+      ["transport", 4050, -300],
+      ["bills", 3100, 0],
+    ]);
+    expect(b.top[0].percent).toBe(13);
+  });
+
+  it("puts the rest in Other, and the shares add up to 100", () => {
+    const b = monthBreakdown(nov, "2026-11-01", "2026-11-28")!;
+    expect(b.slices.map((s) => s.key)).toEqual(["food", "transport", "bills", "other"]);
+    expect(b.slices.at(-1)!.amount).toBe(4250);
+    expect(b.slices.reduce((sum, s) => sum + s.share, 0)).toBe(100);
+    // Thirds round to 33 each: the one left over goes to the biggest.
+    const thirds = monthBreakdown(
+      [
+        txn("2026-11-01", 100, "food"),
+        txn("2026-11-01", 100, "fun"),
+        txn("2026-11-01", 100, "bills"),
+      ],
+      "2026-11-01",
+      "2026-11-28",
+    )!;
+    expect(thirds.slices.map((s) => s.share)).toEqual([34, 33, 33]);
+  });
+
+  it("shows only what there is with fewer than 3 categories, and nothing with none", () => {
+    const one = monthBreakdown([txn("2026-11-02", 500, "food")], "2026-11-01", "2026-11-28")!;
+    expect(one.top).toHaveLength(1);
+    expect(one.slices).toEqual([{ key: "food", amount: 500, share: 100 }]);
+    expect(monthBreakdown(oct, "2026-11-01", "2026-11-28")).toBeNull();
+  });
+
+  it("calls a category new when last month had none of it", () => {
+    const b = monthBreakdown([...oct, ...nov], "2026-11-01", "2026-11-28")!;
+    const fun = categoryTrends(nov, [b.last, b.month]).find((t) => t.key === "fun")!;
+    expect(fun.previous).toBe(0);
+    expect(fun.percent).toBeNull();
+  });
+
+  it("stops last month at its own last day when it's shorter", () => {
+    const b = monthBreakdown([txn("2027-03-31", 100, "food")], "2027-03-01", "2027-03-31")!;
+    expect(b.last).toEqual({ start: "2027-02-01", end: "2027-02-28" });
+  });
+
+  it("compares whole months once a month is over", () => {
+    const b = monthBreakdown([...oct, ...nov], "2026-10-01", "2026-11-28")!;
+    expect(b.running).toBe(false);
+    expect(b.month).toEqual({ start: "2026-10-01", end: "2026-10-31" });
+    expect(b.last).toEqual({ start: "2026-09-01", end: "2026-09-30" });
+    expect(b.total).toBe(27199);
+  });
+
+  it("counts expenses only: no transfers or balance adjustments", () => {
+    const b = monthBreakdown(
+      [
+        txn("2026-11-02", 500, "food"),
+        txn("2026-11-02", 2500, "fun", null, "transfer"),
+        txn("2026-11-02", 300, "adjustment"),
+      ],
+      "2026-11-01",
+      "2026-11-28",
+    )!;
+    expect(b.total).toBe(500);
+    expect(b.top.map((t) => t.key)).toEqual(["food"]);
   });
 });

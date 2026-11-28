@@ -1,7 +1,14 @@
 import { ADJUSTMENT, cleanSubcategory } from "@/lib/categories";
-import { addDays, daysBetween, weekdayOf, type Period } from "@/lib/dates";
+import {
+  addDays,
+  dateInMonth,
+  daysBetween,
+  monthContaining,
+  weekdayOf,
+  type Period,
+} from "@/lib/dates";
 import { roundCents, type TransactionType } from "@/lib/money";
-import type { CategoryTrend, Span } from "@/lib/trend";
+import { categoryTrends, type CategoryTrend, type Span } from "@/lib/trend";
 
 // The thinking behind Insights: what you spent compared with your usual, the
 // habits behind it, and what you could change. Plain rules over your own
@@ -414,5 +421,84 @@ export function goalProgress(goal: Goal, txns: SpendTxn[], today: string): GoalP
     status,
     daysLeft,
     perDayLeft: roundCents(Math.max(0, goal.limit - spent) / daysLeft),
+  };
+}
+
+// ── Where it went ───────────────────────────────────────────────────────
+
+/** How many categories get their own slice and place in the top list; the rest are Other. */
+export const TOP_COUNT = 3;
+
+export type MonthSlice = {
+  /** A category key, or "other" for everything past the top ones. */
+  key: string;
+  amount: number;
+  /** Whole percent of the month's spending; the slices add up to 100. */
+  share: number;
+};
+
+export type MonthBreakdown = {
+  /** This month, up to today while it's running. */
+  month: Period;
+  /** Last month, cut to the same number of days while this one is running. */
+  last: Period;
+  running: boolean;
+  total: number;
+  lastTotal: number;
+  /** total − lastTotal: above 0 is spending more. */
+  change: number;
+  /** The biggest categories, biggest first, each against last month. */
+  top: CategoryTrend[];
+  slices: MonthSlice[];
+};
+
+/**
+ * Where the calendar month holding `anchor` went: its biggest categories and
+ * an Other slice, against last month. While the month is running, last month
+ * is cut to the same day (Mar 31 compares with Feb 28), so it's fair. Null
+ * when nothing was spent. Expenses only, like categoryTrends.
+ */
+export function monthBreakdown(
+  txns: SpendTxn[],
+  anchor: string,
+  today: string,
+): MonthBreakdown | null {
+  const full = monthContaining(anchor);
+  const running = full.start <= today && today <= full.end;
+  const month = { start: full.start, end: running ? today : full.end };
+  const lastFull = monthContaining(addDays(full.start, -1));
+  const [y, m] = lastFull.start.split("-").map(Number);
+  const last = {
+    start: lastFull.start,
+    end: running ? dateInMonth(y, m, Number(today.slice(8))) : lastFull.end,
+  };
+
+  const trends = categoryTrends(txns, [last, month]);
+  const total = roundCents(trends.reduce((sum, t) => sum + t.current, 0));
+  if (total <= 0) return null;
+  const lastTotal = roundCents(trends.reduce((sum, t) => sum + t.previous, 0));
+
+  const spent = trends.filter((t) => t.current > 0).sort((a, b) => b.current - a.current);
+  const top = spent.slice(0, TOP_COUNT);
+  const rest = roundCents(spent.slice(TOP_COUNT).reduce((sum, t) => sum + t.current, 0));
+  const slices: MonthSlice[] = top.map((t) => ({
+    key: t.key,
+    amount: t.current,
+    share: Math.round((t.current / total) * 100),
+  }));
+  const counted = slices.reduce((sum, s) => sum + s.share, 0);
+  // Other takes what's left of 100; anything rounding still leaves goes to the biggest.
+  if (rest > 0) slices.push({ key: "other", amount: rest, share: Math.max(0, 100 - counted) });
+  slices[0].share += 100 - slices.reduce((sum, s) => sum + s.share, 0);
+
+  return {
+    month,
+    last,
+    running,
+    total,
+    lastTotal,
+    change: roundCents(total - lastTotal),
+    top,
+    slices,
   };
 }

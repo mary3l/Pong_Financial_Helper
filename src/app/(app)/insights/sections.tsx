@@ -17,7 +17,6 @@ import {
 import { formatPeso } from "@/lib/money";
 import type { CategoryTrend, Trend } from "@/lib/trend";
 import { RemoveGoalButton, SetBudgetButton } from "./goal-controls";
-import { TrendBars } from "./trend-bars";
 
 // The sections of Insights: the summary, your goals, what you can adjust,
 // budgets and habits, then each category. Server components, given everything
@@ -67,7 +66,7 @@ export function SummaryCard({
   unit: string;
   isCurrent: boolean;
 }) {
-  const { spent, usual, diff, ups, down, top } = summary;
+  const { spent, usual, diff, ups, down } = summary;
   // Within 5% of usual reads as usual.
   const near = usual !== null && diff !== null && Math.abs(diff) <= usual * 0.05;
   const mood: PongMood =
@@ -102,7 +101,7 @@ export function SummaryCard({
         </div>
         <Pong mood={mood} size={76} className="pong-peek -mt-1 -mr-1 shrink-0" />
       </div>
-      {(ups.length > 0 || down || top.keys.length > 1) && (
+      {(ups.length > 0 || down) && (
         <ul className="relative flex flex-col gap-1.5 rounded-[18px] bg-sea-deep/60 px-4 py-3 text-[15px] leading-snug text-sea-text">
           {ups.length > 0 && (
             <li>
@@ -119,16 +118,6 @@ export function SummaryCard({
             <li>
               <b className="text-white">Down most:</b> {label(down.key, down.sub)} (−
               {formatPeso(-down.diff)})
-            </li>
-          )}
-          {top.keys.length > 1 && (
-            <li>
-              <b className="text-white">Where it goes:</b>{" "}
-              {top.keys
-                .map((k) => label(k))
-                .join(", ")
-                .replace(/, ([^,]*)$/, " and $1")}{" "}
-              {top.keys.length === 2 ? "are" : "make up"} {pct(top.share)} of your spending.
             </li>
           )}
         </ul>
@@ -527,7 +516,6 @@ export function CategorySection({
   isCurrent,
   unit,
   vs,
-  labels,
   activityHref,
 }: {
   trends: CategoryTrend[];
@@ -538,8 +526,6 @@ export function CategorySection({
   unit: string;
   /** The period before, to compare with: "Oct" or "Nov 1 – 15". */
   vs: string;
-  /** Each bar's period, oldest first. */
-  labels: string[];
   activityHref: (key: string, sub?: string | null) => string;
 }) {
   return (
@@ -574,10 +560,7 @@ export function CategorySection({
                       </span>
                       <Amount trend={t} soFar={isCurrent} />
                     </span>
-                    <span className="flex items-center justify-between gap-2">
-                      <Change trend={t} vs={vs} unit={unit} />
-                      <TrendBars totals={t.totals} labels={labels} />
-                    </span>
+                    <Change trend={t} vs={vs} unit={unit} />
                   </span>
                   <ChevronIcon
                     size={20}
@@ -599,10 +582,7 @@ export function CategorySection({
                           </span>
                           <Amount trend={s} soFar={false} />
                         </span>
-                        <span className="flex items-center justify-between gap-2">
-                          <Change trend={s} vs={vs} unit={unit} />
-                          <TrendBars totals={s.totals} labels={labels} height={22} />
-                        </span>
+                        <Change trend={s} vs={vs} unit={unit} />
                       </Link>
                     </li>
                   ))}
@@ -621,8 +601,7 @@ export function CategorySection({
         })}
       </ul>
       <p className="text-[13px] text-muted">
-        Each bar is one {unit}, the last {isCurrent ? "so far" : "the one shown"}. Transfers and
-        balance adjustments aren&apos;t counted.
+        Transfers and balance adjustments aren&apos;t counted.
       </p>
     </section>
   );

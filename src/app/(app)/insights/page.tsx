@@ -32,6 +32,7 @@ import {
   elapsedShare,
   frequentBuys,
   goalProgress,
+  monthBreakdown,
   paydayEffect,
   suggestions,
   summarize,
@@ -43,6 +44,7 @@ import { inPesos } from "@/lib/money";
 import { occurrences } from "@/lib/schedule";
 import { categoryTrends, periodOf, readSpan, trendPeriods, type Span } from "@/lib/trend";
 import { GoalComposer, type GoalPrefill } from "./goal-controls";
+import { WhereItWent } from "./where-it-went";
 import {
   AdjustSection,
   BudgetSection,
@@ -95,9 +97,13 @@ async function Insights({ searchParams }: Pick<PageProps<"/insights">, "searchPa
   const isCurrent = period.start === periodOf(span, today).start;
   const unit = span === "month" ? "month" : "kinsenas";
 
+  // Where it went is always the whole calendar month (up to today), so a
+  // kinsenas reads on to its month's end. Every other section keeps to its own dates.
+  const monthEnd = monthContaining(period.start).end;
+  const to = [period.end, monthEnd < today ? monthEnd : today].sort().at(-1)!;
   const [accounts, raw, custom, budgets, recurring, savedGoals] = await Promise.all([
     getAccounts({ includeArchived: true, includePeople: true }),
-    getTransactions({ from: periods[0].start, to: period.end }).then(withoutArchived),
+    getTransactions({ from: periods[0].start, to }).then(withoutArchived),
     getUserCategories(),
     getBudgets(),
     getRecurringItems(),
@@ -110,6 +116,7 @@ async function Insights({ searchParams }: Pick<PageProps<"/insights">, "searchPa
   const summary = summarize(trends, share);
   const unusual = new Set(summary.unusual);
   const label: Labeler = (key, sub) => categoryLabel("expense", key, sub, custom);
+  const breakdown = monthBreakdown(txns, period.start, today);
 
   // Habits: over all the periods shown, up to today.
   const from = periods[0].start;
@@ -177,7 +184,6 @@ async function Insights({ searchParams }: Pick<PageProps<"/insights">, "searchPa
 
   const name = (x: Period) =>
     span === "month" ? formatMonth(x.start).split(" ")[0] : formatPeriod(x, today);
-  const labels = periods.map(name);
   const vs = name(periods.at(-2)!);
   const href = (start: string, s: Span) =>
     `/insights?${new URLSearchParams({ p: start, ...(s === "month" ? { span: s } : {}) })}`;
@@ -207,6 +213,17 @@ async function Insights({ searchParams }: Pick<PageProps<"/insights">, "searchPa
     <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:items-start lg:gap-6">
       <div className="flex min-w-0 flex-col gap-5">
         <PeriodNav span={span} period={period} today={today} href={href} />
+
+        {breakdown && (
+          <WhereItWent
+            data={breakdown}
+            custom={custom}
+            today={today}
+            activityHref={(c) =>
+              `/activity?${new URLSearchParams({ p: breakdown.month.start, span: "month", c })}`
+            }
+          />
+        )}
 
         <SummaryCard summary={summary} label={label} unit={unit} isCurrent={isCurrent} />
 
@@ -260,7 +277,6 @@ async function Insights({ searchParams }: Pick<PageProps<"/insights">, "searchPa
           isCurrent={isCurrent}
           unit={unit}
           vs={vs}
-          labels={labels}
           activityHref={activity}
         />
       )}

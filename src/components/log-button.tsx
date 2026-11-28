@@ -73,7 +73,7 @@ export function LogButton({
   // Scheduled items are in pesos, so dollar wallets aren't offered.
   const wallets = accounts.filter((a) => paysInPesos(a) && !a.archived && a.id !== item.setAsideTo);
 
-  function run(walletId?: string, amount?: number) {
+  function run(walletId?: string, amount?: number, loanIds?: string[]) {
     setError(null);
     startTransition(async () => {
       const result = await (item.kind === "utang" || item.kind === "pautang"
@@ -93,7 +93,8 @@ export function LogButton({
                   item.dueOn,
                   walletId,
                   amount ?? item.amount ?? undefined,
-                  salaryLoanIds(item),
+                  // Unticked in the payday checklist: not taken this time, so not paid.
+                  loanIds ?? salaryLoanIds(item),
                 ));
       if (result.error) setError(result.error);
       else setPicking(false);
@@ -190,26 +191,37 @@ function WalletPicker({
   label: string;
   pending: boolean;
   error: string | null;
-  onConfirm: (walletId: string, amount: number) => void;
+  onConfirm: (walletId: string, amount: number, loanIds?: string[]) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const incoming = item.flow === "in";
-  // An estimate (a payday from the payroll calculator, a bill that varies):
-  // type what actually came in or went out. Installments, utang and planned
-  // items log their own amounts.
-  // First asks whether the estimate is right; "No" opens the amount.
-  const editable =
-    item.estimate && (item.kind === "payday" || item.kind === "income" || item.kind === "bill");
-  const [changing, setChanging] = useState(false);
-  const [typed, setTyped] = useState(() => String(estimate));
-  // A payday your office takes contributions from: gross − each = what lands.
+  // A payday your office takes contributions from: a checklist of gross pay
+  // and each deduction, ticked and editable, and what lands is the rest.
   const breakdown = item.kind === "payday" ? (item.pay ?? null) : null;
   const [pay, setPay] = useState(() => payTexts(breakdown));
-  const net = breakdown ? netOf(pay) : NaN;
-  const parsed = editable && changing ? (breakdown ? net : parseAmount(typed)) : estimate;
+  // Every deduction starts ticked: taken this payday.
+  const [taken, setTaken] = useState(() => breakdown?.deductions.map(() => true) ?? []);
+  // Any other estimate (a payday without a breakdown, a bill that varies):
+  // first asks whether it's right; "No" opens the amount. Installments,
+  // utang and planned items log their own amounts.
+  const editable =
+    !breakdown &&
+    item.estimate &&
+    (item.kind === "payday" || item.kind === "income" || item.kind === "bill");
+  const [changing, setChanging] = useState(false);
+  const [typed, setTyped] = useState(() => String(estimate));
+  const parsed = breakdown
+    ? netOf(pay, taken)
+    : editable && changing
+      ? parseAmount(typed)
+      : estimate;
   const valid = Number.isFinite(parsed) && parsed > 0;
   const amount = valid ? parsed : estimate;
+  // The salary loans ticked: paid from the pay as it lands.
+  const loanIds = breakdown?.deductions.flatMap((d, i) =>
+    taken[i] && d.loanPaymentId ? [d.loanPaymentId] : [],
+  );
   const [problem, setProblem] = useState<string | null>(null);
   const [chosen, setChosen] = useState(
     () => wallets.find((w) => w.id === item.accountId)?.id ?? wallets[0].id,
@@ -246,12 +258,13 @@ function WalletPicker({
       className="m-0 mt-auto w-full max-w-none rounded-t-[28px] bg-mint p-0 text-left text-ink backdrop:bg-scrim/50 lg:m-auto lg:max-w-[440px] lg:rounded-[28px] lg:shadow-[0_24px_60px_rgba(18,48,42,0.35)]"
     >
       <form
-        className="flex max-h-[85dvh] flex-col gap-3 px-5 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+        className="flex max-h-[85dvh] flex-col gap-3 overflow-y-auto px-5 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!valid) return setProblem("Enter how much came in.");
+          if (!valid)
+            return setProblem(breakdown ? "Check the amounts." : "Enter how much came in.");
           setProblem(null);
-          onConfirm(chosen, amount);
+          onConfirm(chosen, amount, loanIds);
         }}
       >
         <div className="flex items-start justify-between gap-3">
@@ -304,26 +317,13 @@ function WalletPicker({
                 onClick={() => {
                   setProblem(null);
                   setTyped(String(estimate));
-                  setPay(payTexts(breakdown));
                   setChanging(true);
                 }}
               >
                 No, change it
               </ChoiceChip>
             </div>
-            {breakdown && (
-              <PayLines
-                id={item.key}
-                breakdown={breakdown}
-                texts={pay}
-                editing={changing}
-                onChange={(next) => {
-                  setProblem(null);
-                  setPay(next);
-                }}
-              />
-            )}
-            {changing && !breakdown && (
+            {changing && (
               <div className="flex flex-col gap-1.5">
                 <label htmlFor={`log-amount-${item.key}`} className="text-sm font-bold">
                   {incoming ? "How much came in" : "How much you paid"}
@@ -351,14 +351,21 @@ function WalletPicker({
           </div>
         )}
 
-        {!editable && breakdown && (
-          <div className="rounded-[20px] border-2 border-line px-4 py-3">
+        {breakdown && (
+          <div className="shrink-0 rounded-[20px] border-2 border-line px-4 py-3">
             <PayLines
               id={item.key}
               breakdown={breakdown}
               texts={pay}
-              editing={false}
-              onChange={setPay}
+              taken={taken}
+              onChange={(next) => {
+                setProblem(null);
+                setPay(next);
+              }}
+              onTake={(i, on) => {
+                setProblem(null);
+                setTaken((t) => t.map((x, j) => (j === i ? on : x)));
+              }}
             />
           </div>
         )}
@@ -415,12 +422,16 @@ function WalletPicker({
 
         <button
           type="submit"
-          disabled={pending}
+          disabled={pending || (breakdown !== null && !valid)}
           className={`h-14 shrink-0 rounded-[18px] text-[17px] font-extrabold disabled:opacity-60 ${
             incoming ? "bg-sun text-ink" : "bg-sea text-white"
           }`}
         >
-          {pending ? "Saving…" : `${label} · ${formatPeso(amount)}`}
+          {pending
+            ? "Saving…"
+            : breakdown && !valid
+              ? "Check the amounts"
+              : `${label} · ${formatPeso(amount)}`}
         </button>
       </form>
     </dialog>
@@ -436,91 +447,111 @@ function payTexts(breakdown: PayBreakdown | null): PayTexts {
   };
 }
 
-/** Gross minus each contribution, or NaN while one doesn't parse. */
-export function netOf(texts: PayTexts): number {
+/**
+ * Gross minus each deduction that's ticked (all of them without `taken`), or
+ * NaN while an amount doesn't parse. An unticked one isn't checked at all.
+ */
+export function netOf(texts: PayTexts, taken?: boolean[]): number {
   const gross = parseAmount(texts.gross);
-  const taken = texts.deductions.map((t) => (t.trim() ? parseAmount(t) : 0));
-  if (!(gross > 0) || taken.some((t) => !(t >= 0))) return NaN;
-  return roundCents(gross - taken.reduce((sum, t) => sum + t, 0));
+  const counted = texts.deductions.filter((_, i) => taken?.[i] ?? true);
+  const amounts = counted.map((t) => (t.trim() ? parseAmount(t) : 0));
+  if (!(gross > 0) || amounts.some((t) => !(t >= 0))) return NaN;
+  return roundCents(gross - amounts.reduce((sum, t) => sum + t, 0));
 }
 
-/** A payday's gross, what your office takes, and what lands: read-only, or each one editable. */
+/**
+ * A payday as a checklist: gross pay, then each deduction with a tick (taken
+ * this payday) and its amount, and what lands in the bank. Gross, contributions
+ * and tax can be changed; a salary loan pays its scheduled payment, so only
+ * its tick can.
+ */
 function PayLines({
   id,
   breakdown,
   texts,
-  editing,
+  taken,
   onChange,
+  onTake,
 }: {
   id: string;
   breakdown: PayBreakdown;
   texts: PayTexts;
-  editing: boolean;
+  taken: boolean[];
   onChange: (texts: PayTexts) => void;
+  onTake: (index: number, taken: boolean) => void;
 }) {
-  const net = netOf(texts);
-  const field = (
-    key: string,
-    label: string,
-    value: string,
-    set: (v: string) => void,
-    sign = "",
-  ) => (
-    <div className="flex items-center justify-between gap-3">
-      <label htmlFor={`pay-${id}-${key}`} className="min-w-0 flex-1 truncate">
-        {sign}
-        {label}
-      </label>
-      {editing ? (
-        <div className="relative w-32">
-          <span
-            aria-hidden="true"
-            className="absolute top-1/2 left-3 -translate-y-1/2 font-bold text-muted"
-          >
-            ₱
-          </span>
-          <AmountInput
-            id={`pay-${id}-${key}`}
-            value={value}
-            onChange={set}
-            placeholder="0.00"
-            className={`${FIELD_CLASS} h-10 w-full pl-7 text-right`}
-          />
-        </div>
-      ) : (
-        <span id={`pay-${id}-${key}`} className="font-bold">
-          {formatPeso(parseAmount(value) || 0)}
-        </span>
-      )}
+  const net = netOf(texts, taken);
+  const amountField = (key: string, label: string, value: string, set: (v: string) => void) => (
+    <div className="relative w-32 shrink-0">
+      <span
+        aria-hidden="true"
+        className="absolute top-1/2 left-3 -translate-y-1/2 font-bold text-muted"
+      >
+        ₱
+      </span>
+      <AmountInput
+        id={`pay-${id}-${key}`}
+        aria-label={label}
+        value={value}
+        onChange={set}
+        placeholder="0.00"
+        className={`${FIELD_CLASS} h-10 w-full pl-7 text-right`}
+      />
     </div>
   );
+  // Contributions, then tax and the rest, then salary loans: a heading over each.
+  const groupOf = (d: PayBreakdown["deductions"][number]) =>
+    d.loanPaymentId ? "Salary loans" : isContribution(d.kind) ? "Contributions" : "Taken too";
   return (
     <div className="flex flex-col gap-1.5 text-[15px]">
-      {field("gross", "Gross pay", texts.gross, (v) => onChange({ ...texts, gross: v }))}
-      {breakdown.deductions.map((d, i) => (
-        <div key={`d${i}`} className="flex flex-col gap-1.5">
-          {/* Contributions come first, right after gross pay. */}
-          {isContribution(d.kind) &&
-            (i === 0 || !isContribution(breakdown.deductions[i - 1].kind)) && (
-              <span className="text-[13px] font-extrabold text-muted">Contributions</span>
+      <div className="flex items-center justify-between gap-3">
+        <label htmlFor={`pay-${id}-gross`} className="min-w-0 flex-1 truncate font-bold">
+          Gross pay
+        </label>
+        {amountField("gross", "Gross pay", texts.gross, (v) => onChange({ ...texts, gross: v }))}
+      </div>
+      {breakdown.deductions.map((d, i) => {
+        const on = taken[i];
+        const group = groupOf(d);
+        return (
+          <div key={`d${i}`} className="flex flex-col gap-1.5">
+            {(i === 0 || groupOf(breakdown.deductions[i - 1]) !== group) && (
+              <span className="mt-1 text-[13px] font-extrabold text-muted uppercase">{group}</span>
             )}
-          {field(
-            `d${i}`,
-            d.name,
-            texts.deductions[i],
-            (v) =>
-              onChange({
-                ...texts,
-                deductions: texts.deductions.map((t, j) => (j === i ? v : t)),
-              }),
-            "− ",
-          )}
-        </div>
-      ))}
+            <div className="flex min-h-10 items-center justify-between gap-3">
+              <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={(e) => onTake(i, e.target.checked)}
+                  className="h-5 w-5 shrink-0 accent-sea"
+                />
+                <span className={`truncate ${on ? "" : "text-muted line-through"}`}>
+                  − {d.name}
+                </span>
+              </label>
+              {d.loanPaymentId ? (
+                <span className={`shrink-0 font-bold ${on ? "" : "text-muted line-through"}`}>
+                  {formatPeso(d.amount)}
+                </span>
+              ) : (
+                <div className={on ? "" : "opacity-50"}>
+                  {amountField(`d${i}`, d.name, texts.deductions[i], (v) =>
+                    onChange({
+                      ...texts,
+                      deductions: texts.deductions.map((t, j) => (j === i ? v : t)),
+                    }),
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
       <div className="flex items-baseline justify-between gap-3 border-t-2 border-line-soft pt-1.5">
-        <span className="font-extrabold">= Take-home</span>
+        <span className="font-extrabold">= Lands in the bank</span>
         <span className={`font-extrabold ${net > 0 ? "" : "text-coral-text"}`}>
-          {Number.isFinite(net) ? formatPeso(net) : "Check the amounts"}
+          {Number.isFinite(net) && net > 0 ? formatPeso(net) : "Check the amounts"}
         </span>
       </div>
     </div>
