@@ -27,6 +27,12 @@
   --color-line-soft: #eaf3ee;
   /* Behind dialogs and the camera. */
   --color-scrim: #12302a;
+  /* Insights' Where it went: the top 3 categories, then Other. Checked with
+     the dataviz validator against card (light and dark). */
+  --color-slice-1: #257de0;
+  --color-slice-2: #f47230;
+  --color-slice-3: #00b894;
+  --color-slice-other: #a9bab3;
 
   --font-display: var(--font-fredoka), system-ui, sans-serif;
   --font-sans: var(--font-nunito), system-ui, sans-serif;
@@ -59,6 +65,10 @@
   --color-line: #2b403a;
   --color-line-soft: #213530;
   --color-scrim: #000000;
+  --color-slice-1: #338ced;
+  --color-slice-2: #e76624;
+  --color-slice-3: #00a888;
+  --color-slice-other: #4f655e;
 }
 
 /* dark:… classes, for the few things that differ beyond the colors. */
