@@ -45,6 +45,8 @@ export type ForecastItem = {
   lastPayment?: boolean;
   /** Installments: the fee or interest in this payment, which paying early can cut. */
   fee?: number;
+  /** A set-aside for a wishlist plan: the savings wallet it goes into. Marking it done is a transfer. */
+  setAsideTo?: string | null;
   /** Contributions the payroll calculator manages (SSS, PhilHealth, Pag-IBIG). You pay them yourself. */
   fromPayroll?: boolean;
   /** Payday: pay before what your office takes, and each contribution it takes. `amount` is what's left. */
@@ -84,13 +86,15 @@ export type ScheduleInputs = {
   billPayments: { recurringItemId: string; dueOn: string; transactionId: string }[];
   planned: {
     id: string;
-    type: "expense" | "income";
+    type: "expense" | "income" | "set_aside";
     name: string;
     amount: number;
     category: string;
     dueOn: string;
     accountId: string | null;
     transactionId: string | null;
+    /** A set-aside: the savings wallet it goes into. */
+    toAccountId?: string | null;
   }[];
   /**
    * Payroll calculator: each payday's own amount by date, replacing the
@@ -229,6 +233,8 @@ export function scheduledItems(
       category: p.category,
       estimate: false,
       transactionId: p.transactionId,
+      // Money out of your spending all the same: it's set aside, not spent.
+      ...(p.type === "set_aside" ? { setAsideTo: p.toAccountId ?? null } : {}),
     });
   }
 

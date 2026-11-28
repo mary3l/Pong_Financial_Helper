@@ -161,7 +161,8 @@ export type BillPayment = {
 /** A one-off planned cashflow: money out (expense) or in (income). */
 export type PlannedExpense = {
   id: string;
-  type: "expense" | "income";
+  /** set_aside: money moved into savings for a wishlist plan (0031). */
+  type: "expense" | "income" | "set_aside";
   name: string;
   amount: number;
   category: string;
@@ -172,6 +173,8 @@ export type PlannedExpense = {
   payrollKey: string | null;
   /** The wishlist plan it came from, when you made one real (0030). */
   wishId: string | null;
+  /** A set-aside: the savings wallet it goes into (0031). */
+  toAccountId: string | null;
 };
 
 export type Budget = { id: string; category: string; amount: number };
@@ -465,8 +468,10 @@ export async function getPlannedExpenses(from: string): Promise<PlannedExpense[]
       .select(columns)
       .or(`due_on.gte.${from},transaction_id.is.null`)
       .order("due_on");
-  // 42703: a migration hasn't been run yet: 0030 (wish_id), or 0013 (payroll_key) too.
-  let result = await select(`${base}, payroll_key, wish_id`);
+  // 42703: a migration hasn't been run yet: 0031 (to_account_id), 0030 (wish_id),
+  // or 0013 (payroll_key) too.
+  let result = await select(`${base}, payroll_key, wish_id, to_account_id`);
+  if (result.error?.code === "42703") result = await select(`${base}, payroll_key, wish_id`);
   if (result.error?.code === "42703") result = await select(`${base}, payroll_key`);
   if (result.error?.code === "42703") result = await select(base);
   const { data, error } = result;
@@ -482,6 +487,7 @@ export async function getPlannedExpenses(from: string): Promise<PlannedExpense[]
     transactionId: p.transaction_id,
     payrollKey: p.payroll_key ?? null,
     wishId: p.wish_id ?? null,
+    toAccountId: p.to_account_id ?? null,
   }));
 }
 
@@ -496,6 +502,7 @@ type PlannedRow = {
   transaction_id: string | null;
   payroll_key?: string | null;
   wish_id?: string | null;
+  to_account_id?: string | null;
 };
 
 /**

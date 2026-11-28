@@ -120,6 +120,15 @@ export async function saveScheduled(
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
   const { table, row } = rowFor(input);
+  // A set-aside edited as money out stays a set-aside, still going into its savings wallet.
+  if (existing?.table === "planned" && table === "planned_expenses" && input.flow === "out") {
+    const { data: was } = await supabase
+      .from("planned_expenses")
+      .select("type")
+      .eq("id", existing.id)
+      .maybeSingle();
+    if (was?.type === "set_aside") delete row.type;
+  }
   if (existing && TABLES[existing.table] === table) {
     const { data, error } = await supabase
       .from(table)

@@ -152,6 +152,48 @@ describe("logPlanned", () => {
     useDb({ planned_expenses: [planned] });
     expect((await logPlanned("p1")).error).toMatch(/Add a wallet first/);
   });
+
+  const savings = {
+    id: "save",
+    type: "bank",
+    purpose: "savings",
+    archived: false,
+    currency: "PHP",
+    created_at: "9",
+  };
+  const setAside = {
+    ...planned,
+    type: "set_aside",
+    name: "Siargao Trip · set aside (1 of 12)",
+    amount: 2500,
+    to_account_id: "save",
+  };
+
+  it("a set-aside moves the money into savings: a transfer, never spending", async () => {
+    useDb({ planned_expenses: [setAside], accounts: [...wallets, savings] });
+    expect(await logPlanned("p1", "cash")).toEqual({});
+    const [txn] = db.table("transactions");
+    expect(txn).toMatchObject({
+      type: "transfer",
+      amount: 2500,
+      account_id: "cash",
+      to_account_id: "save",
+      note: "Siargao Trip · set aside (1 of 12)",
+    });
+    expect(txn.category).toBeUndefined();
+    expect(db.table("planned_expenses")[0].transaction_id).toBe(txn.id);
+  });
+
+  it("a set-aside can't come from its own savings wallet, or go nowhere", async () => {
+    useDb({ planned_expenses: [setAside], accounts: [...wallets, savings] });
+    expect((await logPlanned("p1", "save")).error).toMatch(/not the savings wallet itself/);
+    useDb({
+      planned_expenses: [{ ...setAside, to_account_id: null }],
+      accounts: [...wallets, savings],
+    });
+    expect((await logPlanned("p1", "cash")).error).toMatch(/savings wallet is gone/);
+    expect(db.table("transactions")).toEqual([]);
+  });
 });
 
 describe("addPlannedExpense", () => {

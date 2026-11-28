@@ -58,11 +58,11 @@ describe("saveWish", () => {
     ["long name", { name: "x".repeat(51) }, "Keep the name to 50 characters."],
     ["zero amount", { amount: 0 }, "Enter an amount above ₱0."],
     ["income category", { category: "salary" }, "Pick a category."],
-    ["bad date", { earliest: "soon" }, "Pick the start date."],
+    ["bad date", { earliest: "soon" }, "Pick the save from date."],
     [
       "by before earliest",
       { by: "2026-11-30" },
-      'The "pay off by" date has to be on or after the start date.',
+      'The "ready by" date has to be on or after the "save from" date.',
     ],
     ["fee over 10%", { feeRate: 12 }, "Check the monthly fee (0 to 10%)."],
   ])("rejects %s before signing in", async (_, patch, error) => {
@@ -188,6 +188,73 @@ describe("makeWishReal", () => {
       error: "That plan is already in Scheduled.",
     });
     expect(db.writes("planned_expenses", "insert")).toEqual([]);
+  });
+
+  const savingsWallet = {
+    id: "save",
+    name: "Long Term Savings",
+    type: "bank",
+    purpose: "savings",
+    archived: false,
+    currency: "PHP",
+    created_at: "2",
+  };
+  const cash = { ...savingsWallet, id: "cash", name: "Cash", type: "cash", purpose: "spending" };
+  const setAsides = [
+    { dueOn: "2027-01-15", amount: 6000 },
+    { dueOn: "2027-01-30", amount: 6000 },
+    { dueOn: "2027-02-15", amount: 6000 },
+  ];
+
+  it("saving up: one set-aside per payday into the savings wallet", async () => {
+    useDb({ wishlist_items: [trip], accounts: [spay, savingsWallet] });
+    expect(
+      await makeWishReal("w1", {
+        date: "2027-01-15",
+        strategy: { kind: "save" },
+        payments: setAsides,
+        toAccountId: "save",
+      }),
+    ).toEqual({});
+    expect(planned().map((r) => [r.type, r.name, r.amount, r.due_on, r.to_account_id])).toEqual([
+      ["set_aside", "Siargao trip · set aside (1 of 3)", 6000, "2027-01-15", "save"],
+      ["set_aside", "Siargao trip · set aside (2 of 3)", 6000, "2027-01-30", "save"],
+      ["set_aside", "Siargao trip · set aside (3 of 3)", 6000, "2027-02-15", "save"],
+    ]);
+    expect(planned()[0].wish_id).toBe("w1");
+    expect(db.writes("wishlist_items", "update")).toEqual([{ status: "scheduled" }]);
+  });
+
+  it("saving up: checks the set-asides add up and go into a savings wallet", async () => {
+    useDb({ wishlist_items: [trip], accounts: [spay, savingsWallet, cash] });
+    const save = (payments: typeof setAsides, toAccountId = "save") =>
+      makeWishReal("w1", { date: "2027-01-15", strategy: { kind: "save" }, payments, toAccountId });
+    const short = { error: "Those set-asides don't add up. Refresh and try again." };
+    expect(await save(setAsides.slice(1))).toEqual(short);
+    expect(await save([...setAsides].reverse())).toEqual(short);
+    expect(await save([{ dueOn: "2026-11-01", amount: 18000 }])).toEqual(short);
+    expect(await save(setAsides, "cash")).toEqual({ error: "Pick one of your savings wallets." });
+    expect(await save(setAsides, "spay")).toEqual({ error: "Pick one of your savings wallets." });
+    expect(db.writes("planned_expenses", "insert")).toEqual([]);
+    expect(db.writes("wishlist_items", "update")).toEqual([]);
+  });
+
+  it("saving up: says to run step 31 before it can", async () => {
+    useDb({ wishlist_items: [trip], accounts: [spay, savingsWallet] });
+    db.respond((q) =>
+      q.table === "planned_expenses" && q.op === "insert"
+        ? { data: null, error: { code: "23514", message: "check" } }
+        : undefined,
+    );
+    expect(
+      await makeWishReal("w1", {
+        date: "2027-01-15",
+        strategy: { kind: "save" },
+        payments: setAsides,
+        toAccountId: "save",
+      }),
+    ).toEqual({ error: "To save up for a plan, run step 31 in supabase/SQL_GUIDE.md first." });
+    expect(db.writes("wishlist_items", "update")).toEqual([]);
   });
 
   it("leaves the plan an idea when saving fails", async () => {

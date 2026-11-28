@@ -23,7 +23,15 @@ export type WishRow = {
   wish: WishItem;
   result: WishResult | null;
   /** Made real: its unpaid payments in Scheduled; null for none (or before migration 0030). */
-  upcoming: { count: number; first: string; last: string } | null;
+  upcoming: {
+    count: number;
+    first: string;
+    last: string;
+    /** The next one's amount. */
+    next: number;
+    /** Saving up: how much is set aside so far. Null for a plan paid another way. */
+    saved: number | null;
+  } | null;
 };
 
 const MOODS: Record<WishPick["verdict"]["tone"], PongMood> = {
@@ -46,6 +54,7 @@ export function WishlistManager({
   payKnown,
   hasCredit,
   categories,
+  savings,
 }: {
   rows: WishRow[];
   today: string;
@@ -53,6 +62,8 @@ export function WishlistManager({
   payKnown: boolean;
   hasCredit: boolean;
   categories: { key: string; label: string }[];
+  /** Savings wallets set-asides can go into. */
+  savings: { id: string; name: string }[];
 }) {
   // null: closed. "new": adding. An id: editing that plan.
   const [editing, setEditing] = useState<string | null>(null);
@@ -110,6 +121,7 @@ export function WishlistManager({
                 result={result!}
                 today={today}
                 categories={categories}
+                savings={savings}
                 onEdit={() => setEditing(wish.id)}
               />
             )}
@@ -133,7 +145,16 @@ export function WishlistManager({
                 <span className="min-w-0 truncate font-bold">
                   {wish.name} · {formatPeso(wish.amount)}
                 </span>
-                {upcoming && (
+                {upcoming?.saved != null && (
+                  <SavedProgress
+                    saved={upcoming.saved}
+                    total={wish.amount}
+                    next={upcoming.next}
+                    on={upcoming.first}
+                    today={today}
+                  />
+                )}
+                {upcoming && upcoming.saved == null && (
                   <span className="text-[13px] text-muted">
                     {upcoming.count === 1
                       ? `1 payment · ${formatShortDay(upcoming.first, today)}`
@@ -169,6 +190,7 @@ export function WishlistManager({
 /** When it can be paid: "On Dec 30, 2027", or "Feb 11, 2028 → Jul 11, 2028". */
 function windowText(wish: WishItem, today: string): string {
   const { from, last } = windowOf(wish, today);
+  if (wish.by) return `Save ${formatShortDay(from, today)} → ready ${formatShortDay(last, today)}`;
   return from === last
     ? `On ${formatShortDay(from, today)}`
     : `${formatShortDay(from, today)} → ${formatShortDay(last, today)}`;
@@ -179,15 +201,18 @@ function WishCard({
   result,
   today,
   categories,
+  savings,
   onEdit,
 }: {
   wish: WishItem;
   result: WishResult;
   today: string;
   categories: { key: string; label: string }[];
+  savings: { id: string; name: string }[];
   onEdit: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [into, setInto] = useState(savings[0]?.id ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const best = result.best;
@@ -196,11 +221,16 @@ function WishCard({
   function makeReal(p: WishPick) {
     setError(null);
     startTransition(async () => {
-      const r = await makeWishReal(wish.id, { date: p.date, strategy: p.strategy });
+      const r = await makeWishReal(
+        wish.id,
+        p.strategy.kind === "save"
+          ? { date: p.date, strategy: p.strategy, payments: p.payments, toAccountId: into }
+          : { date: p.date, strategy: p.strategy },
+      );
       if (r.error) setError(r.error);
       else
         showToast(
-          `${wish.name} is in Scheduled · ${p.payments.length > 1 ? `${p.payments.length} payments` : formatShortDay(p.date, today)}`,
+          `${wish.name} is in Scheduled · ${p.payments.length > 1 ? `${p.payments.length} ${p.strategy.kind === "save" ? "set-asides" : "payments"}` : formatShortDay(p.date, today)}`,
         );
     });
   }
@@ -233,6 +263,39 @@ function WishCard({
               <strong>Best:</strong> {best.label}
             </p>
             <PickDetails pick={best} today={today} />
+            {best.strategy.kind === "save" &&
+              (savings.length ? (
+                <label className="flex items-center gap-2 text-[13px] font-bold">
+                  Into
+                  <select
+                    value={into}
+                    onChange={(e) => setInto(e.target.value)}
+                    className={`${FIELD_CLASS} h-9 min-w-0 flex-1 px-2 text-[13px]`}
+                  >
+                    {savings.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <p className="text-[13px] text-muted">
+                  No savings wallet ·{" "}
+                  <Link href="/money" className="font-extrabold text-sea-dark underline">
+                    Add one
+                  </Link>
+                </p>
+              ))}
+            {/* Right under Best, so it's clearly Best it saves. */}
+            <button
+              type="button"
+              onClick={() => makeReal(best)}
+              disabled={pending || (best.strategy.kind === "save" && !into)}
+              className="mt-1.5 h-11 self-start rounded-[14px] bg-sun px-4 font-extrabold text-ink disabled:opacity-60"
+            >
+              {pending ? "Saving…" : "Make it real"}
+            </button>
           </div>
         </div>
       ) : (
@@ -298,16 +361,6 @@ function WishCard({
         {best && (
           <button
             type="button"
-            onClick={() => makeReal(best)}
-            disabled={pending}
-            className="h-11 rounded-[14px] bg-sun px-4 font-extrabold text-ink disabled:opacity-60"
-          >
-            {pending ? "Saving…" : "Make it real"}
-          </button>
-        )}
-        {best && (
-          <button
-            type="button"
             aria-expanded={open}
             onClick={() => setOpen((o) => !o)}
             className="h-11 rounded-[14px] border-2 border-line px-4 font-extrabold hover:bg-mint"
@@ -337,7 +390,7 @@ function PickDetails({
   const cut = pick.verdict.biggestCut;
   const parts = [
     cut
-      ? `Daily amount ${formatPeso(cut.before)} → ${formatPeso(cut.after)}${cut.from === today ? "" : ` from ${formatShortDay(cut.from, today)}`}`
+      ? `Daily amount ${formatPeso(cut.before)} → ${formatPeso(cut.after)} from ${cut.from === today ? "today" : formatShortDay(cut.from, today)}`
       : "Daily amount doesn't change",
     pick.fees > 0 ? `${formatPeso(pick.fees)} in fees` : null,
     tone ? TONE_LABEL[pick.verdict.tone] : null,
@@ -352,6 +405,43 @@ function PickDetails({
       )}
       <p className="text-[13px] text-muted">{parts.join(" · ")}</p>
     </>
+  );
+}
+
+/** Saving up: "₱7,500 of ₱30,000 saved · 25%", a bar, and the next set-aside. */
+function SavedProgress({
+  saved,
+  total,
+  next,
+  on,
+  today,
+}: {
+  saved: number;
+  total: number;
+  next: number;
+  on: string;
+  today: string;
+}) {
+  const share = total > 0 ? Math.min(1, Math.max(0, saved / total)) : 0;
+  return (
+    <span className="flex flex-col gap-1 text-[13px] text-muted">
+      <span>
+        {formatPeso(saved)} of {formatPeso(total)} saved · {Math.round(share * 100)}%
+      </span>
+      <span
+        role="progressbar"
+        aria-label="Saved"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(share * 100)}
+        className="h-1.5 overflow-hidden rounded-full bg-line-soft"
+      >
+        <span className="block h-full bg-sea" style={{ width: `${share * 100}%` }} />
+      </span>
+      <span>
+        Next: {formatPeso(next)} on {formatShortDay(on, today)}
+      </span>
+    </span>
   );
 }
 
@@ -500,7 +590,7 @@ function WishForm({
         </div>
         <div className="flex flex-col gap-1">
           <label htmlFor="wish-earliest" className="text-sm font-bold">
-            Start date
+            Save from
           </label>
           <input
             id="wish-earliest"
@@ -512,7 +602,7 @@ function WishForm({
         </div>
         <div className="flex flex-col gap-1">
           <label htmlFor="wish-by" className="text-sm font-bold">
-            Pay off by
+            Ready by
           </label>
           <input
             id="wish-by"
@@ -540,10 +630,7 @@ function WishForm({
         </div>
       )}
       <p className="text-[13px] text-muted">
-        Every payment from your wallets lands between these dates. I pick the soonest gentle way:
-        all at once, or in monthly parts that are done by &quot;Pay off by&quot;
-        {hasCredit ? ". On a card or BNPL, you buy it in between and its bills come after" : ""}. No
-        &quot;Pay off by&quot;: a year from the start.
+        Ready by: saved up each payday until then. None: I pick the date.
       </p>
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">
         {error}
