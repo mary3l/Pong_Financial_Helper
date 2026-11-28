@@ -218,6 +218,32 @@ describe("scheduled items", () => {
     expect(itemEffect(withPlanned.find((i) => i.id === "bonus")!)).toBe(20000);
   });
 
+  it("a set-aside is money out of your spending, going into its savings wallet", () => {
+    const [item] = scheduledItems(
+      {
+        recurring: [],
+        billPayments: [],
+        planned: [
+          {
+            id: "s1",
+            type: "set_aside",
+            name: "Siargao Trip · set aside (1 of 12)",
+            amount: 2500,
+            category: "fun",
+            dueOn: "2026-11-15",
+            accountId: null,
+            transactionId: null,
+            toAccountId: "save",
+          },
+        ],
+      },
+      TODAY,
+      "2026-12-02",
+    );
+    expect(item).toMatchObject({ kind: "planned", flow: "out", setAsideTo: "save" });
+    expect(itemEffect(item)).toBe(-2500);
+  });
+
   it("unpaid installments are owed, late ones included", () => {
     const withInstallments = scheduledItems(
       inputs({

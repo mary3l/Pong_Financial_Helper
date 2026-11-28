@@ -1,6 +1,7 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 
 export type User = {
@@ -11,7 +12,8 @@ export type User = {
 };
 
 // Reads the session at request time, so callers must sit behind <Suspense>.
-export async function getCurrentUser(): Promise<User> {
+// Once per request: the nav's avatar and Home's header share it.
+export const getCurrentUser = cache(async (): Promise<User> => {
   // Supabase checks token expiry with Date.now(), so opt out of prerendering
   // explicitly; otherwise Cache Components flags it during validation.
   await connection();
@@ -30,7 +32,7 @@ export async function getCurrentUser(): Promise<User> {
       : null;
 
   return { id: claims.sub, email: claims.email ?? "", name };
-}
+});
 
 /** For Server Actions: a Supabase client for the signed-in user, or null. */
 export async function signedInClient() {

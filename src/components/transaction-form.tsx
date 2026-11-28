@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useEffectEvent, useRef, useState, useTransition } from "react";
+import {
+  startTransition as startBackground,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
+import { refreshApp } from "@/app/actions";
 import { lendOrBorrow, saveSplit } from "@/app/people-actions";
 import { deleteTransaction, saveBnplPurchase, saveTransaction } from "@/app/transaction-actions";
 import { AmountInput } from "@/components/amount-input";
@@ -11,6 +19,7 @@ import { Keypad } from "@/components/keypad";
 import { PersonPicker } from "@/components/person-picker";
 import { Pong, type PongMood } from "@/components/pong";
 import { showToast } from "@/components/toast";
+import { WalletPicker } from "@/components/wallet-picker";
 import {
   amountToExpression,
   evaluate,
@@ -39,7 +48,6 @@ import {
   currencySymbol,
   formatMoney,
   formatPeso,
-  groupAccounts,
   isSpendable,
   parseAmount,
   paysInPesos,
@@ -335,6 +343,13 @@ export function TransactionForm({
     close();
   }
 
+  // Saves that skip the refresh (saveTransaction, saveBnplPurchase, saveSplit):
+  // close first, then let every screen catch up in the background.
+  function doneThenRefresh(verb: "Saved" | "Updated", value: string, billDue?: string | null) {
+    done(verb, value, billDue);
+    startBackground(() => refreshApp());
+  }
+
   function close() {
     if (mode === "modal") router.back();
     else router.push(closeHref);
@@ -425,6 +440,14 @@ export function TransactionForm({
 
   function pickTo(id: string) {
     setToAccountId(id);
+    setLanded("");
+  }
+
+  /** From becomes To and back, when each can send to the other. */
+  function swapWallets() {
+    setAccountId(toAccountId);
+    setToAccountId(accountId);
+    setPlanFirstDue(null);
     setLanded("");
   }
 
@@ -533,7 +556,7 @@ export function TransactionForm({
             : null,
         });
         if (result.error) setSaveError(result.error);
-        else done("Saved", formatPeso(amount), withPlan ? firstDue : null);
+        else doneThenRefresh("Saved", formatPeso(amount), withPlan ? firstDue : null);
       });
       return;
     }
@@ -568,7 +591,7 @@ export function TransactionForm({
           },
         );
         if (result.error) setSaveError(result.error);
-        else done("Saved", money(amount), firstDue);
+        else doneThenRefresh("Saved", money(amount), firstDue);
         return;
       }
       const result = await saveTransaction(
@@ -578,7 +601,7 @@ export function TransactionForm({
         prefill?.link && type === prefill.type ? prefill.link : undefined,
       );
       if (result.error) setSaveError(result.error);
-      else done(editing ? "Updated" : "Saved", money(amount), result.billDue);
+      else doneThenRefresh(editing ? "Updated" : "Saved", money(amount), result.billDue);
     });
   }
 
@@ -729,6 +752,11 @@ export function TransactionForm({
           ? `Split ${formatPeso(amount)}`
           : `${editing ? "Update" : "Enter"} ${money(amount)}`;
   const transferWallets = transferTargets(account, accounts, keep);
+  const canSwap =
+    type === "transfer" &&
+    Boolean(toAccount) &&
+    fromList.some((a) => a.id === toAccountId) &&
+    transferTargets(toAccount, accounts, keep).some((a) => a.id === accountId);
   const walletLabel = lending
     ? direction === "lend"
       ? "Sent from"
@@ -759,44 +787,6 @@ export function TransactionForm({
       ))}
     </div>
   );
-
-  // Wallets, Savings, Credit cards, BNPL, Loans, People: a heading over each kind there is.
-  const walletChips = (
-    selected: string,
-    onPick: (id: string) => void,
-    list: Account[],
-    label: string,
-  ) => {
-    const groups = groupAccounts(list);
-    return (
-      <div role="group" aria-label={label} className="flex flex-col gap-2">
-        {groups.map((g) => (
-          <div key={g.key} className="flex flex-col gap-1">
-            {groups.length > 1 && (
-              <span className="text-[11px] font-extrabold tracking-wide text-muted uppercase">
-                {g.label}
-              </span>
-            )}
-            <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0">
-              {g.accounts.map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  aria-pressed={selected === a.id}
-                  onClick={() => onPick(a.id)}
-                  className={`h-9 shrink-0 rounded-full px-3.5 text-sm font-extrabold ${
-                    selected === a.id ? "bg-ink text-mint" : "bg-card text-ink hover:bg-sea-tint"
-                  }`}
-                >
-                  {a.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  };
 
   return (
     <form
@@ -1337,8 +1327,12 @@ export function TransactionForm({
 
         {iPaid && !paidForMe && (
           <div className="order-6 flex flex-col gap-1.5 lg:order-none">
-            <span className="text-sm font-extrabold">{walletLabel}</span>
-            {walletChips(accountId, pickFrom, fromList, walletLabel)}
+            <WalletPicker
+              label={walletLabel}
+              selected={accountId}
+              onPick={pickFrom}
+              list={fromList}
+            />
           </div>
         )}
 
@@ -1425,11 +1419,28 @@ export function TransactionForm({
           </div>
         )}
 
-        {type === "transfer" && (
+        {type === "transfer" && accountId && (
           <div className="order-7 flex flex-col gap-1.5 lg:order-none">
-            <span className="text-sm font-extrabold">To</span>
+            {canSwap && (
+              <button
+                type="button"
+                onClick={swapWallets}
+                aria-label="Swap From and To"
+                className="-my-1 flex h-8 w-8 items-center justify-center self-center rounded-full bg-card text-sea-dark hover:bg-sea-tint"
+              >
+                <span aria-hidden="true" className="text-base font-extrabold">
+                  ⇅
+                </span>
+              </button>
+            )}
             {transferWallets.length ? (
-              walletChips(toAccountId, pickTo, transferWallets, "To")
+              <WalletPicker
+                key={accountId}
+                label="To"
+                selected={toAccountId}
+                onPick={pickTo}
+                list={transferWallets}
+              />
             ) : (
               <p className="text-sm text-muted">
                 Add a second wallet in{" "}

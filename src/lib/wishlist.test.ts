@@ -6,6 +6,7 @@ import {
   bestPicks,
   candidateDates,
   partsThatFit,
+  saveUpDates,
   setAsideFor,
   windowOf,
   type Wish,
@@ -134,15 +135,13 @@ describe("Pong's pick", () => {
     expect(r.best!.date >= "2027-02-01" && r.best!.date <= "2027-05-31").toBe(true);
   });
 
-  it("borrows only when your own money can't do it in time", () => {
+  it("pays after, on credit, when saving it in time doesn't fit", () => {
+    // ₱18,000 by Nov 10: no payday before then, so it'd all be set aside today.
     const soon = pick(wish({ by: "2026-11-10" }));
     expect(soon.best!.borrowed).toBe(true);
     expect(soon.best!.strategy).toMatchObject({ kind: "credit", lineId: "spay" });
-    expect(soon.why).toMatch(/doesn't fit by Nov 10/);
-    // No credit lines: nothing fits by then.
-    const none = pick(wish({ by: "2026-11-10" }), []);
-    expect(none.best).toBeNull();
-    expect(none.why).toMatch(/^Nothing fits from/);
+    expect(soon.best!.date).toBe("2026-11-10");
+    expect(soon.why).toMatch(/paying after is the gentlest way/);
   });
 
   it("puts the fee in what you'd pay on credit", () => {
@@ -161,22 +160,43 @@ describe("Pong's pick", () => {
     expect(new Set(kinds).size).toBe(kinds.length);
   });
 
-  it("pays off parts from your wallets by the pay off by date", () => {
-    const r = pick(wish({ earliest: "2027-02-11", by: "2027-07-11" }), []);
-    const parts = [r.best!, ...r.others].filter((p) => p.strategy.kind === "installments");
-    for (const p of [r.best!, ...r.others]) {
-      expect(p.payments.every((x) => x.dueOn >= "2027-02-11" && x.dueOn <= "2027-07-11")).toBe(
-        true,
-      );
+  it("saves up each payday from save from until the day before ready by", () => {
+    // The design review's example: ₱30,000, save from Jan 13, ready by Jul 11.
+    const r = pick(wish({ amount: 30000, earliest: "2027-01-13", by: "2027-07-11" }));
+    expect(r.best!.strategy).toEqual({ kind: "save" });
+    expect(r.best!.payments.map((p) => p.dueOn)).toEqual([
+      "2027-01-15",
+      "2027-01-30",
+      "2027-02-15",
+      "2027-02-28",
+      "2027-03-15",
+      "2027-03-30",
+      "2027-04-15",
+      "2027-04-30",
+      "2027-05-15",
+      "2027-05-30",
+      "2027-06-15",
+      "2027-06-30",
+    ]);
+    expect(r.best!.payments.every((p) => p.amount === 2500)).toBe(true);
+    expect(r.best!.label).toBe("Save ₱2,500 each payday, Jan 15 → Jun 30, 2027 (12 paydays)");
+    expect(r.best!.borrowed).toBe(false);
+    // Nothing changes before the first set-aside.
+    const cutFrom = r.best!.verdict.biggestCut?.from;
+    expect(cutFrom === undefined || cutFrom >= "2027-01-15").toBe(true);
+    expect(r.why).toMatch(/all saved by Jul 11/);
+    // The other ways pay after: from the ready-by date on.
+    for (const p of r.others) {
+      expect(p.strategy.kind).not.toBe("save");
+      expect(p.payments.every((x) => x.dueOn >= "2027-07-11")).toBe(true);
     }
-    for (const p of parts) expect(p.label).toMatch(/ → .*\(\d+ payments\)$/);
   });
 
-  it("offers no parts when the start and pay off by dates are the same day", () => {
+  it("saves it all on the day when save from and ready by are the same day", () => {
     const r = pick(wish({ amount: 5000, earliest: "2027-12-30", by: "2027-12-30" }), []);
-    expect(r.best!.strategy).toEqual({ kind: "full" });
-    expect(r.best!.label).toBe("Pay ₱5,000 on Dec 30, 2027 from your wallets");
-    expect(r.others.every((p) => p.strategy.kind !== "installments")).toBe(true);
+    expect(r.best!.strategy).toEqual({ kind: "save" });
+    expect(r.best!.label).toBe("Save ₱5,000 on Dec 30, 2027");
+    expect(r.best!.payments).toEqual([{ dueOn: "2027-12-30", amount: 5000 }]);
   });
 
   it("says when you buy on credit and when its bills come", () => {
@@ -198,5 +218,37 @@ describe("parts that fit", () => {
     expect(partsThatFit("2027-02-11", "2027-07-10")).toBe(5);
     expect(partsThatFit("2027-12-30", "2027-12-30")).toBe(1);
     expect(partsThatFit("2027-01-01", "2030-01-01")).toBe(24);
+  });
+});
+
+describe("saving up", () => {
+  it("starts today when save from has passed, and stops before ready by", () => {
+    expect(saveUpDates({ earliest: "2026-10-01", by: "2026-12-15" }, TODAY, twiceMonthly)).toEqual([
+      "2026-11-15",
+      "2026-11-30",
+    ]);
+  });
+
+  it("goes monthly on the save-from day without a payday", () => {
+    expect(saveUpDates({ earliest: "2027-01-13", by: "2027-04-13" }, TODAY, null)).toEqual([
+      "2027-01-13",
+      "2027-02-13",
+      "2027-03-13",
+    ]);
+  });
+
+  it("saves it all on save from when no payday comes before ready by", () => {
+    expect(saveUpDates({ earliest: "2027-01-01", by: "2027-01-10" }, TODAY, twiceMonthly)).toEqual([
+      "2027-01-01",
+    ]);
+  });
+
+  it("puts the centavos left over on the last set-aside", () => {
+    const r = pick(wish({ amount: 1000, earliest: "2027-01-01", by: "2027-02-14" }));
+    // Jan 15, Jan 30: ₱500 each.
+    expect(r.best!.payments.map((p) => p.amount)).toEqual([500, 500]);
+    const odd = pick(wish({ amount: 1000, earliest: "2027-01-01", by: "2027-02-16" }));
+    // Jan 15, Jan 30, Feb 15: ₱333.33 twice, then ₱333.34.
+    expect(odd.best!.payments.map((p) => p.amount)).toEqual([333.33, 333.33, 333.34]);
   });
 });

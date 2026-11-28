@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
+import { refreshApp } from "@/app/actions";
 import { saveTransaction } from "@/app/transaction-actions";
 import {
   addWallets,
@@ -816,7 +817,10 @@ function InterestRow({
         occurredOn: toLog?.on ?? today,
       });
       if (result.error) setError(result.error);
-      else setOpen(false);
+      else {
+        setOpen(false);
+        await refreshApp();
+      }
     });
   }
 

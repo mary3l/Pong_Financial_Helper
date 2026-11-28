@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { refreshApp } from "@/app/actions";
 import { lendOrBorrow } from "@/app/people-actions";
 import { deleteTransaction, saveBnplPurchase, saveTransaction } from "@/app/transaction-actions";
 import type { Account, Template, Transaction } from "@/lib/data";
@@ -13,6 +14,7 @@ vi.mock("@/app/transaction-actions", () => ({
   saveBnplPurchase: vi.fn(async () => ({})),
   deleteTransaction: vi.fn(async () => ({})),
 }));
+vi.mock("@/app/actions", () => ({ refreshApp: vi.fn(async () => {}) }));
 vi.mock("@/app/people-actions", () => ({
   saveSplit: vi.fn(async () => ({})),
   lendOrBorrow: vi.fn(async () => ({ personId: "ana" })),
@@ -143,7 +145,40 @@ describe("TransactionForm", () => {
     const payWith = within(screen.getByRole("group", { name: "Pay with" }));
     expect(payWith.getByText("Wallets")).toBeInTheDocument();
     expect(payWith.getByText("Savings")).toBeInTheDocument();
-    expect(payWith.getByText("BNPL")).toBeInTheDocument();
+    // The third group on folds until you open it.
+    expect(payWith.queryByRole("button", { name: "SPayLater" })).not.toBeInTheDocument();
+    expect(payWith.getByRole("button", { name: /BNPL · 1/ })).toBeInTheDocument();
+  });
+
+  it("opens a folded group, then folds the list to the wallet you pick", async () => {
+    const user = renderForm({
+      accounts: [
+        cash,
+        account("emergency", "Emergency Savings", { type: "bank", purpose: "emergency" }),
+        spl,
+      ],
+    });
+    await pick(user, "Pay with", /BNPL/);
+    await pick(user, "Pay with", "SPayLater");
+    expect(screen.queryByRole("group", { name: "Pay with" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Change Pay with: SPayLater" }));
+    expect(
+      within(screen.getByRole("group", { name: "Pay with" })).getByRole("button", {
+        name: "SPayLater",
+        pressed: true,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows To once From is picked, and swaps them", async () => {
+    const user = renderForm({ accounts: [cash, gcash] });
+    await user.click(first("Transfer"));
+    expect(screen.queryByRole("group", { name: "To" })).not.toBeInTheDocument();
+    await pick(user, "From", "Cash");
+    await pick(user, "To", "GCash");
+    await user.click(screen.getByRole("button", { name: "Swap From and To" }));
+    expect(screen.getByRole("button", { name: "Change From: GCash" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Change To: Cash" })).toBeInTheDocument();
   });
 
   it("types the amount from the keyboard and saves a Food expense from the wallet you pick", async () => {
@@ -196,6 +231,12 @@ describe("TransactionForm", () => {
       }),
       undefined,
       undefined,
+    );
+    // Closes first; every screen catches up behind it.
+    expect(router.push).toHaveBeenCalled();
+    expect(refreshApp).toHaveBeenCalledOnce();
+    expect(router.push.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(refreshApp).mock.invocationCallOrder[0],
     );
   });
 

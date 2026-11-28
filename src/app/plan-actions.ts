@@ -39,6 +39,31 @@ async function logTransaction(
   return error ? null : data.id;
 }
 
+/** A set-aside done: a transfer from a spending wallet into savings, today. */
+async function logSetAside(
+  supabase: Client,
+  {
+    amount,
+    accountId,
+    toAccountId,
+    note,
+  }: { amount: number; accountId: string; toAccountId: string; note: string },
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("transactions")
+    .insert({
+      type: "transfer",
+      amount,
+      account_id: accountId,
+      to_account_id: toAccountId,
+      note,
+      occurred_on: today(),
+    })
+    .select("id")
+    .single();
+  return error ? null : data.id;
+}
+
 const NO_WALLET = { error: "Add a wallet first, so I know where the money goes." };
 const PICK_WALLET = { error: "Pick a cash, bank or e-wallet." };
 
@@ -181,9 +206,10 @@ export async function logPlanned(id: string, walletId?: string): Promise<PlanRes
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
+  // "*": to_account_id is a later migration (0031).
   const { data: planned } = await supabase
     .from("planned_expenses")
-    .select("type, name, amount, category, account_id, transaction_id")
+    .select("*")
     .eq("id", id)
     .maybeSingle();
   if (!planned) return { error: "Couldn't find that planned item." };
@@ -195,13 +221,26 @@ export async function logPlanned(id: string, walletId?: string): Promise<PlanRes
   const accountId = await pickWallet(supabase, planned.account_id, walletId);
   if (!accountId) return walletId ? PICK_WALLET : NO_WALLET;
 
-  const txnId = await logTransaction(supabase, {
-    type: planned.type === "income" ? "income" : "expense",
-    amount: Number(planned.amount),
-    accountId,
-    category: planned.category,
-    note: planned.name,
-  });
+  // A set-aside moves money into savings: a transfer, never spending.
+  const setAside = planned.type === "set_aside";
+  if (setAside && !planned.to_account_id)
+    return { error: "Its savings wallet is gone. Change the plan in Wishlist and pick another." };
+  if (setAside && planned.to_account_id === accountId)
+    return { error: "Pick a wallet to move it from, not the savings wallet itself." };
+  const txnId = setAside
+    ? await logSetAside(supabase, {
+        amount: Number(planned.amount),
+        accountId,
+        toAccountId: planned.to_account_id,
+        note: planned.name,
+      })
+    : await logTransaction(supabase, {
+        type: planned.type === "income" ? "income" : "expense",
+        amount: Number(planned.amount),
+        accountId,
+        category: planned.category,
+        note: planned.name,
+      });
   if (!txnId) return FAILED;
 
   const { error } = await supabase

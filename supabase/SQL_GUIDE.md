@@ -743,6 +743,36 @@ Then, in [Check access and connections](#check-access-and-connections):
 
 ---
 
+## Step 31 · Saving up for a plan
+
+File: `migrations/0031_set_asides.sql`
+
+- `planned_expenses.type` can be `set_aside`: money you move from a spending wallet into savings
+  on a payday, for a wishlist plan with a "save from" and a "ready by" date.
+- `planned_expenses.to_account_id`: the savings wallet it goes into. Mark done logs a transfer
+  into it, never spending.
+
+Until you run this, the wishlist still shows how much to save each payday, but Make it real on a
+save-up plan says to run this step first.
+
+**Check**
+
+```sql
+select exists (select 1 from information_schema.columns
+               where table_name = 'planned_expenses' and column_name = 'to_account_id');
+```
+
+Expect `true`.
+
+Then, in [Check access and connections](#check-access-and-connections):
+
+- The CRUD check shows `planned_expenses` with every column `true`.
+- The connections check lists `planned_expenses_to_account_fkey`:
+  `planned_expenses (to_account_id, user_id) → accounts (id, user_id)`, on delete
+  `set null (to_account_id)`.
+
+---
+
 ## Check access and connections
 
 Two read-only checks you can run any time. They only look; they change nothing.
@@ -830,6 +860,8 @@ order by 1, 2;
 - `planned_expenses (wish_id, user_id) → wishlist_items (id, user_id)`, **set null (wish_id)**:
   removing a plan keeps its payments that were already paid (as history) and only clears the
   link. Pong deletes the unpaid ones itself first.
+- `planned_expenses (to_account_id, user_id) → accounts (id, user_id)`, **set null
+  (to_account_id)**: deleting a savings wallet keeps its set-asides and only clears where they go.
 - `(transaction_id, user_id) → transactions`, **set null (transaction_id)**: deleting a logged
   transaction makes that payment unpaid again instead of deleting it.
 
@@ -885,7 +917,9 @@ select
   to_regclass('public.spending_goals') is not null        as step_28,
   to_regclass('public.wishlist_items') is not null        as step_29,
   exists (select 1 from information_schema.columns
-          where table_name = 'planned_expenses' and column_name = 'wish_id') as step_30;
+          where table_name = 'planned_expenses' and column_name = 'wish_id') as step_30,
+  exists (select 1 from information_schema.columns
+          where table_name = 'planned_expenses' and column_name = 'to_account_id') as step_31;
 ```
 
 The first `false` is the step to run next.
