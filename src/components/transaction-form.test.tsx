@@ -145,7 +145,40 @@ describe("TransactionForm", () => {
     const payWith = within(screen.getByRole("group", { name: "Pay with" }));
     expect(payWith.getByText("Wallets")).toBeInTheDocument();
     expect(payWith.getByText("Savings")).toBeInTheDocument();
-    expect(payWith.getByText("BNPL")).toBeInTheDocument();
+    // The third group on folds until you open it.
+    expect(payWith.queryByRole("button", { name: "SPayLater" })).not.toBeInTheDocument();
+    expect(payWith.getByRole("button", { name: /BNPL · 1/ })).toBeInTheDocument();
+  });
+
+  it("opens a folded group, then folds the list to the wallet you pick", async () => {
+    const user = renderForm({
+      accounts: [
+        cash,
+        account("emergency", "Emergency Savings", { type: "bank", purpose: "emergency" }),
+        spl,
+      ],
+    });
+    await pick(user, "Pay with", /BNPL/);
+    await pick(user, "Pay with", "SPayLater");
+    expect(screen.queryByRole("group", { name: "Pay with" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Change Pay with: SPayLater" }));
+    expect(
+      within(screen.getByRole("group", { name: "Pay with" })).getByRole("button", {
+        name: "SPayLater",
+        pressed: true,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows To once From is picked, and swaps them", async () => {
+    const user = renderForm({ accounts: [cash, gcash] });
+    await user.click(first("Transfer"));
+    expect(screen.queryByRole("group", { name: "To" })).not.toBeInTheDocument();
+    await pick(user, "From", "Cash");
+    await pick(user, "To", "GCash");
+    await user.click(screen.getByRole("button", { name: "Swap From and To" }));
+    expect(screen.getByRole("button", { name: "Change From: GCash" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Change To: Cash" })).toBeInTheDocument();
   });
 
   it("types the amount from the keyboard and saves a Food expense from the wallet you pick", async () => {

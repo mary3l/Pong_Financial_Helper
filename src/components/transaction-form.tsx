@@ -19,6 +19,7 @@ import { Keypad } from "@/components/keypad";
 import { PersonPicker } from "@/components/person-picker";
 import { Pong, type PongMood } from "@/components/pong";
 import { showToast } from "@/components/toast";
+import { WalletPicker } from "@/components/wallet-picker";
 import {
   amountToExpression,
   evaluate,
@@ -47,7 +48,6 @@ import {
   currencySymbol,
   formatMoney,
   formatPeso,
-  groupAccounts,
   isSpendable,
   parseAmount,
   paysInPesos,
@@ -443,6 +443,14 @@ export function TransactionForm({
     setLanded("");
   }
 
+  /** From becomes To and back, when each can send to the other. */
+  function swapWallets() {
+    setAccountId(toAccountId);
+    setToAccountId(accountId);
+    setPlanFirstDue(null);
+    setLanded("");
+  }
+
   function pickFrom(id: string) {
     setAccountId(id);
     // A credit card goes on its statement in full; BNPL starts at 3 months.
@@ -744,6 +752,11 @@ export function TransactionForm({
           ? `Split ${formatPeso(amount)}`
           : `${editing ? "Update" : "Enter"} ${money(amount)}`;
   const transferWallets = transferTargets(account, accounts, keep);
+  const canSwap =
+    type === "transfer" &&
+    Boolean(toAccount) &&
+    fromList.some((a) => a.id === toAccountId) &&
+    transferTargets(toAccount, accounts, keep).some((a) => a.id === accountId);
   const walletLabel = lending
     ? direction === "lend"
       ? "Sent from"
@@ -774,44 +787,6 @@ export function TransactionForm({
       ))}
     </div>
   );
-
-  // Wallets, Savings, Credit cards, BNPL, Loans, People: a heading over each kind there is.
-  const walletChips = (
-    selected: string,
-    onPick: (id: string) => void,
-    list: Account[],
-    label: string,
-  ) => {
-    const groups = groupAccounts(list);
-    return (
-      <div role="group" aria-label={label} className="flex flex-col gap-2">
-        {groups.map((g) => (
-          <div key={g.key} className="flex flex-col gap-1">
-            {groups.length > 1 && (
-              <span className="text-[11px] font-extrabold tracking-wide text-muted uppercase">
-                {g.label}
-              </span>
-            )}
-            <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0">
-              {g.accounts.map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  aria-pressed={selected === a.id}
-                  onClick={() => onPick(a.id)}
-                  className={`h-9 shrink-0 rounded-full px-3.5 text-sm font-extrabold ${
-                    selected === a.id ? "bg-ink text-mint" : "bg-card text-ink hover:bg-sea-tint"
-                  }`}
-                >
-                  {a.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  };
 
   return (
     <form
@@ -1352,8 +1327,12 @@ export function TransactionForm({
 
         {iPaid && !paidForMe && (
           <div className="order-6 flex flex-col gap-1.5 lg:order-none">
-            <span className="text-sm font-extrabold">{walletLabel}</span>
-            {walletChips(accountId, pickFrom, fromList, walletLabel)}
+            <WalletPicker
+              label={walletLabel}
+              selected={accountId}
+              onPick={pickFrom}
+              list={fromList}
+            />
           </div>
         )}
 
@@ -1440,11 +1419,28 @@ export function TransactionForm({
           </div>
         )}
 
-        {type === "transfer" && (
+        {type === "transfer" && accountId && (
           <div className="order-7 flex flex-col gap-1.5 lg:order-none">
-            <span className="text-sm font-extrabold">To</span>
+            {canSwap && (
+              <button
+                type="button"
+                onClick={swapWallets}
+                aria-label="Swap From and To"
+                className="-my-1 flex h-8 w-8 items-center justify-center self-center rounded-full bg-card text-sea-dark hover:bg-sea-tint"
+              >
+                <span aria-hidden="true" className="text-base font-extrabold">
+                  ⇅
+                </span>
+              </button>
+            )}
             {transferWallets.length ? (
-              walletChips(toAccountId, pickTo, transferWallets, "To")
+              <WalletPicker
+                key={accountId}
+                label="To"
+                selected={toAccountId}
+                onPick={pickTo}
+                list={transferWallets}
+              />
             ) : (
               <p className="text-sm text-muted">
                 Add a second wallet in{" "}
