@@ -541,7 +541,8 @@ describe("saveSplit", () => {
     ]);
     // A cash wallet: no payment plan.
     expect(db.writes("installment_plans")).toEqual([]);
-    expect(refresh).toHaveBeenCalledOnce();
+    // The form refreshes once it has closed (refreshApp).
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it("skips ₱0 shares and leaves out split_id before migration 0012", async () => {

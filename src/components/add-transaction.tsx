@@ -2,7 +2,7 @@ import { TransactionForm, type Prefill } from "@/components/transaction-form";
 import { isCategoryFor, type UserCategory } from "@/lib/categories";
 import {
   getAccounts,
-  getPeople,
+  getPeopleToPick,
   getSubcategories,
   getUserCategories,
   getTransactions,
@@ -70,7 +70,7 @@ export async function AddTransaction({
   const [accounts, recent, people, subcategories, customCategories, params] = await Promise.all([
     getAccounts(),
     getTransactions({ limit: 60 }),
-    getPeople(),
+    getPeopleToPick(),
     getSubcategories(),
     getUserCategories(),
     searchParams ?? Promise.resolve<Params>({}),
@@ -84,7 +84,7 @@ export async function AddTransaction({
       today={today()}
       mode={mode}
       prefill={prefillFrom(params, customCategories)}
-      people={people.map((p) => ({ id: p.id, name: p.name, balance: p.balance }))}
+      people={people}
       startSplit={params.split === "1"}
       startLend={startLendFrom(params)}
       subcategories={subcategories}

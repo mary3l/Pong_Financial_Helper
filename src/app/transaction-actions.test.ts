@@ -98,7 +98,7 @@ describe("saveTransaction", () => {
     });
   });
 
-  it("inserts a cleaned-up row and refreshes", async () => {
+  it("inserts a cleaned-up row and returns without a refresh or bill lookup", async () => {
     expect(await saveTransaction(expense)).toEqual({});
     expect(db.writes("transactions", "insert")).toEqual([
       {
@@ -113,7 +113,10 @@ describe("saveTransaction", () => {
         occurred_time: "12:30",
       },
     ]);
-    expect(refresh).toHaveBeenCalledOnce();
+    // The form refreshes once it has closed (refreshApp).
+    expect(refresh).not.toHaveBeenCalled();
+    // A new purchase is never on a bill yet.
+    expect(db.queries.map((q) => q.table)).not.toContain("scheduled_payments");
   });
 
   it("updates the given id instead of inserting", async () => {
@@ -121,6 +124,22 @@ describe("saveTransaction", () => {
     expect(await saveTransaction(expense, "t1")).toEqual({});
     expect(db.writeLog()).toEqual(["update transactions"]);
     expect(db.table("transactions")[0]).toMatchObject({ id: "t1", amount: 120.46 });
+  });
+
+  it("an edited purchase on a bill says when it's due, in one query", async () => {
+    useDb({ transactions: [{ id: "t1", type: "expense", amount: 1 }] });
+    db.respond((q) =>
+      q.table === "scheduled_payments"
+        ? { data: [{ due_on: "2026-12-16" }], error: null }
+        : undefined,
+    );
+    expect(await saveTransaction(expense, "t1")).toEqual({ billDue: "2026-12-16" });
+    const bill = db.queries.filter((q) => q.table === "scheduled_payments");
+    expect(bill).toHaveLength(1);
+    expect(bill[0].filters).toContainEqual({
+      method: "eq",
+      args: ["installment_plans.source_txn_id", "t1"],
+    });
   });
 
   it("fails when the update matched no row (someone else's id)", async () => {

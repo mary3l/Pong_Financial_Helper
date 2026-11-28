@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { refreshApp } from "@/app/actions";
 import { lendOrBorrow } from "@/app/people-actions";
 import { deleteTransaction, saveBnplPurchase, saveTransaction } from "@/app/transaction-actions";
 import type { Account, Template, Transaction } from "@/lib/data";
@@ -13,6 +14,7 @@ vi.mock("@/app/transaction-actions", () => ({
   saveBnplPurchase: vi.fn(async () => ({})),
   deleteTransaction: vi.fn(async () => ({})),
 }));
+vi.mock("@/app/actions", () => ({ refreshApp: vi.fn(async () => {}) }));
 vi.mock("@/app/people-actions", () => ({
   saveSplit: vi.fn(async () => ({})),
   lendOrBorrow: vi.fn(async () => ({ personId: "ana" })),
@@ -196,6 +198,12 @@ describe("TransactionForm", () => {
       }),
       undefined,
       undefined,
+    );
+    // Closes first; every screen catches up behind it.
+    expect(router.push).toHaveBeenCalled();
+    expect(refreshApp).toHaveBeenCalledOnce();
+    expect(router.push.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(refreshApp).mock.invocationCallOrder[0],
     );
   });
 

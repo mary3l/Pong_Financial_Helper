@@ -524,7 +524,7 @@ export async function saveSplit(input: SplitInput): Promise<PeopleResult> {
     }
   }
 
-  refresh();
+  // The form refreshes the app itself (refreshApp) once it has closed.
   return {};
 }
 

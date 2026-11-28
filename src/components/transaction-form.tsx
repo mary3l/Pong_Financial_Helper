@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useEffectEvent, useRef, useState, useTransition } from "react";
+import {
+  startTransition as startBackground,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
+import { refreshApp } from "@/app/actions";
 import { lendOrBorrow, saveSplit } from "@/app/people-actions";
 import { deleteTransaction, saveBnplPurchase, saveTransaction } from "@/app/transaction-actions";
 import { AmountInput } from "@/components/amount-input";
@@ -335,6 +343,13 @@ export function TransactionForm({
     close();
   }
 
+  // Saves that skip the refresh (saveTransaction, saveBnplPurchase, saveSplit):
+  // close first, then let every screen catch up in the background.
+  function doneThenRefresh(verb: "Saved" | "Updated", value: string, billDue?: string | null) {
+    done(verb, value, billDue);
+    startBackground(() => refreshApp());
+  }
+
   function close() {
     if (mode === "modal") router.back();
     else router.push(closeHref);
@@ -533,7 +548,7 @@ export function TransactionForm({
             : null,
         });
         if (result.error) setSaveError(result.error);
-        else done("Saved", formatPeso(amount), withPlan ? firstDue : null);
+        else doneThenRefresh("Saved", formatPeso(amount), withPlan ? firstDue : null);
       });
       return;
     }
@@ -568,7 +583,7 @@ export function TransactionForm({
           },
         );
         if (result.error) setSaveError(result.error);
-        else done("Saved", money(amount), firstDue);
+        else doneThenRefresh("Saved", money(amount), firstDue);
         return;
       }
       const result = await saveTransaction(
@@ -578,7 +593,7 @@ export function TransactionForm({
         prefill?.link && type === prefill.type ? prefill.link : undefined,
       );
       if (result.error) setSaveError(result.error);
-      else done(editing ? "Updated" : "Saved", money(amount), result.billDue);
+      else doneThenRefresh(editing ? "Updated" : "Saved", money(amount), result.billDue);
     });
   }
 
