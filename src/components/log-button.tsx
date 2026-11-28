@@ -65,9 +65,13 @@ export function LogButton({
   const [picking, setPicking] = useState(false);
   const paid = Boolean(item.transactionId);
   const incoming = item.flow === "in";
-  const label = labelAs ?? (incoming ? "Add income" : early ? "Pay early" : "Mark paid");
+  // A set-aside moves money into savings: picked from any wallet but that one.
+  const setAside = item.setAsideTo !== undefined;
+  const label =
+    labelAs ??
+    (incoming ? "Add income" : setAside ? "Set aside" : early ? "Pay early" : "Mark paid");
   // Scheduled items are in pesos, so dollar wallets aren't offered.
-  const wallets = accounts.filter((a) => paysInPesos(a) && !a.archived);
+  const wallets = accounts.filter((a) => paysInPesos(a) && !a.archived && a.id !== item.setAsideTo);
 
   function run(walletId?: string, amount?: number) {
     setError(null);
@@ -131,7 +135,7 @@ export function LogButton({
           {pending && !picking
             ? "Saving…"
             : paid
-              ? `${incoming ? "Received" : "Paid"} · undo`
+              ? `${incoming ? "Received" : setAside ? "Set aside" : "Paid"} · undo`
               : label}
         </button>
       )}
@@ -222,7 +226,11 @@ function WalletPicker({
     };
   }, []);
 
-  const heading = incoming ? "Where does it go?" : "Pay it from";
+  const heading = incoming
+    ? "Where does it go?"
+    : item.setAsideTo !== undefined
+      ? "Move it from"
+      : "Pay it from";
 
   return (
     <dialog

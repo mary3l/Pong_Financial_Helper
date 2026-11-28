@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { connection } from "next/server";
+import { after, connection } from "next/server";
 import { Suspense } from "react";
 import { DisplayNameForm } from "@/components/display-name-form";
 import { ForecastChart } from "@/components/forecast-chart";
@@ -118,7 +118,9 @@ async function Dashboard() {
   );
   // The home screen widget shows this too (0020_widget_safe_to_spend.sql).
   // This morning's pace: the widget takes today's spending off it itself.
-  await saveWidgetSnapshot({ perDay: day.week.morningPace, until: day.week.until }, today);
+  // Started now, while the request's cookies can still be read, but Home
+  // doesn't wait for it: after() only keeps the server up until it's done.
+  after(saveWidgetSnapshot({ perDay: day.week.morningPace, until: day.week.until }, today));
   // The plan's balance: spending its daily amount, with BNPL caps held.
   const forecastDays = day.plan.days.slice(0, 30);
   const forecastLow = lowestBetween(forecastDays, today, addDays(today, 30))!;

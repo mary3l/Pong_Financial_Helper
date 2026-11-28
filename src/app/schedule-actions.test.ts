@@ -97,6 +97,28 @@ describe("saveScheduled", () => {
     ]);
   });
 
+  it("keeps a set-aside a set-aside when you edit it", async () => {
+    useDb({
+      planned_expenses: [
+        {
+          id: "p1",
+          type: "set_aside",
+          name: "Trip · set aside",
+          amount: 2500,
+          to_account_id: "save",
+        },
+      ],
+    });
+    const edit = { ...internet, repeat: "once" as const, date: "2027-01-16", amount: 3000 };
+    expect(await saveScheduled(edit, { table: "planned", id: "p1" })).toEqual({});
+    expect(db.table("planned_expenses")[0]).toMatchObject({
+      type: "set_aside",
+      amount: 3000,
+      due_on: "2027-01-16",
+      to_account_id: "save",
+    });
+  });
+
   it("updates in place when the kind didn't change", async () => {
     useDb({ recurring_items: [{ id: "r1", kind: "bill" }] });
     expect(await saveScheduled(internet, { table: "recurring", id: "r1" })).toEqual({});

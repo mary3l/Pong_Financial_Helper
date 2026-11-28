@@ -161,7 +161,8 @@ export type BillPayment = {
 /** A one-off planned cashflow: money out (expense) or in (income). */
 export type PlannedExpense = {
   id: string;
-  type: "expense" | "income";
+  /** set_aside: money moved into savings for a wishlist plan (0031). */
+  type: "expense" | "income" | "set_aside";
   name: string;
   amount: number;
   category: string;
@@ -172,6 +173,8 @@ export type PlannedExpense = {
   payrollKey: string | null;
   /** The wishlist plan it came from, when you made one real (0030). */
   wishId: string | null;
+  /** A set-aside: the savings wallet it goes into (0031). */
+  toAccountId: string | null;
 };
 
 export type Budget = { id: string; category: string; amount: number };
@@ -235,6 +238,12 @@ const db = cache(async () => {
   return createClient();
 });
 
+// Every account's balance, read once per request: wallets and people share it.
+const readBalances = cache(async () => {
+  const supabase = await db();
+  return supabase.from("account_balances").select("account_id, balance");
+});
+
 /**
  * Wallets, credit lines and loans. People (utang and pautang) are accounts
  * too, but only come back with `includePeople`: see getPeople.
@@ -266,7 +275,7 @@ const readAccounts = cache(
 
     const [first, balances] = await Promise.all([
       select(`${dollars}, cutoff_day, credit_kind`),
-      supabase.from("account_balances").select("account_id, balance"),
+      readBalances(),
     ]);
     // 42703: migration 0026 (or 0019, 0017, 0016, 0011, 0010) hasn't been run
     // yet. Every credit line is then BNPL, credit lines have no cutoff day,
@@ -459,8 +468,10 @@ export async function getPlannedExpenses(from: string): Promise<PlannedExpense[]
       .select(columns)
       .or(`due_on.gte.${from},transaction_id.is.null`)
       .order("due_on");
-  // 42703: a migration hasn't been run yet: 0030 (wish_id), or 0013 (payroll_key) too.
-  let result = await select(`${base}, payroll_key, wish_id`);
+  // 42703: a migration hasn't been run yet: 0031 (to_account_id), 0030 (wish_id),
+  // or 0013 (payroll_key) too.
+  let result = await select(`${base}, payroll_key, wish_id, to_account_id`);
+  if (result.error?.code === "42703") result = await select(`${base}, payroll_key, wish_id`);
   if (result.error?.code === "42703") result = await select(`${base}, payroll_key`);
   if (result.error?.code === "42703") result = await select(base);
   const { data, error } = result;
@@ -476,6 +487,7 @@ export async function getPlannedExpenses(from: string): Promise<PlannedExpense[]
     transactionId: p.transaction_id,
     payrollKey: p.payroll_key ?? null,
     wishId: p.wish_id ?? null,
+    toAccountId: p.to_account_id ?? null,
   }));
 }
 
@@ -490,6 +502,7 @@ type PlannedRow = {
   transaction_id: string | null;
   payroll_key?: string | null;
   wish_id?: string | null;
+  to_account_id?: string | null;
 };
 
 /**
@@ -888,7 +901,7 @@ const readPeople = cache(async (includeArchived: boolean): Promise<Person[]> => 
   if (!includeArchived) accounts = accounts.eq("archived", false);
   const [a, b, e] = await Promise.all([
     accounts,
-    supabase.from("account_balances").select("account_id, balance"),
+    readBalances(),
     supabase
       .from("person_entries")
       .select("transaction_id, person_id, kind, due_on, count_in_forecast, split_total")
@@ -916,6 +929,31 @@ const readPeople = cache(async (includeArchived: boolean): Promise<Person[]> => 
       })),
   }));
 });
+
+/**
+ * Everyone you can pick on Add: name and balance only, without the entries
+ * getPeople reads (those grow with every utang and pautang).
+ */
+export async function getPeopleToPick(): Promise<{ id: string; name: string; balance: number }[]> {
+  const supabase = await db();
+  const [a, b] = await Promise.all([
+    supabase
+      .from("accounts")
+      .select("id, name, starting_balance")
+      .eq("type", "person")
+      .eq("archived", false)
+      .order("name"),
+    readBalances(),
+  ]);
+  if (a.error) throw dbError(a.error);
+  if (b.error) throw dbError(b.error);
+  const balanceById = new Map(b.data.map((row) => [row.account_id as string, Number(row.balance)]));
+  return a.data.map((p) => ({
+    id: p.id,
+    name: p.name,
+    balance: balanceById.get(p.id) ?? Number(p.starting_balance),
+  }));
+}
 
 /**
  * When the home screen widget key was made, or null when there's none.
@@ -1368,7 +1406,7 @@ export async function getSubcategories(): Promise<Record<string, string[]>> {
     .select("category, subcategory")
     .not("subcategory", "is", null)
     .order("created_at", { ascending: false })
-    .limit(2000);
+    .limit(500);
   if (error?.code === "42703") return {};
   if (error) throw dbError(error);
   return subcategoryOptions(data);

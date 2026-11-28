@@ -41,3 +41,11 @@ export async function setDisplayName(
   refresh();
   return { saved: true };
 }
+
+/**
+ * Refreshes every screen after a save that skipped it, so a form can close
+ * first and let Home catch up behind it.
+ */
+export async function refreshApp() {
+  refresh();
+}

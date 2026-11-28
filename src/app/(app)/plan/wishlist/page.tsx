@@ -10,6 +10,7 @@ import {
   getWishlist,
 } from "@/lib/data";
 import { today as getToday } from "@/lib/dates";
+import { countsAsSpending, isSpendable, roundCents } from "@/lib/money";
 import { bestPicks } from "@/lib/wishlist";
 import { PlanTabs } from "../plan-tabs";
 import { WishlistManager, type WishRow } from "./wishlist-manager";
@@ -58,6 +59,9 @@ async function Wishlist() {
   const rows: WishRow[] = wishes.map((wish) => {
     // A plan you made real: what's still to come of it in Scheduled.
     const parts = planned.filter((p) => p.wishId === wish.id && !p.transactionId);
+    // Saving up: what's still to set aside says how much is saved so far.
+    const setAsides = parts.filter((p) => p.type === "set_aside");
+    const left = roundCents(setAsides.reduce((sum, p) => sum + p.amount, 0));
     return {
       wish,
       result:
@@ -65,7 +69,13 @@ async function Wishlist() {
           ? bestPicks({ wish, start: inWallets, items, today, payday, credit, cap })
           : null,
       upcoming: parts.length
-        ? { count: parts.length, first: parts[0].dueOn, last: parts.at(-1)!.dueOn }
+        ? {
+            count: parts.length,
+            first: parts[0].dueOn,
+            last: parts.at(-1)!.dueOn,
+            next: parts[0].amount,
+            saved: setAsides.length ? roundCents(wish.amount - left) : null,
+          }
         : null,
     };
   });
@@ -76,6 +86,11 @@ async function Wishlist() {
       today={today}
       payKnown={Boolean(payday?.amount)}
       hasCredit={credit.length > 0}
+      savings={accounts
+        .filter(
+          (a) => isSpendable(a.type) && !countsAsSpending(a) && a.currency !== "USD" && !a.archived,
+        )
+        .map((a) => ({ id: a.id, name: a.name }))}
       categories={categoriesFor("expense", custom).map((c) => ({ key: c.key, label: c.label }))}
     />
   );

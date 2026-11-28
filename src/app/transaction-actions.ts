@@ -232,23 +232,18 @@ export async function saveTransaction(
     await averageRate(supabase, row.to_account_id, row.amount, row.to_amount);
   }
 
-  const billDue = row.type === "expense" ? await billDueOf(supabase, data[0].id) : null;
-  refresh();
+  // Only an edit can put a purchase on a bill (syncBill); a new one never has one.
+  // The form refreshes the app itself (refreshApp) once it has closed.
+  const billDue = id && row.type === "expense" ? await billDueOf(supabase, id) : null;
   return billDue ? { billDue } : {};
 }
 
 /** The due date of the next unpaid payment on the bill made from a purchase, if any. */
 async function billDueOf(supabase: Client, txnId: string): Promise<string | null> {
-  const plan = await supabase
-    .from("installment_plans")
-    .select("id")
-    .eq("source_txn_id", txnId)
-    .maybeSingle();
-  if (!plan.data) return null;
   const { data } = await supabase
     .from("scheduled_payments")
-    .select("due_on")
-    .eq("plan_id", plan.data.id)
+    .select("due_on, installment_plans!inner(source_txn_id)")
+    .eq("installment_plans.source_txn_id", txnId)
     .is("transfer_txn_id", null)
     .is("fee_txn_id", null)
     .order("due_on")
@@ -435,7 +430,7 @@ export async function saveBnplPurchase(
     return { error: "Couldn't save the payment plan. Please try again." };
   }
 
-  refresh();
+  // The form refreshes the app itself (refreshApp) once it has closed.
   return {};
 }
 

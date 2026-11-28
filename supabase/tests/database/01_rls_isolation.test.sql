@@ -118,8 +118,8 @@ end $$;
 select tests.seed('11111111-1111-1111-1111-111111111111', 'key-of-a');
 select tests.seed('22222222-2222-2222-2222-222222222222', 'key-of-b');
 
--- 6 checks per table (5 as user A, 1 signed out) + 4 more.
-select plan(22 * 6 + 4);
+-- 6 checks per table (5 as user A, 1 signed out) + 5 more.
+select plan(22 * 6 + 5);
 
 -- As user A ---------------------------------------------------------------------
 
@@ -166,6 +166,14 @@ select throws_ok(
          (select wallet from tests.wallets where owner = '22222222-2222-2222-2222-222222222222')),
   '23503', null,
   'transactions: user A can''t spend from user B''s wallet, even knowing its id'
+);
+
+select throws_ok(
+  format($$ insert into public.planned_expenses (type, name, amount, category, due_on, to_account_id)
+            values ('set_aside', 'Trip · set aside', 1, 'fun', current_date, %L) $$,
+         (select wallet from tests.wallets where owner = '22222222-2222-2222-2222-222222222222')),
+  '23503', null,
+  'planned_expenses: user A can''t set money aside into user B''s wallet'
 );
 
 select is(
